@@ -1,3 +1,4 @@
+import { installRotateGestures } from './app/rotateGestures.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
 import { initButtonTooltips } from './ui/buttonTooltips.js';
@@ -18,5 +19,10 @@ application.start().catch((error) => {
 
 initButtonTooltips();
 initPanelFullscreen();
+// start() hands back the same promise; its failure is reported above.
+application
+  .start()
+  .then(() => installRotateGestures(application.getComponents().scene.viewer))
+  .catch(() => {});
 
 export { application };
