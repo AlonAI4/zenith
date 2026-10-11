@@ -55,18 +55,33 @@ export function _renderCctvState(state) {
   }
 
   if (this._cctvSelect) {
+    // Grouped by provider, then city and name A–Z, so a few thousand cameras
+    // stay browsable. The optgroups do not change select.options, which
+    // stays a flat list.
+    const ordered = [...cameras].sort(
+      (a, b) =>
+        String(a.provider).localeCompare(String(b.provider)) ||
+        String(a.city).localeCompare(String(b.city)) ||
+        String(a.name).localeCompare(String(b.name)),
+    );
     const shouldRebuild =
-      this._cctvSelect.options.length !== cameras.length ||
-      cameras.some(
+      this._cctvSelect.options.length !== ordered.length ||
+      ordered.some(
         (cam, idx) => this._cctvSelect.options[idx]?.value !== cam.id,
       );
     if (shouldRebuild) {
       this._cctvSelect.innerHTML = '';
-      for (const camera of cameras) {
+      let group = null;
+      for (const camera of ordered) {
+        if (group?.label !== String(camera.provider)) {
+          group = document.createElement('optgroup');
+          group.label = String(camera.provider);
+          this._cctvSelect.appendChild(group);
+        }
         const option = document.createElement('option');
         option.value = camera.id;
         option.textContent = `${camera.city} · ${camera.name}`;
-        this._cctvSelect.appendChild(option);
+        group.appendChild(option);
       }
     }
     this._cctvSelect.disabled = !enabled || cameras.length === 0;
