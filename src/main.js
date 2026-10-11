@@ -1,6 +1,7 @@
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
 import { initButtonTooltips } from './ui/buttonTooltips.js';
+import { initPanelFullscreen } from './ui/panelFullscreen.js';
 
 const application = createStandaloneApplication({
   googleApiKey: import.meta.env.GOOGLE_MAPS_API_KEY,
@@ -16,5 +17,6 @@ application.start().catch((error) => {
 });
 
 initButtonTooltips();
+initPanelFullscreen();
 
 export { application };
