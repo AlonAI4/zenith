@@ -1,3 +1,4 @@
+import { installMapLabels } from './app/mapLabels.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
@@ -22,7 +23,11 @@ initPanelFullscreen();
 // start() hands back the same promise; its failure is reported above.
 application
   .start()
-  .then(() => installRotateGestures(application.getComponents().scene.viewer))
+  .then(() => {
+    const { scene } = application.getComponents();
+    installRotateGestures(scene.viewer);
+    installMapLabels(scene);
+  })
   .catch(() => {});
 
 export { application };
