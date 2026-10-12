@@ -232,7 +232,7 @@ export function installTrainStations({ viewer }, doc = document) {
       return;
     }
     const bounds = scene.canvas.getBoundingClientRect();
-    tip.textContent = `${station.name} · ${KIND_STYLE[station.kind]?.label || 'station'}`;
+    tip.textContent = `${station.name} · ${KIND_STYLE[station.kind]?.label || 'rail stop'}`;
     tip.style.left = `${bounds.left + position.x + 14}px`;
     tip.style.top = `${bounds.top + position.y + 14}px`;
     tip.style.display = 'block';
