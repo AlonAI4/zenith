@@ -63,7 +63,7 @@ function pickPivot(scene, camera) {
  * @returns {(radians: number) => void} Turns the camera (positive = clockwise
  * heading) while the spot under the screen centre stays put.
  */
-function createRotator(viewer) {
+export function createRotator(viewer) {
   // One gesture keeps one pivot, so the view does not wander as it turns.
   let held = null;
 

@@ -1,4 +1,5 @@
 import { installAddressLookup } from './app/addressLookup.js';
+import { installCompassDial } from './app/compassDial.js';
 import { installHdDetail } from './app/hdDetail.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
@@ -34,6 +35,7 @@ application
   .then(() => {
     const { scene } = application.getComponents();
     installRotateGestures(scene.viewer);
+    installCompassDial(scene.viewer);
     installMapLabels(scene);
     install3dMapWatchdog(scene);
     installTrainStations(scene);
