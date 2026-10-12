@@ -18,8 +18,10 @@ import {
   cctvCandidateSpreadKm,
   cctvLodBudgets,
   distributeCctvCards,
+  CCTV_CARD_REACH_KM,
   hasFiniteCctvViewport,
   incumbentRankKm,
+  isWithinCctvCardReach,
   screenCenterFraction,
   selectCctvLod,
   staticFrameRefreshMs,
@@ -644,4 +646,21 @@ test('staticFrameRefreshMs follows known pack cadences and bounds explicit value
   assert.equal(staticFrameRefreshMs({ frameRefreshMs: 5_000 }), 60_000);
   assert.equal(staticFrameRefreshMs({ frameRefreshMs: 3_000_000 }), 1_200_000);
   assert.equal(staticFrameRefreshMs({ provider: 'Unknown Provider' }), 300_000);
+});
+
+// Zenith addition.
+test('camera cards reach one kilometre from the centre of the view', () => {
+  assert.equal(CCTV_CARD_REACH_KM, 1);
+  assert.equal(isWithinCctvCardReach(0), true);
+  assert.equal(isWithinCctvCardReach(0.4), true);
+  assert.equal(isWithinCctvCardReach(1), true);
+  assert.equal(isWithinCctvCardReach(1.01), false);
+  assert.equal(isWithinCctvCardReach(25), false);
+  assert.equal(isWithinCctvCardReach(3, 5), true);
+});
+
+test('a camera with no usable distance never gets a card', () => {
+  assert.equal(isWithinCctvCardReach(NaN), false);
+  assert.equal(isWithinCctvCardReach(undefined), false);
+  assert.equal(isWithinCctvCardReach(Infinity), false);
 });

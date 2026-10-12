@@ -520,3 +520,22 @@ export function staticFrameRefreshMs(camera) {
     .toLowerCase();
   return PROVIDER_STATIC_REFRESH_MS[provider] || DEFAULT_STATIC_REFRESH_MS;
 }
+
+/**
+ * A Zenith addition: camera picture cards load only for cameras close to the
+ * spot the view is centred on. Fewer pictures to fetch and draw means less
+ * lag, and the ones that do load are the ones being looked at.
+ */
+export const CCTV_CARD_REACH_KM = 1;
+
+/**
+ * @param {number} distanceKm Over the ground, from the centre of the view.
+ * @param {number} [reachKm]
+ * @returns {boolean}
+ */
+export function isWithinCctvCardReach(
+  distanceKm,
+  reachKm = CCTV_CARD_REACH_KM,
+) {
+  return Number.isFinite(distanceKm) && distanceKm <= reachKm;
+}

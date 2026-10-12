@@ -10,7 +10,11 @@ import {
 } from '../../data/cctvCards.js';
 import * as Cesium from 'cesium';
 import { horizonOccluder } from '../../data/iconOrientation.js';
-import { selectCctvLod, applyEvictionGrace } from '../../data/cctvLod.js';
+import {
+  selectCctvLod,
+  applyEvictionGrace,
+  isWithinCctvCardReach,
+} from '../../data/cctvLod.js';
 import {
   CCTV_OVERLAY_SOURCE_OPTIONS,
   CARD_VIEW_MARGIN,
@@ -96,6 +100,16 @@ export function createCards({ state: layerState, services, parts, source }) {
     const height = scene.canvas.clientHeight || scene.canvas.height || 0;
     const marginX = width * CARD_VIEW_MARGIN;
     const marginY = height * CARD_VIEW_MARGIN;
+    // Zenith: cards load only near the spot the view is centred on (the
+    // point under the viewer when the view is centred on the sky).
+    const lookedAt = layerState._viewer.camera.pickEllipsoid?.(
+      new Cesium.Cartesian2(width / 2, height / 2),
+    );
+    const focus = lookedAt
+      ? Cesium.Cartographic.fromCartesian(lookedAt)
+      : carto;
+    const focusLat = focus ? Cesium.Math.toDegrees(focus.latitude) : viewerLat;
+    const focusLon = focus ? Cesium.Math.toDegrees(focus.longitude) : viewerLon;
 
     const candidates = [];
     const screenById = new Map();
@@ -114,7 +128,15 @@ export function createCards({ state: layerState, services, parts, source }) {
           screen.x >= -marginX &&
           screen.x <= width + marginX &&
           screen.y >= -marginY &&
-          screen.y <= height + marginY
+          screen.y <= height + marginY &&
+          isWithinCctvCardReach(
+            parts.model.haversineKm(
+              focusLat,
+              focusLon,
+              record.camera.lat,
+              record.camera.lon,
+            ),
+          )
         ) {
           inView = true;
           sx = screen.x;
