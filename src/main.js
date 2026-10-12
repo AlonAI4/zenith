@@ -5,6 +5,7 @@ import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { installTimeZones } from './app/timeZones.js';
+import { installTrackingMarker } from './app/trackingMarker.js';
 import { installTrainStations } from './app/trainStations.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
@@ -37,6 +38,7 @@ application
     const { scene } = application.getComponents();
     installRotateGestures(scene.viewer);
     installCompassDial(scene.viewer);
+    installTrackingMarker(scene.viewer);
     installMapLabels(scene);
     install3dMapWatchdog(scene);
     installTrainStations(scene);
