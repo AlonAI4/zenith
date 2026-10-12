@@ -11,6 +11,8 @@ import * as Cesium from 'cesium';
 const STORAGE_KEY = 'gev.trainStations';
 const DATA_URL = '/alon/stations.json';
 const CREDIT = 'Stations © OpenStreetMap contributors';
+const ICON =
+  '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="3" width="12" height="14" rx="3"/><path d="M6 11h12M9 21l2-4M15 21l-2-4M10 14.5h.01M14 14.5h.01"/></svg>';
 /** Markers drawn at once. Each one is clamped to the ground, which costs. */
 export const MAX_MARKERS = 600;
 const HOVER_PICK_MS = 120;
@@ -123,7 +125,7 @@ export function installTrainStations({ viewer }, doc = document) {
   const button = doc.createElement('button');
   button.id = 'train-stations-toggle';
   button.type = 'button';
-  button.textContent = '🚉';
+  button.innerHTML = ICON;
   button.setAttribute('aria-label', 'Train stations');
   const paint = (note = '') => {
     button.setAttribute('aria-pressed', String(on));
