@@ -13,5 +13,6 @@ rm -f "$OUT"
 git archive --format=zip --prefix=Zenith/ -o "$OUT" alon -- . \
   ':(exclude)docs/media' ':(exclude)COMPLIANCE.md' ':(exclude).code-armour' \
   ':(exclude)security-tests' ':(exclude)alon-app.sh' ':(exclude)alon-app.applescript' \
-  ':(exclude)alon-share.sh' ':(exclude).github'
+  ':(exclude)alon-share.sh' ':(exclude).github' \
+  ':(exclude)alon-site' ':(exclude)alon-site-build.sh'
 echo "Made $OUT ($(du -h "$OUT" | cut -f1))"
