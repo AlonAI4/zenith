@@ -1,8 +1,15 @@
 import * as Cesium from 'cesium';
+import {
+  isTimeZonePick,
+  loadTimeZones,
+  zoneAt,
+  zoneClock,
+} from './timeZones.js';
 
 /**
- * Click the map to read the address there, with its coordinates. London only
- * for now. One toolbar switch, off until it is pressed.
+ * Click the map to read what is there: the local time, ticking, and the
+ * coordinates anywhere in the world, and in London the address too. One
+ * toolbar switch, off until it is pressed.
  *
  * The address comes from Photon, the free OpenStreetMap search service the
  * app's place search already uses. It answers with the nearest mapped
@@ -163,8 +170,53 @@ export function installAddressLookup({ viewer }, doc = document) {
     'position:absolute;top:4px;right:6px;border:0;background:none;color:inherit;' +
     'font:600 18px/1 var(--font-mono,monospace);cursor:pointer';
   const lines = doc.createElement('div');
-  card.append(close, lines);
+  const clock = doc.createElement('div');
+  clock.style.cssText =
+    'display:none;margin-top:6px;padding-top:6px;border-top:1px solid rgba(120,220,255,.25)';
+  const clockTime = doc.createElement('div');
+  clockTime.style.cssText =
+    'font-weight:700;font-size:15px;letter-spacing:.04em;color:#ffc44d';
+  const clockZone = doc.createElement('div');
+  clockZone.style.cssText = 'opacity:.7;font-size:11px';
+  clock.append(clockTime, clockZone);
+  card.append(close, lines, clock);
   doc.body.appendChild(card);
+
+  let clockTimer = null;
+  const stopClock = () => {
+    clearInterval(clockTimer);
+    clockTimer = null;
+    clock.style.display = 'none';
+  };
+  // The time is a bonus: if the zone file does not load, the rest still shows.
+  const startClock = async (lat, lon, mine) => {
+    stopClock();
+    let zone;
+    try {
+      zone = zoneAt(await loadTimeZones(), lat, lon);
+    } catch (error) {
+      console.warn('[address-lookup] time zones', error?.message || error);
+      return;
+    }
+    if (mine !== request) return;
+    const tick = () => {
+      const { time, day, offset, summer, city } = zoneClock(zone);
+      const text = `Local time ${time}`;
+      if (clockTime.textContent === text) return;
+      clockTime.textContent = text;
+      clockZone.textContent = [
+        day,
+        summer ? `${offset} (summer time)` : offset,
+        city && `same clock as ${city}`,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    };
+    tick();
+    clock.style.display = 'block';
+    // Checked four times a second so the seconds never visibly skip.
+    clockTimer = setInterval(tick, 250);
+  };
 
   const show = (rows) => {
     lines.replaceChildren(
@@ -182,6 +234,7 @@ export function installAddressLookup({ viewer }, doc = document) {
 
   const hide = () => {
     request += 1;
+    stopClock();
     card.style.display = 'none';
     pins?.removeAll();
     scene.requestRender();
@@ -238,7 +291,8 @@ export function installAddressLookup({ viewer }, doc = document) {
     const onMap =
       !picked ||
       picked.primitive instanceof Cesium.Cesium3DTileset ||
-      picked instanceof Cesium.Cesium3DTileFeature;
+      picked instanceof Cesium.Cesium3DTileFeature ||
+      isTimeZonePick(picked);
     if (!onMap) return;
     const spot =
       (scene.pickPositionSupported && scene.pickPosition(click.position)) ||
@@ -260,6 +314,7 @@ export function installAddressLookup({ viewer }, doc = document) {
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
     scene.requestRender();
+    startClock(lat, lon, mine);
 
     if (!inLondon(lat, lon)) {
       show([['Addresses work in London only for now', STRONG], coordinates]);
@@ -328,7 +383,7 @@ export function installAddressLookup({ viewer }, doc = document) {
     button.setAttribute('aria-pressed', String(on));
     button.title = on
       ? 'Stop showing addresses when the map is clicked'
-      : 'Click the map to see the address and coordinates there (London only)';
+      : 'Click the map to see the local time and coordinates there (and the address, in London)';
   };
   button.addEventListener('click', () => {
     on = !on;

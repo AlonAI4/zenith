@@ -8,6 +8,7 @@ covers what was added on top.
 | What | Where it comes from | Licence or terms |
 |---|---|---|
 | Train, metro and tram stops (`public/alon/stations.json`) | © OpenStreetMap contributors, taken from Geofabrik country extracts for England, Spain, Portugal, and Israel and Palestine | Open Database Licence (ODbL) 1.0. Credit OpenStreetMap, and share any changed version of this data under the same licence |
+| Time zone borders (`public/alon/timezones.json`) | © OpenStreetMap contributors, from the timezone-boundary-builder project (release 2026e, the "with oceans, now" file), simplified for this build by `alon-timezones-build.mjs` | Open Database Licence (ODbL) 1.0. Credit OpenStreetMap, and share any changed version of this data under the same licence. The simplified file here is shared under that same licence |
 | Place and road labels | Esri reference map tiles (World Boundaries and Places, World Transportation), loaded live | Esri's terms of use; shown with the credit "Labels © Esri and its data providers". Personal, non-commercial use |
 | Addresses on click | Photon (photon.komoot.io), which searches OpenStreetMap data, asked live | Address data © OpenStreetMap contributors, ODbL. Photon is a free courtesy service: light, hand-triggered use only |
 | Well-known place names on click | Wikipedia's public search, asked live | Article titles from Wikipedia. Text on Wikipedia is under CC BY-SA 4.0 |

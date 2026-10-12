@@ -4,6 +4,7 @@ import { installHdDetail } from './app/hdDetail.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
 import { installRotateGestures } from './app/rotateGestures.js';
+import { installTimeZones } from './app/timeZones.js';
 import { installTrainStations } from './app/trainStations.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
@@ -39,6 +40,7 @@ application
     installMapLabels(scene);
     install3dMapWatchdog(scene);
     installTrainStations(scene);
+    installTimeZones(scene);
     installAddressLookup(scene);
     installHdDetail(scene);
   })
