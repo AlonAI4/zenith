@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Zenith">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="34%" r="80%">
+      <stop offset="0" stop-color="#11324a"/>
+      <stop offset="1" stop-color="#03080d"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#b8fdff" stop-opacity=".95"/>
+      <stop offset=".45" stop-color="#00f6ff" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#00f6ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="planet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b3247"/>
+      <stop offset="1" stop-color="#041018"/>
+    </linearGradient>
+    <clipPath id="frame"><rect x="64" y="64" width="896" height="896" rx="200"/></clipPath>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <g clip-path="url(#frame)" fill="none" stroke-linecap="round">
+    <!-- the planet below -->
+    <circle cx="512" cy="1290" r="640" fill="url(#planet)" stroke="#00f6ff" stroke-width="16"/>
+    <ellipse cx="512" cy="1290" rx="200" ry="640" stroke="#1c7d9c" stroke-width="7"/>
+    <ellipse cx="512" cy="1290" rx="430" ry="640" stroke="#1c7d9c" stroke-width="7"/>
+    <path d="M70 800 Q512 690 954 800" stroke="#1c7d9c" stroke-width="7"/>
+    <!-- an orbit crossing overhead -->
+    <path d="M96 560 A 430 170 0 0 1 928 560" stroke="#49b6dd" stroke-width="9" opacity=".75"/>
+    <circle cx="806" cy="431" r="17" fill="#eaffff" stroke="none"/>
+    <!-- straight up from the ground to the zenith -->
+    <line x1="512" y1="636" x2="512" y2="372" stroke="#00f6ff" stroke-width="11" stroke-dasharray="2 30"/>
+    <!-- the zenith itself -->
+    <circle cx="512" cy="256" r="150" fill="url(#glow)" stroke="none"/>
+    <path d="M512 132 L540 228 L636 256 L540 284 L512 380 L484 284 L388 256 L484 228 Z" fill="#f2ffff" stroke="none"/>
+  </g>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="none" stroke="#1f6f8f" stroke-width="10"/>
+</svg>
