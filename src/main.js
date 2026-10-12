@@ -1,4 +1,5 @@
 import { installAddressLookup } from './app/addressLookup.js';
+import { installHdDetail } from './app/hdDetail.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
 import { installRotateGestures } from './app/rotateGestures.js';
@@ -37,6 +38,7 @@ application
     install3dMapWatchdog(scene);
     installTrainStations(scene);
     installAddressLookup(scene);
+    installHdDetail(scene);
   })
   .catch(() => {});
 
