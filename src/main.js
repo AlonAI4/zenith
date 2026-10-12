@@ -4,6 +4,7 @@ import { installHdDetail } from './app/hdDetail.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
 import { installRotateGestures } from './app/rotateGestures.js';
+import { installScaleBar } from './app/scaleBar.js';
 import { installTimeZones } from './app/timeZones.js';
 import { installTrackingMarker } from './app/trackingMarker.js';
 import { installTrainStations } from './app/trainStations.js';
@@ -39,6 +40,7 @@ application
     installRotateGestures(scene.viewer);
     installCompassDial(scene.viewer);
     installTrackingMarker(scene.viewer);
+    installScaleBar(scene.viewer);
     installMapLabels(scene);
     install3dMapWatchdog(scene);
     installTrainStations(scene);
