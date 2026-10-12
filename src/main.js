@@ -7,6 +7,7 @@ import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
 import { initBranding } from './ui/branding.js';
 import { initButtonTooltips } from './ui/buttonTooltips.js';
+import { initCustomSelects } from './ui/customSelect.js';
 import { initPanelFullscreen } from './ui/panelFullscreen.js';
 
 const application = createStandaloneApplication({
@@ -24,6 +25,7 @@ application.start().catch((error) => {
 
 initBranding();
 initButtonTooltips();
+initCustomSelects();
 initPanelFullscreen();
 // start() hands back the same promise; its failure is reported above.
 application
