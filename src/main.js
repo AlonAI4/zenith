@@ -1,3 +1,4 @@
+import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { createStandaloneApplication } from './standalone/application.js';
@@ -27,6 +28,7 @@ application
     const { scene } = application.getComponents();
     installRotateGestures(scene.viewer);
     installMapLabels(scene);
+    install3dMapWatchdog(scene);
   })
   .catch(() => {});
 
