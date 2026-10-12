@@ -6,6 +6,7 @@ import {
   distanceMetres,
   formatCoordinates,
   inLondon,
+  pickFamousPlace,
 } from './addressLookup.js';
 
 test('London is in, and Paris, Manchester and the sea are out', () => {
@@ -59,4 +60,28 @@ test('a bare street is not passed off as an exact house', () => {
 test('distance between two nearby points is in metres', () => {
   const metres = distanceMetres(51.5034, -0.1276, 51.5034, -0.1266);
   assert.ok(metres > 65 && metres < 75, String(metres));
+});
+
+test('the well-known place wins over a nearer obscure one, but not from far away', () => {
+  const page = (title, views, dist) => ({
+    title,
+    pageviews: { a: views },
+    coordinates: [{ dist }],
+  });
+  assert.deepEqual(
+    pickFamousPlace([
+      page('Royal Archives', 85, 8),
+      page('Buckingham Palace', 8525, 20),
+    ]),
+    { title: 'Buckingham Palace', metres: 20 },
+  );
+  assert.equal(
+    pickFamousPlace([
+      page('Victoria Memorial, London', 735, 0),
+      page('Buckingham Palace', 8525, 127),
+    ]).title,
+    'Victoria Memorial, London',
+  );
+  assert.equal(pickFamousPlace([]), null);
+  assert.equal(pickFamousPlace([{ title: 'No position' }]), null);
 });

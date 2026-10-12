@@ -5,13 +5,16 @@ import * as Cesium from 'cesium';
  * for now. One toolbar switch, off until it is pressed.
  *
  * The address comes from Photon, the free OpenStreetMap search service the
- * app's place search already uses: one request per click, at most one a
- * second. It answers with the nearest mapped address, which is not always the
- * exact house, so the card says how far away that address is.
+ * app's place search already uses. It answers with the nearest mapped
+ * address, which is not always the exact house, so the card says how far away
+ * that address is. A well-known place nearby is named from Wikipedia. Each
+ * click asks each service once, at most one click a second.
  */
 
 const STORAGE_KEY = 'gev.addressLookup';
 const PHOTON_REVERSE = 'https://photon.komoot.io/reverse';
+const WIKIPEDIA = 'https://en.wikipedia.org/w/api.php';
+const FAMOUS_RADIUS_M = 150;
 const TIMEOUT_MS = 6000;
 const MIN_GAP_MS = 1000;
 const CACHE_MAX = 64;
@@ -69,6 +72,28 @@ export function describeAddress(properties = {}) {
     .filter(Boolean)
     .join(', ');
   return { title, place, exact: Boolean(number) };
+}
+
+/**
+ * The best-known Wikipedia place near a click. Many readers and close by
+ * beats obscure and closest, so a palace wins over a statue in its garden.
+ * @param {Array<{title?: string, pageviews?: object, coordinates?: Array<{dist?: number}>}>} pages
+ * @returns {{ title: string, metres: number } | null}
+ */
+export function pickFamousPlace(pages = []) {
+  let best = null;
+  for (const page of pages) {
+    const metres = page?.coordinates?.[0]?.dist;
+    if (!page?.title || !Number.isFinite(metres)) continue;
+    const views = Object.values(page.pageviews || {}).reduce(
+      (sum, count) => sum + (count || 0),
+      0,
+    );
+    const score = (views + 1) / (metres + 20) ** 2;
+    if (!best || score > best.score)
+      best = { title: page.title, metres: Math.round(metres), score };
+  }
+  return best && { title: best.title, metres: best.metres };
 }
 
 function pinImage() {
@@ -163,21 +188,47 @@ export function installAddressLookup({ viewer }, doc = document) {
   };
   close.addEventListener('click', hide);
 
+  const askAddress = async (lat, lon) => {
+    const response = await fetch(
+      `${PHOTON_REVERSE}?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&limit=1&lang=en`,
+      { signal: AbortSignal.timeout(TIMEOUT_MS) },
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json())?.features?.[0] || null;
+  };
+
+  // A famous place is a bonus: if Wikipedia does not answer, the address
+  // still shows.
+  const askFamous = async (lat, lon) => {
+    try {
+      const point = `${lat.toFixed(6)}%7C${lon.toFixed(6)}`;
+      const response = await fetch(
+        `${WIKIPEDIA}?action=query&generator=geosearch&ggscoord=${point}` +
+          `&ggsradius=${FAMOUS_RADIUS_M}&ggslimit=10&prop=coordinates%7Cpageviews` +
+          `&codistancefrompoint=${point}&pvipdays=7&format=json&formatversion=2&origin=*`,
+        { signal: AbortSignal.timeout(TIMEOUT_MS) },
+      );
+      if (!response.ok) return null;
+      return pickFamousPlace((await response.json())?.query?.pages);
+    } catch {
+      return null;
+    }
+  };
+
   const ask = async (lat, lon) => {
     const key = formatCoordinates(lat, lon);
     if (cache.has(key)) return cache.get(key);
     const wait = lastAskedAt + MIN_GAP_MS - Date.now();
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     lastAskedAt = Date.now();
-    const response = await fetch(
-      `${PHOTON_REVERSE}?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&limit=1&lang=en`,
-      { signal: AbortSignal.timeout(TIMEOUT_MS) },
-    );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const feature = (await response.json())?.features?.[0] || null;
+    const [feature, famous] = await Promise.all([
+      askAddress(lat, lon),
+      askFamous(lat, lon),
+    ]);
+    const found = { feature, famous };
     if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
-    cache.set(key, feature);
-    return feature;
+    cache.set(key, found);
+    return found;
   };
 
   const onClick = async (click) => {
@@ -216,10 +267,23 @@ export function installAddressLookup({ viewer }, doc = document) {
     }
     show([['Looking up the address…', STRONG], coordinates]);
     try {
-      const feature = await ask(lat, lon);
+      const { feature, famous } = await ask(lat, lon);
       if (mine !== request) return;
+      const famousRows = famous
+        ? [
+            [famous.title, STRONG],
+            [
+              `Well-known place (Wikipedia), ${famous.metres} m from your click`,
+              FAINT,
+            ],
+          ]
+        : [];
       if (!feature) {
-        show([['No address is mapped near here', STRONG], coordinates]);
+        show([
+          ...famousRows,
+          ['No address is mapped near here', famous ? '' : STRONG],
+          coordinates,
+        ]);
         return;
       }
       const { title, place, exact } = describeAddress(feature.properties);
@@ -228,7 +292,8 @@ export function installAddressLookup({ viewer }, doc = document) {
         ? Math.round(distanceMetres(lat, lon, foundLat, foundLon))
         : null;
       show([
-        [title || 'Unnamed place', STRONG],
+        ...famousRows,
+        [title || 'Unnamed place', famous ? '' : STRONG],
         place && [place],
         coordinates,
         [
@@ -236,7 +301,10 @@ export function installAddressLookup({ viewer }, doc = document) {
             `${away === null ? '' : `, ${away} m from your click`}`,
           FAINT,
         ],
-        ['Address data © OpenStreetMap contributors, via Photon', FAINT],
+        [
+          'Addresses © OpenStreetMap contributors, via Photon. Place names from Wikipedia',
+          FAINT,
+        ],
       ]);
     } catch (error) {
       if (mine !== request) return;
