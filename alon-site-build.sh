@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 OUT=.gev-cache/zenith-site
 rm -rf "$OUT"
 mkdir -p "$OUT"
-cp alon-site/index.html alon-site/style.css alon-site/_headers alon-site/robots.txt "$OUT"/
+cp alon-site/index.html alon-site/404.html alon-site/style.css alon-site/_headers alon-site/robots.txt "$OUT"/
 cp public/alon/zenith-wordmark.webp public/alon/zenith-favicon.png "$OUT"/
 ./alon-share.sh "$OUT/Zenith-share.zip" > /dev/null
 # Refuse to build a site around a zip that fails the key check.
