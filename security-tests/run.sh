@@ -3,3 +3,4 @@
 set -e
 cd "$(dirname "$0")/.."
 node security-tests/share-zip.mjs
+node security-tests/packages.mjs
