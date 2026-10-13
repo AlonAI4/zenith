@@ -23,7 +23,7 @@ const check = (ok, text) => {
 try {
   let zip = arg('--zip');
   if (!zip) {
-    zip = join(work, 'Zenith-share.zip');
+    zip = join(work, 'Zenith.zip');
     execFileSync('/bin/zsh', [join(root, 'alon-share.sh'), zip], { stdio: 'ignore' });
   }
   const names = execFileSync('unzip', ['-Z1', zip], { maxBuffer: 64e6 })

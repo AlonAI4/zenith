@@ -1,10 +1,10 @@
 #!/bin/zsh
-# Builds Zenith-share.zip for friends from the SAVED code on the alon branch
+# Builds Zenith.zip, the copy for sharing, from the SAVED code on the alon branch
 # only. It cannot contain .env (the API keys), caches, logs or node_modules,
 # because git never stored them. Usage: ./alon-share.sh [where/to/put.zip]
 set -e
 cd "$(dirname "$0")"
-OUT="${1:-$HOME/Desktop/Zenith-share.zip}"
+OUT="${1:-$HOME/Desktop/Zenith.zip}"
 if [ -n "$(git status --porcelain)" ]; then
   echo "Note: unsaved changes are NOT in the zip. Only saved (committed) code is."
 fi

@@ -11,10 +11,10 @@
 </head>
 <body>
   <header class="hero">
-    <p class="tag">Field kit · build of __DATE__</p>
+    <p class="tag">macOS · release of __DATE__</p>
     <img class="wordmark" src="zenith-wordmark.webp" width="1400" height="700" alt="Zenith" />
     <p class="lead">A live 3D globe for your Mac. Aircraft, ships, satellites, public traffic cameras and train stations, all on one map.</p>
-    <a class="download" href="Zenith-share.zip" download>
+    <a class="download" href="Zenith.zip" download>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16" /></svg>
       Download Zenith for Mac
     </a>
@@ -35,8 +35,18 @@
     </section>
 
     <section>
+      <h2>What this build adds</h2>
+      <ul class="grid">
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M15.5 8.5l-2 5-5 2 2-5z" /></svg><h3>Compass and scale</h3><p>Turn and tilt the view from one dial, with a distance ruler on the edge.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg><h3>Time zones</h3><p>Zone borders, and a ticking local time for any spot you click.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3" /><circle cx="12" cy="12" r="8" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg><h3>Tracking marker</h3><p>Keeps the aircraft you follow in sight, however far you zoom out.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V9l5-3v15M9 21V4l6 3v14M15 21V11l5 2v8M2 21h20" /></svg><h3>HD buildings</h3><p>A switch for sharper 3D buildings.</p></li>
+      </ul>
+    </section>
+
+    <section>
       <h2>Get it running</h2>
-      <p class="note">Ask a parent before you install it. It runs programs on your Mac.</p>
+      <p class="note">If you are under 18, ask a parent or guardian before installing. Zenith runs programs on your Mac.</p>
       <ol class="steps">
         <li><strong>Install Node.js.</strong> Version 24 or 26, from <a href="https://nodejs.org" rel="noopener noreferrer">nodejs.org</a>.</li>
         <li><strong>Unzip the download.</strong> You get a folder called <code>Zenith</code>.</li>
@@ -44,22 +54,22 @@
         <li><strong>Set it up once.</strong> Run <code>npm install</code> and wait a few minutes.</li>
         <li><strong>Start it.</strong> Run <code>npm run dev</code>, then open <code>http://localhost:4173</code> in your browser.</li>
       </ol>
-      <p>Full steps are in <code>ZENITH-FRIENDS.md</code> inside the zip.</p>
+      <p>The full installation guide is <code>ZENITH-GUIDE.md</code> inside the zip.</p>
     </section>
 
     <section>
       <h2>Good to know</h2>
       <ul class="plain">
-        <li><strong>It is not from the App Store.</strong> Your Mac may ask whether you trust it. That is normal for software downloaded from a website.</li>
+        <li><strong>It is distributed outside the App Store.</strong> macOS may ask whether you trust it. That is expected for software downloaded from a website.</li>
         <li><strong>You need your own free keys</strong> for some layers, such as 3D buildings and live ships. The app tells you where to get them. Some key services have age rules, so a parent may need to own the account.</li>
-        <li><strong>Other services see your internet address</strong> and roughly where you look on the map: the map, camera and font providers. Zenith itself has no accounts and sends nothing to whoever gave you this link.</li>
+        <li><strong>Other services see your internet address</strong> and roughly where you look on the map: the map, camera and font providers. Zenith itself has no accounts and sends nothing to its author or to whoever shared this link with you.</li>
         <li><strong>This page</strong> uses no cookies, no trackers and no sign-up.</li>
       </ul>
     </section>
 
     <section>
       <h2>Credit</h2>
-      <p>Zenith is built on <a href="https://github.com/bilawalsidhu/gods-eye-view" rel="noopener noreferrer">God's Eye View</a> by Bilawal Sidhu, an open-source project under the MIT licence. Zenith is a personal build with extra features. It is not the original project and is not connected to its author.</p>
+      <p>Zenith is built on <a href="https://github.com/bilawalsidhu/gods-eye-view" rel="noopener noreferrer">God's Eye View</a> by Bilawal Sidhu, an open-source project under the MIT licence. Zenith is an independent build with additional features. It is not the original project and is not affiliated with its author.</p>
       <p>Map data © OpenStreetMap contributors. Every source and licence is listed in <code>ALON-NOTICES.md</code>, <code>THIRD_PARTY_NOTICES.md</code> and <code>DATA_SOURCES.md</code> inside the zip.</p>
     </section>
   </main>
