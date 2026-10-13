@@ -689,7 +689,7 @@ const checks = [
     },
   ],
   [
-    'the Earth stays centred when zooming far out, with no zoom limit',
+    'the Earth stays centred when zooming far out, with no zoom limit, and the tilt comes back',
     async (page) => {
       const home = await page.evaluate(() => location.hash);
       const [x, y] = spot(page, 0.5, 0.55);
@@ -715,6 +715,15 @@ const checks = [
       }
       await sleep(600);
       const further = await page.evaluate(() => window.__zt.height());
+      // Tilt memory: zooming back in gives back the tilt the view started with.
+      const startPitch = Number(/pitch=(-?[\d.]+)/.exec(home)[1]);
+      for (let i = 0; i < 400; i++) {
+        await page.mouse.wheel({ deltaY: -400 });
+        await sleep(25);
+        if (i % 20 === 19 && (await page.evaluate(() => window.__zt.height())) < 3000) break;
+      }
+      await sleep(1200);
+      const backIn = await page.evaluate(() => ({ height: window.__zt.height(), pitch: window.__zt.pitch() }));
       // Put the view back for the checks that follow.
       await page.evaluate((hash) => {
         const { camera } = window.__zt.viewer();
@@ -729,6 +738,8 @@ const checks = [
       expect(far.pitch < -85, `far out the view is tilted (${far.pitch.toFixed(0)} degrees)`);
       expect(far.offX < 0.06 && far.offY < 0.06, 'far out the Earth is not in the middle of the screen');
       expect(further > far.height * 2, 'zooming out stopped: there is a zoom limit');
+      expect(backIn.height < 100_000, `scrolling back in only reached ${Math.round(backIn.height / 1000)} km`);
+      expect(Math.abs(backIn.pitch - startPitch) < 5, `after zooming back in the tilt was ${backIn.pitch.toFixed(0)} degrees, it started at ${startPitch}`);
     },
   ],
 ];

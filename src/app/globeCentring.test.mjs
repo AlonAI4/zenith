@@ -6,6 +6,7 @@ import {
   fitHeight,
   maxOffNadir,
   offNadirFor,
+  tiltToRestore,
 } from './globeCentring.js';
 
 const EARTH = 6_371_000;
@@ -77,4 +78,18 @@ test('the camera is raised just enough to come within the limit', () => {
   assert.ok(
     Math.abs(deg(elevationForOffNadir(0, 2e6, EARTH)) - 90) < 1e-6,
   );
+});
+
+test('zooming in gives back the tilt that was taken away, never more than the height allows', () => {
+  const deg = (d) => (d * Math.PI) / 180;
+  // Nothing remembered: nothing to give back.
+  assert.equal(tiltToRestore(null, deg(90), deg(0)), null);
+  // Still far out: only as much as that height allows.
+  assert.equal(tiltToRestore(deg(55), deg(20), deg(5)), deg(20));
+  // Close in again: all of it, and no more.
+  assert.equal(tiltToRestore(deg(55), deg(90), deg(30)), deg(55));
+  // Already there.
+  assert.equal(tiltToRestore(deg(55), deg(90), deg(55)), null);
+  // A view that was straight down has nothing to restore.
+  assert.equal(tiltToRestore(0, deg(90), 0), null);
 });

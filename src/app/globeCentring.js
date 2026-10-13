@@ -14,8 +14,13 @@ import { guard } from './addOns.js';
  * out, the less tilt is left, and by the height where the whole Earth fits on
  * screen it is looking straight down with the Earth centred.
  *
- * It only acts while zooming out. There is no zoom limit, and the view can
- * still be tilted by hand at any height.
+ * It remembers the tilt it took away. Zooming back in gives it back the same
+ * gradual way, so a tilted street view is a tilted street view again after a
+ * trip out to see the whole Earth. Tilting by hand in between replaces what
+ * is remembered.
+ *
+ * There is no zoom limit, and the view can still be tilted by hand at any
+ * height.
  */
 
 /** Below this height the tilt is never touched. */
@@ -31,6 +36,22 @@ const DONE_RAD = Cesium.Math.toRadians(0.05);
 const NEARLY_DOWN_RAD = Cesium.Math.toRadians(89.9);
 /** A scroll counts as still going for this long after its last event. */
 const WHEEL_MS = 600;
+/** A drag that changes the tilt by more than this is the user tilting by hand. */
+const HAND_TILT_RAD = Cesium.Math.toRadians(3);
+
+/**
+ * How far from straight down the view should come back to while zooming in:
+ * the tilt it had, but never more than the height allows. Null when there is
+ * nothing to give back.
+ * @param {number|null} remembered The tilt taken away, in radians.
+ * @param {number} limit What the height allows, in radians.
+ * @param {number} offNadir The tilt now, in radians.
+ */
+export function tiltToRestore(remembered, limit, offNadir, done = DONE_RAD) {
+  if (remembered === null || !(remembered > 0)) return null;
+  const target = Math.min(remembered, limit);
+  return target - offNadir > done ? target : null;
+}
 
 /**
  * The height from which the whole Earth fits in view.
@@ -104,6 +125,20 @@ export function installGlobeCentring(viewer) {
   // The compass direction the camera looks at that spot from, kept the same
   // for the whole turn so the map does not spin as it levels.
   let anchorHeading = null;
+  // The tilt the view had before zooming out levelled it, to give back on
+  // the way in. Null when nothing was taken away.
+  let remembered = null;
+  let restoring = false;
+  let tiltAtPress = null;
+
+  const offNadirNow = () =>
+    Cesium.Cartesian3.angleBetween(
+      camera.directionWC,
+      Cesium.Cartesian3.negate(
+        Cesium.Cartesian3.normalize(camera.positionWC, new Cesium.Cartesian3()),
+        new Cesium.Cartesian3(),
+      ),
+    );
 
   const stop = () => {
     easing = false;
@@ -114,9 +149,29 @@ export function installGlobeCentring(viewer) {
     lastWheel = performance.now();
   };
   // Grabbing the map takes over from an ease still in progress.
-  const onPointerDown = stop;
+  const onPointerDown = () => {
+    stop();
+    restoring = false;
+  };
+  // A drag anywhere (the map, or the compass's tilt arc) that changes the
+  // tilt is the user choosing a new one: forget the old.
+  const onAnyPress = () => {
+    tiltAtPress = offNadirNow();
+  };
+  const onAnyRelease = () => {
+    if (
+      tiltAtPress !== null &&
+      Math.abs(offNadirNow() - tiltAtPress) > HAND_TILT_RAD
+    ) {
+      remembered = null;
+    }
+    tiltAtPress = null;
+  };
+  const doc = canvas.ownerDocument;
   canvas.addEventListener('wheel', onWheel, { passive: true });
   canvas.addEventListener('pointerdown', onPointerDown);
+  doc.addEventListener('pointerdown', onAnyPress, true);
+  doc.addEventListener('pointerup', onAnyRelease, true);
 
   const step = () => {
     const height = camera.positionCartographic?.height;
@@ -132,26 +187,77 @@ export function installGlobeCentring(viewer) {
       return;
     }
     const scrolling = performance.now() - lastWheel < WHEEL_MS;
-    if (scrolling && height > before * 1.0002) easing = true;
-    else if (height < before * 0.9998) stop();
-    if (!easing) return;
+    if (scrolling && height > before * 1.0002) {
+      easing = true;
+      restoring = false;
+    } else if (height < before * 0.9998) {
+      stop();
+      restoring = scrolling && remembered !== null;
+    }
+    if (!easing && !restoring) return;
 
     const position = camera.positionWC;
-    const down = Cesium.Cartesian3.negate(
-      Cesium.Cartesian3.normalize(position, new Cesium.Cartesian3()),
-      new Cesium.Cartesian3(),
-    );
-    const offNadir = Cesium.Cartesian3.angleBetween(camera.directionWC, down);
+    const offNadir = offNadirNow();
     const frustum = camera.frustum;
     const fov = Math.min(frustum.fov ?? Infinity, frustum.fovy ?? Infinity);
     const radius = Cesium.Cartesian3.magnitude(position) - height;
     const limit = Number.isFinite(fov)
       ? maxOffNadir(height, fitHeight(radius, fov))
       : Math.PI / 2;
+
+    if (restoring) {
+      const target = tiltToRestore(remembered, limit, offNadir);
+      if (target === null) {
+        // All of it is back: nothing left to remember.
+        if (remembered !== null && offNadir >= remembered - DONE_RAD * 4) {
+          remembered = null;
+          restoring = false;
+        }
+        return;
+      }
+      // About the spot in the middle of the screen as it is now: zooming in
+      // heads for the pointer, and holding an old spot would fight that.
+      const centre = camera.pickEllipsoid(
+        new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2),
+        scene.ellipsoid,
+      );
+      if (!centre) return;
+      const about = Cesium.Matrix4.multiplyByPoint(
+        Cesium.Matrix4.inverseTransformation(
+          Cesium.Transforms.eastNorthUpToFixedFrame(centre),
+          new Cesium.Matrix4(),
+        ),
+        position,
+        new Cesium.Cartesian3(),
+      );
+      const distance = Cesium.Cartesian3.magnitude(about);
+      if (!(distance > 1)) return;
+      const height0 = Math.asin(Cesium.Math.clamp(about.z / distance, -1, 1));
+      const wantedBack = elevationForOffNadir(
+        target,
+        distance,
+        Cesium.Cartesian3.magnitude(centre),
+      );
+      const back = Cesium.Math.clamp(
+        (height0 - wantedBack) * CATCH_UP,
+        MIN_STEP_RAD,
+        MAX_STEP_RAD,
+      );
+      setCameraTargetFrame(viewer, {
+        target: centre,
+        range: distance,
+        heading: Math.atan2(-about.x, -about.y),
+        pitch: -Math.max(wantedBack, height0 - back),
+      });
+      return;
+    }
+
     if (offNadir - limit < DONE_RAD) {
       if (!scrolling) stop();
       return;
     }
+    // About to take tilt away: remember what it was.
+    remembered ??= offNadir;
 
     anchor ||= camera.pickEllipsoid(
       new Cesium.Cartesian2(canvas.clientWidth / 2, canvas.clientHeight / 2),
@@ -204,5 +310,7 @@ export function installGlobeCentring(viewer) {
     removeStep();
     canvas.removeEventListener('wheel', onWheel);
     canvas.removeEventListener('pointerdown', onPointerDown);
+    doc.removeEventListener('pointerdown', onAnyPress, true);
+    doc.removeEventListener('pointerup', onAnyRelease, true);
   };
 }
