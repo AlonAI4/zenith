@@ -110,6 +110,8 @@ const STYLE = `
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 #zenith-tray[data-open='true'] { display: flex; }
+/* An open tray must be reachable above the help card and saved places. */
+#top-center-actions.zt-tray-open { z-index: 190; }
 #zenith-tray .zt-row {
   display: flex;
   align-items: center;
@@ -160,6 +162,7 @@ export function installToolbarFit(doc = document, win = window) {
 
   const setOpen = (open) => {
     tray.dataset.open = String(open);
+    bar.classList.toggle('zt-tray-open', open);
     more.setAttribute('aria-expanded', String(open));
   };
 

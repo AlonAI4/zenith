@@ -157,6 +157,7 @@ export function installAddressLookup({ viewer }, doc = document) {
   const cache = new Map();
 
   const card = doc.createElement('div');
+  card.id = 'address-card';
   card.setAttribute('role', 'status');
   card.style.cssText =
     'position:fixed;top:132px;left:50%;transform:translateX(-50%);z-index:160;display:none;' +
