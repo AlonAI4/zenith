@@ -61,6 +61,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Train stations | Train, metro and tram stops in four countries. |
 | Place names | Place and road names over the map. |
 | Map pin | Click the map for the local time and coordinates there, and in London the address. |
+| Measure tool | Click two or more spots on the map to get the distance between them. |
 | Help card | The "?" switch explains every switch and what clicking the map does. |
 
 ## API keys: bring your own

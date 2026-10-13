@@ -32,6 +32,11 @@ export const ZENITH_SWITCHES = Object.freeze([
     what: 'Sharper 3D buildings. Heavier on data and graphics.',
   },
   {
+    id: 'measure-toggle',
+    name: 'Measure',
+    what: 'Click two or more spots on the map to get the distance between them.',
+  },
+  {
     id: 'zenith-help-toggle',
     name: 'Help',
     what: 'Opens the card that explains the switches and map clicks.',

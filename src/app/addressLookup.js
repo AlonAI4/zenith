@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { isMeasuring } from './measureTool.js';
 import {
   isTimeZonePick,
   loadTimeZones,
@@ -285,7 +286,8 @@ export function installAddressLookup({ viewer }, doc = document) {
   };
 
   const onClick = async (click) => {
-    if (!on) return;
+    // While the measure tool is on, a click on the map is a measuring point.
+    if (!on || isMeasuring()) return;
     // A click on a plane, camera or station belongs to that thing.
     const picked = scene.pick(click.position);
     const onMap =

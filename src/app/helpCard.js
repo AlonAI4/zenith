@@ -29,6 +29,7 @@ export const MAP_CLICKS = Object.freeze([
   'Click a plane to follow it. Far out, click its pulsing ring to fly back.',
   'Click a camera marker to fly to it. Its picture shows within about 1 km.',
   'Hover or click a station dot for its name.',
+  'With Measure on, each click on the map adds a measuring point instead.',
   'Right-click does nothing.',
 ]);
 

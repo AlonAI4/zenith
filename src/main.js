@@ -5,6 +5,7 @@ import { installHdDetail } from './app/hdDetail.js';
 import { installHelpCard } from './app/helpCard.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
+import { installMeasureTool } from './app/measureTool.js';
 import { installPanelGuard } from './app/panelGuard.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { installScaleBar } from './app/scaleBar.js';
@@ -59,6 +60,7 @@ application
     installTrainStations(scene);
     installTimeZones(scene);
     installAddressLookup(scene);
+    installMeasureTool(scene);
     installHdDetail(scene);
     installHelpCard();
     installToolbarFit();
