@@ -35,7 +35,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'address-lookup-toggle',
     name: 'Map pin',
-    what: 'Click the map for the local time, sunrise and sunset, the coordinates, and in London the address.',
+    what: 'Click the map for the local time, sunrise and sunset, the coordinates and the address there.',
   },
   {
     id: 'hd-detail-toggle',

@@ -18,7 +18,7 @@ test('the card opens the first time and stays closed once it has been closed', (
 
 test('the pin line says whether a click on empty map does anything', () => {
   assert.match(pinLine(true), /pin ON/);
-  assert.match(pinLine(true), /local time and coordinates/);
+  assert.match(pinLine(true), /local time, coordinates and address/);
   assert.match(pinLine(false), /pin OFF/);
   assert.match(pinLine(false), /does nothing/);
   assert.notEqual(pinLine(true), pinLine(false));

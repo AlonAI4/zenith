@@ -5,16 +5,18 @@ import {
   describeAddress,
   distanceMetres,
   formatCoordinates,
-  inLondon,
+  ADDRESS_MAX_HEIGHT_M,
+  closeEnoughForAddress,
   pickFamousPlace,
 } from './addressLookup.js';
 
-test('London is in, and Paris, Manchester and the sea are out', () => {
-  assert.equal(inLondon(51.5034, -0.1276), true);
-  assert.equal(inLondon(51.4623, -0.1152), true);
-  assert.equal(inLondon(48.8566, 2.3522), false);
-  assert.equal(inLondon(53.4808, -2.2426), false);
-  assert.equal(inLondon(51.5, 1.2), false);
+test('addresses are looked up from close in, not from far out', () => {
+  assert.equal(closeEnoughForAddress(900), true);
+  assert.equal(closeEnoughForAddress(ADDRESS_MAX_HEIGHT_M), true);
+  assert.equal(closeEnoughForAddress(ADDRESS_MAX_HEIGHT_M + 1), false);
+  assert.equal(closeEnoughForAddress(14_000_000), false);
+  assert.equal(closeEnoughForAddress(undefined), false);
+  assert.equal(closeEnoughForAddress(NaN), false);
 });
 
 test('coordinates read latitude first with five decimals', () => {

@@ -10,7 +10,7 @@ import {
 
 /**
  * Click the map to read what is there: the local time, ticking, and the
- * coordinates anywhere in the world, and in London the address too. One
+ * coordinates anywhere in the world, and the address there too. One
  * toolbar switch, off until it is pressed.
  *
  * The address comes from Photon, the free OpenStreetMap search service the
@@ -23,6 +23,8 @@ import {
 const STORAGE_KEY = 'gev.addressLookup';
 const PHOTON_REVERSE = 'https://photon.komoot.io/reverse';
 const WIKIPEDIA = 'https://en.wikipedia.org/w/api.php';
+const WIKIPEDIA_ASKER =
+  'Zenith (a personal map viewer; one lookup per map click)';
 const FAMOUS_RADIUS_M = 150;
 const TIMEOUT_MS = 6000;
 const MIN_GAP_MS = 1000;
@@ -30,20 +32,17 @@ const CACHE_MAX = 64;
 const ICON =
   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
 
-/** Greater London, a little generous at the edges. */
-export const LONDON = Object.freeze({
-  south: 51.28,
-  west: -0.52,
-  north: 51.7,
-  east: 0.34,
-});
+/**
+ * Above this camera height a click is not looked up. From that far out an
+ * address means nothing, and the lookup services are free ones that ask to
+ * be used fairly.
+ */
+export const ADDRESS_MAX_HEIGHT_M = 300_000;
 
-export function inLondon(lat, lon) {
+/** Is the view close enough for an address to mean something? */
+export function closeEnoughForAddress(cameraHeightM) {
   return (
-    lat >= LONDON.south &&
-    lat <= LONDON.north &&
-    lon >= LONDON.west &&
-    lon <= LONDON.east
+    Number.isFinite(cameraHeightM) && cameraHeightM <= ADDRESS_MAX_HEIGHT_M
   );
 }
 
@@ -274,7 +273,12 @@ export function installAddressLookup({ viewer }, doc = document) {
         `${WIKIPEDIA}?action=query&generator=geosearch&ggscoord=${point}` +
           `&ggsradius=${FAMOUS_RADIUS_M}&ggslimit=10&prop=coordinates%7Cpageviews` +
           `&codistancefrompoint=${point}&pvipdays=7&format=json&formatversion=2&origin=*`,
-        { signal: AbortSignal.timeout(TIMEOUT_MS) },
+        {
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+          // Wikipedia asks every program to say what it is. A page cannot
+          // set the usual header, so it offers this one instead.
+          headers: { 'Api-User-Agent': WIKIPEDIA_ASKER },
+        },
       );
       if (!response.ok) return null;
       return pickFamousPlace((await response.json())?.query?.pages);
@@ -334,8 +338,8 @@ export function installAddressLookup({ viewer }, doc = document) {
     scene.requestRender();
     startClock(lat, lon, mine);
 
-    if (!inLondon(lat, lon)) {
-      show([['Addresses work in London only for now', STRONG], coordinates]);
+    if (!closeEnoughForAddress(camera.positionCartographic?.height)) {
+      show([['Zoom in closer to look up an address', STRONG], coordinates]);
       return;
     }
     show([['Looking up the address…', STRONG], coordinates]);
@@ -401,7 +405,7 @@ export function installAddressLookup({ viewer }, doc = document) {
     button.setAttribute('aria-pressed', String(on));
     button.title = on
       ? 'Stop showing addresses when the map is clicked'
-      : 'Click the map to see the local time and coordinates there (and the address, in London)';
+      : 'Click the map to see the local time, the coordinates and the address there';
   };
   button.addEventListener('click', () => {
     on = !on;

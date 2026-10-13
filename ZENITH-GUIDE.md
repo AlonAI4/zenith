@@ -61,7 +61,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Train stations | Train, metro and tram stops in four countries. |
 | Earthquakes | The last day's earthquakes of magnitude 2.5 and up, from the U.S. Geological Survey, as circles sized by strength. Click one for its strength, place, time and depth. |
 | Place names | Place and road names over the map. |
-| Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates, and in London the address. |
+| Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates and the address. From very high up it gives everything but the address. |
 | Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
 | Measure tool | Click two or more spots on the map to get the distance between them. Undo removes the last point. Close the shape, or click the first point again, to get its area. |
 | Height profile | In the measure tool, Profile draws a chart of the height along the path, with its highest and lowest points. The 3D map measures the scanned surface (roofs and treetops count); the satellite map measures bare ground and needs the Cesium key. Heights are shown above the lowest point on the path, not above sea level. |

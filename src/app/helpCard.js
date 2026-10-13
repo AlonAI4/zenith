@@ -21,7 +21,7 @@ export function opensAtStart(stored) {
 /** What a click on empty map does, which depends on the pin switch. */
 export function pinLine(pinOn) {
   return pinOn
-    ? 'Map pin ON: click any spot for its local time and coordinates (and its address in London).'
+    ? 'Map pin ON: click any spot for its local time, coordinates and address.'
     : 'Map pin OFF: clicking empty map does nothing. Switch the Map pin on to read a spot.';
 }
 

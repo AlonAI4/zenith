@@ -1126,6 +1126,80 @@ const soloChecks = [
     },
   ],
   [
+    'the map pin gives an address outside London, one lookup per click',
+    async (page) => {
+      // Paris, with the two lookup services answered here so the check does
+      // not lean on them, and so their requests can be counted.
+      await open(page, WIDE, 'lat=48.8606&lon=2.3376&alt=900&heading=0&pitch=-60');
+      let photon = 0;
+      let wikipedia = 0;
+      let asker = null;
+      const answer = (request) => {
+        const url = request.url();
+        if (url.startsWith('https://photon.komoot.io/')) {
+          photon += 1;
+          const at = new URL(url).searchParams;
+          request.respond({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'access-control-allow-origin': '*' },
+            body: JSON.stringify({
+              features: [
+                {
+                  geometry: { type: 'Point', coordinates: [Number(at.get('lon')), Number(at.get('lat'))] },
+                  properties: { name: 'Test Museum', street: 'Rue de Test', housenumber: '99', city: 'Paris', postcode: '75001', country: 'France' },
+                },
+              ],
+            }),
+          });
+        } else if (url.startsWith('https://en.wikipedia.org/')) {
+          if (request.method() === 'OPTIONS') {
+            request.respond({
+              status: 204,
+              headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'api-user-agent', 'access-control-allow-methods': 'GET' },
+            });
+            return;
+          }
+          wikipedia += 1;
+          asker = request.headers()['api-user-agent'] ?? null;
+          request.respond({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"query":{"pages":[]}}' });
+        } else {
+          request.continue();
+        }
+      };
+      const cardText = () => page.evaluate(() => (window.__zt.shown(document.getElementById('address-card')) ? document.getElementById('address-card').textContent : ''));
+      await page.setRequestInterception(true);
+      page.on('request', answer);
+      try {
+        await press(page, 'address-lookup-toggle');
+        await clickMap(page, 0.5, 0.6);
+        await until(page, () => /Test Museum|Rue de Test/.test(document.getElementById('address-card')?.textContent ?? ''), 10_000, 'no address appeared for a click in Paris');
+        const text = await cardText();
+        expect(/Paris/.test(text) && !/London only/.test(text), `the card said: ${text.slice(0, 120)}`);
+        expect(photon === 1 && wikipedia === 1, `one click made ${photon} address lookups and ${wikipedia} Wikipedia lookups`);
+        expect(/Zenith/.test(asker ?? ''), 'the Wikipedia lookup did not say what program is asking');
+        // The same spot again is answered from memory.
+        await clickMap(page, 0.5, 0.6);
+        await sleep(1500);
+        expect(photon === 1, 'clicking the same spot again asked the address service again');
+        // From far out an address means nothing, so none is asked for.
+        await page.evaluate(() => {
+          const { camera } = window.__zt.viewer();
+          camera.setView({ destination: camera.position.constructor.fromDegrees(2.34, 48.86, 2_000_000) });
+        });
+        await sleep(1200);
+        await clickMap(page, 0.5, 0.5);
+        await until(page, () => /Zoom in closer/.test(document.getElementById('address-card')?.textContent ?? ''), 5000, 'from far out the card did not ask to zoom in');
+        expect(/Local time/.test(await cardText()), 'from far out the card lost its local time');
+        expect(photon === 1 && wikipedia === 1, 'a click from far out still asked the lookup services');
+        await press(page, 'address-lookup-toggle');
+      } finally {
+        page.off('request', answer);
+        await page.setRequestInterception(false);
+      }
+    },
+  ],
+  [
     'tracking marker when following a plane',
     async (page) => {
       await open(page, WIDE, 'lat=51.47&lon=-0.45&alt=90000&heading=0&pitch=-89&l=f');
