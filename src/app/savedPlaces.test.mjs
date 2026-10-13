@@ -5,6 +5,7 @@ import {
   addPlace,
   cleanName,
   describePlace,
+  flySeconds,
   isLook,
   isPlace,
   lookChanges,
@@ -12,6 +13,7 @@ import {
   MAX_PLACES,
   parsePlaces,
   removePlace,
+  routeOf,
 } from './savedPlaces.js';
 
 const place = (name, extra = {}) => ({
@@ -109,4 +111,21 @@ test('putting a look back changes only what differs', () => {
   assert.deepEqual(lookChanges(now, undefined), { style: null, map: null, toggle: [] });
   // A look with no style or map recorded leaves those alone too.
   assert.deepEqual(lookChanges(now, { style: null, map: null, layers: ['cctv', 'flights'] }), { style: null, map: null, toggle: [] });
+});
+
+test('a fly-through is unhurried for a short hop and not much longer round the world', () => {
+  assert.equal(flySeconds(0), 6);
+  assert.equal(flySeconds(20_000), 6);
+  assert.ok(Math.abs(flySeconds(500_000) - 9) < 1e-9);
+  assert.ok(flySeconds(5_000_000) > flySeconds(500_000));
+  assert.ok(flySeconds(20_000_000) <= 16);
+  assert.equal(flySeconds(1e12), 16);
+  assert.equal(flySeconds(-5), 6);
+});
+
+test('a fly-through visits the ticked places in the order they are listed', () => {
+  const list = [place('Three'), place('Two'), place('One')];
+  assert.deepEqual(routeOf(list, ['One', 'Three']).map((entry) => entry.name), ['Three', 'One']);
+  assert.deepEqual(routeOf(list, new Set(['Two', 'Gone'])).map((entry) => entry.name), ['Two']);
+  assert.deepEqual(routeOf(list, []), []);
 });

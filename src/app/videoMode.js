@@ -1,3 +1,4 @@
+import { keyEndsVideo, startCinema } from './cinema.js';
 import { createRotator } from './rotateGestures.js';
 
 /**
@@ -5,27 +6,15 @@ import { createRotator } from './rotateGestures.js';
  * middle of the screen, for recording a clip.
  *
  * Its switch opens a small panel first: how fast, which way round, and
- * Start. The choices are remembered. It reuses the app's own clean view to
- * hide the controls (the map credits stay on screen there, which the map
- * providers require) and this build's rotate helper for the turn, so
- * following a plane circles the plane. Any ordinary key or a click ends it.
- * Modifier keys on their own, and Cmd or Ctrl shortcuts, do not: the Mac's
- * screen recorder is started with one.
+ * Start. The choices are remembered. The controls are hidden by cinema.js
+ * (shared with the fly-through), which keeps the map credits on screen, and
+ * the turn uses this build's rotate helper, so following a plane circles the
+ * plane. Any ordinary key or a click ends it.
  */
 
 const STORAGE_KEY = 'gev.videoMode';
 /** Seconds for one full turn at each speed. */
 export const TURN_SECONDS = Object.freeze({ slow: 144, normal: 72, fast: 36 });
-const HINT_MS = 3200;
-const MODIFIER_KEYS = new Set([
-  'Shift',
-  'Control',
-  'Alt',
-  'Meta',
-  'CapsLock',
-  'Fn',
-  'Dead',
-]);
 
 /**
  * The saved choice, or the usual one when nothing sensible is saved.
@@ -59,36 +48,12 @@ export function orbitStep(
   return clockwise ? turn : -turn;
 }
 
-/** Does this key press end video mode? */
-export function keyEndsVideo(event) {
-  if (MODIFIER_KEYS.has(event.key)) return false;
-  return !(event.metaKey || event.ctrlKey);
-}
+export { keyEndsVideo };
 
 const ICON =
   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6.5" width="12.5" height="11" rx="2.2"/><path d="M15.5 10.5l5-2.6v8.2l-5-2.6z"/></svg>';
 
 const STYLE = `
-#video-mode-hint {
-  position: fixed;
-  left: 50%;
-  bottom: 84px;
-  z-index: 300;
-  transform: translateX(-50%);
-  padding: 7px 14px;
-  border: 1px solid rgba(0, 246, 255, 0.35);
-  border-radius: 10px;
-  background: rgba(4, 12, 20, 0.85);
-  color: rgba(222, 246, 255, 0.92);
-  font: 12px var(--font-mono, ui-monospace, monospace);
-  letter-spacing: 0.06em;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.5s;
-}
-#video-mode-hint[data-show='true'] { opacity: 1; }
-/* Clean view shows an exit button; a recording should not have it. */
-body.zenith-video-mode #clean-view-exit { display: none !important; }
 #video-mode-panel {
   position: fixed;
   top: 92px;
@@ -152,10 +117,6 @@ export function installVideoMode(
   } = {},
 ) {
   const rotate = createRotator(viewer);
-  const cleanView = (on) => {
-    if (setCleanView) setCleanView(on);
-    else doc.body.classList.toggle('ui-clean-view', on);
-  };
   const load = () => {
     try {
       return readChoice(storage?.getItem(STORAGE_KEY));
@@ -175,10 +136,6 @@ export function installVideoMode(
   const style = doc.createElement('style');
   style.textContent = STYLE;
   doc.head.appendChild(style);
-  const hint = doc.createElement('div');
-  hint.id = 'video-mode-hint';
-  hint.textContent = 'Video mode. Press any key or click to stop.';
-  doc.body.appendChild(hint);
 
   const element = (tag, text) => {
     const node = doc.createElement(tag);
@@ -281,9 +238,8 @@ export function installVideoMode(
   button.setAttribute('aria-pressed', 'false');
 
   let active = false;
-  let wasClean = false;
+  let session = null;
   let frameId = 0;
-  let hintTimer = 0;
   let last = 0;
 
   const frame = (now) => {
@@ -294,50 +250,32 @@ export function installVideoMode(
     frameId = win.requestAnimationFrame(frame);
   };
 
-  const onKey = (event) => {
-    if (!keyEndsVideo(event)) return;
-    // The key only ends video mode; it must not also act as a shortcut.
-    event.preventDefault();
-    event.stopPropagation();
-    stop();
-  };
-  const onPointer = (event) => {
-    event.stopPropagation();
-    stop();
-  };
-
   const setPanel = (open) => {
     panel.hidden = !open;
     button.setAttribute('aria-pressed', String(open || active));
   };
 
   function stop() {
-    if (!active) return;
-    active = false;
-    win.cancelAnimationFrame(frameId);
-    win.clearTimeout(hintTimer);
-    hint.dataset.show = 'false';
-    win.removeEventListener('keydown', onKey, true);
-    win.removeEventListener('pointerdown', onPointer, true);
-    doc.body.classList.remove('zenith-video-mode');
-    if (!wasClean) cleanView(false);
-    button.setAttribute('aria-pressed', 'false');
+    session?.end();
   }
 
   function start() {
     if (active) return;
     active = true;
     setPanel(false);
-    wasClean = doc.body.classList.contains('ui-clean-view');
-    cleanView(true);
-    doc.body.classList.add('zenith-video-mode');
     button.setAttribute('aria-pressed', 'true');
-    hint.dataset.show = 'true';
-    hintTimer = win.setTimeout(() => {
-      hint.dataset.show = 'false';
-    }, HINT_MS);
-    win.addEventListener('keydown', onKey, true);
-    win.addEventListener('pointerdown', onPointer, true);
+    session = startCinema({
+      hint: 'Video mode. Press any key or click to stop.',
+      setCleanView,
+      doc,
+      win,
+      onEnd: () => {
+        active = false;
+        session = null;
+        win.cancelAnimationFrame(frameId);
+        button.setAttribute('aria-pressed', 'false');
+      },
+    });
     last = win.performance.now();
     frameId = win.requestAnimationFrame(frame);
   }
@@ -355,7 +293,6 @@ export function installVideoMode(
     doc.removeEventListener('keydown', onEscape);
     button.remove();
     panel.remove();
-    hint.remove();
     style.remove();
   };
 }

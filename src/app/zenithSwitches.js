@@ -51,7 +51,7 @@ export const ZENITH_SWITCHES = Object.freeze([
     id: 'saved-places-toggle',
     panel: true,
     name: 'Saved places',
-    what: 'Star the view on screen, name it, and fly back later. It remembers the map, the look and the layers too. Kept on this computer only.',
+    what: 'Star the view on screen, name it, and fly back later, with its map, look and layers. Tick two or more places to fly through them for a recording.',
   },
   {
     id: 'video-mode-toggle',

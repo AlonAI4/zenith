@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { startCinema } from './cinema.js';
 
 /**
  * Saved places: star the view on screen, name it, and fly back to it later.
@@ -6,7 +7,10 @@ import * as Cesium from 'cesium';
  * One toolbar switch opens a small panel with a name box and the list. A
  * saved place is the camera's position, height, direction and tilt, and the
  * look it was saved with: the visual preset, which map was showing and which
- * data layers were on. Flying to it puts the look back as well. The list
+ * data layers were on. Flying to it puts the look back as well.
+ *
+ * Ticking two or more places and pressing Fly through hides the controls and
+ * travels from each to the next, for recording. The list
  * is kept in this browser's storage on this computer only: it is never put in
  * the page address, and the copy of the app that gets shared does not hold it.
  */
@@ -15,6 +19,27 @@ const STORAGE_KEY = 'gev.savedPlaces';
 export const MAX_PLACES = 50;
 export const MAX_NAME = 40;
 const FLY_SECONDS = 2.5;
+/** In a fly-through, how long the view rests at each place. */
+const HOLD_MS = 1500;
+
+/**
+ * Seconds a fly-through takes between two places this far apart: unhurried
+ * for a short hop, and only a little longer for a trip round the world.
+ */
+export function flySeconds(metres) {
+  const km = Math.max(0, metres) / 1000;
+  return Math.min(16, Math.max(6, 6 + 3 * Math.log10(Math.max(1, km / 50))));
+}
+
+/**
+ * The places of a fly-through, in the order they are listed.
+ * @param {{name: string}[]} places
+ * @param {Iterable<string>} picked The names that were ticked.
+ */
+export function routeOf(places, picked) {
+  const wanted = new Set(picked);
+  return places.filter((place) => wanted.has(place.name));
+}
 
 /** A name as it will be stored: trimmed, single spaces, not too long. */
 export function cleanName(raw) {
@@ -211,6 +236,16 @@ body.ui-clean-view #saved-places { display: none; }
   white-space: nowrap;
 }
 #saved-places .sp-where { display: block; font-size: 10px; color: rgba(222, 246, 255, 0.6); }
+#saved-places .sp-pick { flex: none; width: 15px; height: 15px; accent-color: #00d4ff; }
+#saved-places .sp-fly {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  letter-spacing: 0.08em;
+}
+#saved-places .sp-fly:disabled { opacity: 0.4; cursor: default; }
+#saved-places .sp-fly[hidden] { display: none; }
 `;
 
 /**
@@ -222,7 +257,12 @@ body.ui-clean-view #saved-places { display: none; }
 export function installSavedPlaces(
   { viewer },
   doc = document,
-  { storage = globalThis.localStorage, look: parts = {} } = {},
+  {
+    storage = globalThis.localStorage,
+    look: parts = {},
+    setCleanView,
+    win = window,
+  } = {},
 ) {
   const { camera } = viewer;
   const { styleManager, mapStackController, dataManager } = parts;
@@ -307,7 +347,14 @@ export function installSavedPlaces(
 
   const note = element('p', 'sp-note');
   const list = element('ul');
-  panel.append(head, form, note, list);
+  const flyButton = element('button', 'sp-fly');
+  flyButton.id = 'saved-places-fly';
+  flyButton.type = 'button';
+  flyButton.title =
+    'Hide the controls and travel through the ticked places, for recording';
+  panel.append(head, form, note, list, flyButton);
+  /** Names ticked for a fly-through. Not saved. */
+  const picked = new Set();
   doc.body.appendChild(panel);
 
   const here = () => {
@@ -321,23 +368,73 @@ export function installSavedPlaces(
     };
   };
 
-  const flyTo = (place) => {
-    applyLook(place.look);
+  const letGo = () => {
     // Let go of anything being followed, or the view would be pulled back.
     viewer.trackedEntity = undefined;
     camera.cancelFlight();
     camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-    camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        place.lon,
-        place.lat,
-        place.height,
-      ),
-      orientation: {
-        heading: Cesium.Math.toRadians(place.heading),
-        pitch: Cesium.Math.toRadians(place.pitch),
-        roll: 0,
+  };
+  const spot = (place) =>
+    Cesium.Cartesian3.fromDegrees(place.lon, place.lat, place.height);
+  const facing = (place) => ({
+    heading: Cesium.Math.toRadians(place.heading),
+    pitch: Cesium.Math.toRadians(place.pitch),
+    roll: 0,
+  });
+
+  /**
+   * Travel through the places in turn with the controls hidden. It keeps the
+   * look that is on now: changing maps mid-flight would not be smooth.
+   */
+  const flyThrough = (route) => {
+    if (route.length < 2) return;
+    let index = 0;
+    let rest = 0;
+    let over = false;
+    setOpen(false);
+    letGo();
+    const session = startCinema({
+      hint: 'Fly-through. Press any key or click to stop.',
+      setCleanView,
+      doc,
+      win,
+      onEnd: () => {
+        over = true;
+        win.clearTimeout(rest);
+        camera.cancelFlight();
       },
+    });
+    const leg = () => {
+      if (over) return;
+      const place = route[index];
+      const to = spot(place);
+      camera.flyTo({
+        destination: to,
+        orientation: facing(place),
+        // A quick hop to the start, then unhurried from place to place.
+        duration:
+          index === 0
+            ? FLY_SECONDS
+            : flySeconds(Cesium.Cartesian3.distance(camera.positionWC, to)),
+        complete: () => {
+          if (over) return;
+          index += 1;
+          rest = win.setTimeout(
+            index < route.length ? leg : () => session.end(),
+            HOLD_MS,
+          );
+        },
+      });
+    };
+    leg();
+  };
+
+  const flyTo = (place) => {
+    applyLook(place.look);
+    letGo();
+    camera.flyTo({
+      destination: spot(place),
+      orientation: facing(place),
       duration: FLY_SECONDS,
     });
   };
@@ -348,8 +445,34 @@ export function installSavedPlaces(
       : places.length === 0
         ? 'Nothing saved yet. Move to a view you like, name it and press Save.'
         : 'A place remembers its map, look and layers. Kept on this computer only.';
+    for (const name of [...picked]) {
+      if (!places.some((place) => place.name === name)) picked.delete(name);
+    }
+    const paintFly = () => {
+      const count = routeOf(places, picked).length;
+      flyButton.hidden = places.length < 2;
+      flyButton.disabled = count < 2;
+      flyButton.textContent =
+        count < 2
+          ? 'Tick two or more to fly through'
+          : `Fly through ${count} places`;
+    };
+    paintFly();
     list.replaceChildren(
       ...places.map((place) => {
+        const pick = element('input', 'sp-pick');
+        pick.type = 'checkbox';
+        pick.checked = picked.has(place.name);
+        pick.title = `Include ${place.name} in a fly-through`;
+        pick.setAttribute(
+          'aria-label',
+          `Include ${place.name} in a fly-through`,
+        );
+        pick.addEventListener('change', () => {
+          if (pick.checked) picked.add(place.name);
+          else picked.delete(place.name);
+          paintFly();
+        });
         const go = element('button', 'sp-go');
         go.type = 'button';
         go.title = `Fly to ${place.name}`;
@@ -368,11 +491,15 @@ export function installSavedPlaces(
           render();
         });
         const row = element('li');
-        row.append(go, remove);
+        row.append(pick, go, remove);
         return row;
       }),
     );
   };
+
+  flyButton.addEventListener('click', () =>
+    flyThrough(routeOf(places, picked)),
+  );
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();

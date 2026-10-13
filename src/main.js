@@ -63,6 +63,10 @@ application
     () => {
       const { scene, controls, data } = application.getComponents();
       const styleManager = controls?.styleManager;
+      // The app's own clean view, for the two add-ons that hide the controls.
+      const setCleanView = styleManager?.setCleanView
+        ? (on) => styleManager.setCleanView(on)
+        : undefined;
       startMine([
         ['Panel guard', () => installPanelGuard(styleManager)],
         ['Rotate gestures', () => installRotateGestures(scene.viewer)],
@@ -94,15 +98,14 @@ application
                 mapStackController: scene.mapStackController,
                 dataManager: data?.dataManager,
               },
+              setCleanView,
             }),
         ],
         [
           'Video mode',
           () =>
             installVideoMode(scene.viewer, {
-              setCleanView: styleManager?.setCleanView
-                ? (on) => styleManager.setCleanView(on)
-                : undefined,
+              setCleanView,
             }),
         ],
         ['HD buildings', () => installHdDetail(scene)],

@@ -986,6 +986,77 @@ const soloChecks = [
     },
   ],
   [
+    'fly-through between saved places',
+    async (page) => {
+      await open(page, WIDE, LONDON);
+      const where = () =>
+        page.evaluate(() => {
+          const at = window.__zt.viewer().camera.positionCartographic;
+          return { lon: (at.longitude * 180) / Math.PI, lat: (at.latitude * 180) / Math.PI, height: at.height };
+        });
+      const look = () =>
+        page.evaluate(() => ({
+          clean: document.body.classList.contains('ui-clean-view'),
+          exit: window.__zt.shown(document.getElementById('clean-view-exit')),
+          panel: !document.getElementById('saved-places').hidden,
+          credits: [...document.querySelectorAll('#cesium-credits *')].some((node) => {
+            const r = node.getBoundingClientRect();
+            return r.width > 20 && r.height > 5 && r.left >= 0 && r.bottom <= innerHeight;
+          }),
+        }));
+      const save = async (name) => {
+        await page.type('#saved-places input', name);
+        await page.keyboard.press('Enter');
+      };
+      // Ticks stay while the page is open, so only tick the ones not yet ticked.
+      const tickAll = async () => {
+        for (const box of await page.$$('#saved-places .sp-pick')) {
+          if (!(await box.evaluate((input) => input.checked))) await box.click();
+        }
+      };
+      const first = await where();
+      await press(page, 'saved-places-toggle');
+      await save('Stop one');
+      expect(await page.evaluate(() => document.getElementById('saved-places-fly').hidden), 'Fly through shows with only one place');
+      await page.evaluate(() => {
+        const { camera } = window.__zt.viewer();
+        camera.setView({ destination: camera.position.constructor.fromDegrees(1.3, 51.2, 4000) });
+      });
+      await sleep(600);
+      await save('Stop two');
+      expect(await page.evaluate(() => document.getElementById('saved-places-fly').disabled), 'Fly through is ready before anything is ticked');
+      await tickAll();
+      expect(/Fly through 2 places/.test(await page.evaluate(() => document.getElementById('saved-places-fly').textContent)), 'ticking two places did not ready the button');
+
+      // The list is newest first, so it goes to "Stop two", then "Stop one".
+      await page.click('#saved-places-fly');
+      await sleep(800);
+      const during = await look();
+      expect(during.clean && !during.exit && !during.panel, `the controls were not hidden for the fly-through: ${JSON.stringify(during)}`);
+      expect(during.credits, 'the map credits are not visible during the fly-through');
+      await until(page, () => !document.body.classList.contains('ui-clean-view'), 40_000, 'the fly-through never finished');
+      const end = await where();
+      expect(Math.abs(end.lon - first.lon) < 0.01 && Math.abs(end.lat - first.lat) < 0.01 && Math.abs(end.height - first.height) < 50, `it ended at ${end.lon.toFixed(2)}, ${end.lat.toFixed(2)}, not at the last place`);
+
+      // A key ends it part way, and the view stops moving.
+      await press(page, 'saved-places-toggle');
+      await tickAll();
+      await page.click('#saved-places-fly');
+      await sleep(5000);
+      await page.keyboard.press('x');
+      await sleep(500);
+      const stoppedAt = await where();
+      await sleep(1200);
+      const later = await where();
+      const after = await look();
+      await press(page, 'saved-places-toggle');
+      for (let i = 0; i < 2; i++) await page.click('#saved-places .sp-delete');
+      await page.keyboard.press('Escape');
+      expect(!after.clean, 'a key did not end the fly-through');
+      expect(Math.abs(later.lon - stoppedAt.lon) < 1e-6 && Math.abs(later.height - stoppedAt.height) < 0.5, 'the view kept flying after it was ended');
+    },
+  ],
+  [
     'tracking marker when following a plane',
     async (page) => {
       await open(page, WIDE, 'lat=51.47&lon=-0.45&alt=90000&heading=0&pitch=-89&l=f');
