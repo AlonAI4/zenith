@@ -19,6 +19,12 @@ import { guard } from './addOns.js';
 
 const STORAGE_KEY = 'gev.dayNight';
 const LIGHTS_URL = '/alon/night-lights.webp';
+/**
+ * The lights picture's size in pixels: one pixel is about 5.5 km. Held as it
+ * is drawn (four bytes a pixel) that is about 104 MB of graphics memory, so
+ * it is only loaded while the switch is on, and for one map at a time.
+ */
+const LIGHTS_SIZE = Object.freeze([7200, 3600]);
 const CREDIT = 'Night lights: NASA Earth Observatory (Black Marble 2016)';
 const SUN_EVERY_MS = 30_000;
 const SURFACE_EVERY_MS = 1000;
@@ -175,9 +181,9 @@ export function nightLook(heightM) {
   };
   return {
     floor: 0.38 - 0.32 * ease(5, 6.3),
-    // The lights picture only resolves about 11 km, so it is for views of a
-    // whole country or more: it fades between 3,000 km and 300 km up.
-    glow: 2.2 * ease(5.48, 6.48),
+    // The lights picture resolves about 5.5 km, so it is for views of a
+    // region or more: it fades between 1,500 km and 150 km up.
+    glow: 2.2 * ease(5.18, 6.18),
   };
 }
 
@@ -200,10 +206,10 @@ vec3 zenithLights(vec3 p, sampler2D picture) {
   float lon = atan(p.y, p.x);
   float lat = atan(p.z, length(p.xy) * 0.99330562);
   vec2 uv = vec2(lon / 6.28318530718 + 0.5, lat / 3.14159265359 + 0.5);
-  // One pixel of the picture is about 11 km, so a town is a single bright
-  // pixel. Read plainly it shows as a hard square from closer in; this
-  // smoother read (a cubic spline over four samples) makes it a soft glow.
-  vec2 size = vec2(3600.0, 1800.0);
+  // A town is a pixel or two of the picture. Read plainly it shows as hard
+  // squares from closer in; this smoother read (a cubic spline over four
+  // samples) makes it a soft glow.
+  vec2 size = vec2(${LIGHTS_SIZE[0]}.0, ${LIGHTS_SIZE[1]}.0);
   vec2 st = uv * size - 0.5;
   vec2 cell = floor(st);
   vec2 f = st - cell;
@@ -374,10 +380,18 @@ export function installDayNight({ viewer, tileset }, doc = document) {
     if (globe.material !== globeMaterial) globe.material = globeMaterial;
   };
 
+  // The lights picture is big, so a shader that is no longer on the map is
+  // thrown away with its copy of the picture. It waits a moment first: the
+  // frame being drawn may still be using it.
+  const discard = (old) => setTimeout(() => old.destroy?.(), 2000);
+
   const plainGlobe = () => {
-    if (globeMaterial && globe.material === globeMaterial) {
-      globe.material = undefined;
-    }
+    // Not on the globe right now: either never used, or another layer is
+    // holding it to hand back later. Keep it; it is dealt with if it returns.
+    if (!globeMaterial || globe.material !== globeMaterial) return;
+    globe.material = undefined;
+    discard(globeMaterial);
+    globeMaterial = null;
   };
 
   const shadedTiles = () => {
@@ -405,6 +419,7 @@ export function installDayNight({ viewer, tileset }, doc = document) {
   };
 
   const plainTiles = () => {
+    if (!shader) return;
     if (
       tileset &&
       !tileset.isDestroyed?.() &&
@@ -412,6 +427,8 @@ export function installDayNight({ viewer, tileset }, doc = document) {
     ) {
       tileset.customShader = undefined;
     }
+    discard(shader);
+    shader = null;
   };
 
   // The map can change under us (satellite globe <-> 3D buildings).
