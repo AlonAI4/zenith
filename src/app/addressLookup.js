@@ -394,10 +394,15 @@ export function installAddressLookup({ viewer }, doc = document) {
   const onClick = async (click) => {
     // While the measure tool is on, a click on the map is a measuring point.
     if (!on || isMeasuring()) return;
-    // A click on a plane, camera or station belongs to that thing.
+    // A click on a plane, camera or station belongs to that thing. A click
+    // on the pin already standing there is a click on the map under it.
     const picked = scene.pick(click.position);
+    const onOwnPin =
+      Boolean(pins) &&
+      (picked?.collection === pins || picked?.primitive?.collection === pins);
     const onMap =
       !picked ||
+      onOwnPin ||
       picked.primitive instanceof Cesium.Cesium3DTileset ||
       picked instanceof Cesium.Cesium3DTileFeature ||
       isTimeZonePick(picked);
