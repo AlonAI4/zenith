@@ -14,6 +14,7 @@ covers what was added on top.
 | Place and road labels | Esri reference map tiles (World Boundaries and Places, World Transportation), loaded live | Esri's terms of use; shown with the credit "Labels © Esri and its data providers". Personal, non-commercial use |
 | Addresses on click | Photon (photon.komoot.io), which searches OpenStreetMap data, asked live | Address data © OpenStreetMap contributors, ODbL. Photon is a free courtesy service: light, hand-triggered use only |
 | Well-known place names on click | Wikipedia's public search, asked live | Article titles from Wikipedia. Text on Wikipedia is under CC BY-SA 4.0 |
+| Pictures on the download page (`alon-site/shots`, not in the zip) | Screen captures of this app on its satellite map: Esri World Imagery (Esri, Maxar, Earthstar Geographics, and the GIS User Community), drawn with Cesium, with the layers credited in each picture | Esri's terms of use for static maps allow screen captures on a website that promotes your own product, with attribution on or near the picture. No picture shows the Google 3D map: its rules do not clearly allow still pictures |
 | The Zenith logo (`public/alon/zenith-logo.svg`) | Drawn for this build | Belongs to this build's author |
 | The added code (`src/app/*`, `src/ui/buttonTooltips.js`, `panelFullscreen.js`, `customSelect.js`, `branding.js`) | Written for this build | MIT, the same as the project |
 
