@@ -20,6 +20,10 @@
  * The app must be running (./alon-app.sh start). A new add-on gets a check
  * here before it is committed.
  */
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { launchBrowser, sleep } from './alon-browser.mjs';
 
 const BASE = process.env.ZENITH_URL || 'http://localhost:4173';
@@ -231,6 +235,27 @@ const clickMap = async (page, fx, fy) => {
   await page.mouse.click(x, y);
   await sleep(700);
 };
+
+/** Hand a file to the settings picker in the help card, as a person would choose it. */
+async function chooseSettingsFile(page, text) {
+  const folder = mkdtempSync(join(tmpdir(), 'zenith-settings-'));
+  const file = join(folder, 'zenith-settings.json');
+  try {
+    writeFileSync(file, text);
+    const picker = await page.$('#zenith-settings-picker');
+    await picker.uploadFile(file);
+    await picker.evaluate((input) => input.dispatchEvent(new Event('change', { bubbles: true })));
+    await until(page, () => document.getElementById('zenith-settings-message').textContent.length > 0, 5000, 'choosing a settings file said nothing');
+    await sleep(200);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+  return page.evaluate(() => ({
+    said: document.getElementById('zenith-settings-message').textContent,
+    bad: document.getElementById('zenith-settings-message').dataset.bad === 'true',
+    reload: !document.getElementById('zenith-settings-reload').hidden,
+  }));
+}
 
 // ── The checks ───────────────────────────────────────────────────────────────
 
@@ -865,6 +890,69 @@ const checks = [
     },
   ],
   [
+    'settings file: saved without keys, a bad file refused, a good one loaded',
+    async (page) => {
+      await press(page, 'zenith-help-toggle');
+      const before = await page.evaluate(() => {
+        // Catch the file the Save button makes, where a person would get a download.
+        const real = URL.createObjectURL.bind(URL);
+        window.__savedSettings = null;
+        URL.createObjectURL = (blob) => {
+          window.__savedSettings = blob;
+          return real(blob);
+        };
+        localStorage.setItem('gev.testOnlySecretKey', 'sk-live-do-not-export');
+        document.getElementById('zenith-settings-message').textContent = '';
+        document.getElementById('zenith-settings-save').click();
+        URL.createObjectURL = real;
+        return { video: localStorage.getItem('gev.videoMode'), places: localStorage.getItem('gev.savedPlaces') };
+      });
+      const saved = await page.evaluate(async () => (window.__savedSettings ? window.__savedSettings.text() : null));
+      await page.evaluate(() => localStorage.removeItem('gev.testOnlySecretKey'));
+      expect(saved, 'Save made no file');
+      const file = JSON.parse(saved);
+      expect(file.app === 'Zenith' && file.kind === 'settings' && file.version === 1, 'the saved file is not marked as a Zenith settings file');
+      expect(file.settings['gev.helpCard'] === 'closed', 'the saved file is missing a setting this browser has');
+      expect(!/sk-live|token|secret|apikey|api_key/i.test(saved), 'the saved file holds something that looks like a key');
+      expect(Object.keys(file.settings).every((key) => key.startsWith('gev.')), 'the saved file holds a setting that is not this build\'s');
+
+      // A file that is not ours, and a damaged one: refused, nothing stored.
+      for (const text of ['{"hello":"world"}', saved.slice(0, 40), '']) {
+        await page.evaluate(() => (document.getElementById('zenith-settings-message').textContent = ''));
+        const refused = await chooseSettingsFile(page, text);
+        expect(refused.bad && !refused.reload, `a bad file was not refused ("${refused.said}")`);
+      }
+      expect((await page.evaluate(() => localStorage.getItem('gev.videoMode'))) === before.video, 'a refused file still changed a setting');
+
+      // A good file, with one thing in it that must not get through.
+      const incoming = structuredClone(file);
+      incoming.settings['gev.videoMode'] = '{"speed":"fast","clockwise":false}';
+      incoming.settings.CESIUM_ION_TOKEN = 'should-be-ignored';
+      await page.evaluate(() => (document.getElementById('zenith-settings-message').textContent = ''));
+      const loaded = await chooseSettingsFile(page, JSON.stringify(incoming));
+      const after = await page.evaluate(() => ({
+        video: localStorage.getItem('gev.videoMode'),
+        token: localStorage.getItem('CESIUM_ION_TOKEN'),
+        inside: (() => {
+          const r = document.getElementById('zenith-settings-file').getBoundingClientRect();
+          const card = document.getElementById('zenith-help').getBoundingClientRect();
+          return r.left >= card.left && r.right <= card.right + 1;
+        })(),
+      }));
+      // Put this browser back the way it was before judging.
+      await page.evaluate((was) => {
+        if (was.video === null) localStorage.removeItem('gev.videoMode');
+        else localStorage.setItem('gev.videoMode', was.video);
+      }, before);
+      await page.keyboard.press('Escape');
+      expect(!loaded.bad && loaded.reload, `a good file was not loaded ("${loaded.said}")`);
+      expect(/1 other thing was ignored/.test(loaded.said), `the card did not say one thing was ignored ("${loaded.said}")`);
+      expect(after.video === '{"speed":"fast","clockwise":false}', 'the loaded setting was not stored');
+      expect(after.token === null, 'something that is not a setting was stored');
+      expect(after.inside, 'the settings buttons stick out of the help card');
+    },
+  ],
+  [
     'Cmd+C and friends do not set off shortcuts',
     async (page) => {
       const state = () =>
@@ -1201,6 +1289,50 @@ const soloChecks = [
         page.off('request', answer);
         await page.setRequestInterception(false);
       }
+    },
+  ],
+  [
+    'settings loaded from a file take effect after the reload',
+    async (page) => {
+      await open(page, WIDE, LONDON);
+      const was = await page.evaluate(() => {
+        const keep = { dayNight: localStorage.getItem('gev.dayNight'), places: localStorage.getItem('gev.savedPlaces') };
+        localStorage.setItem('gev.dayNight', '0');
+        localStorage.removeItem('gev.savedPlaces');
+        return keep;
+      });
+      await press(page, 'zenith-help-toggle');
+      const loaded = await chooseSettingsFile(
+        page,
+        JSON.stringify({
+          app: 'Zenith',
+          kind: 'settings',
+          version: 1,
+          settings: {
+            'gev.dayNight': '1',
+            'gev.savedPlaces': JSON.stringify([{ name: 'From a file', lon: -0.0754, lat: 51.5055, height: 900, heading: 20, pitch: -35 }]),
+          },
+        }),
+      );
+      expect(!loaded.bad && loaded.reload, `the file was not loaded ("${loaded.said}")`);
+      await page.click('#zenith-settings-reload');
+      await sleep(1500);
+      await until(page, () => Boolean(document.getElementById('zenith-more-toggle') && window.__godsEyeView?.viewer && window.__zt), 90_000, 'the app did not come back after the reload');
+      await until(page, () => !document.elementFromPoint(innerWidth / 2, 50)?.closest('#loading-screen'), 60_000, 'the loading screen never went away');
+      await sleep(1500);
+      const dayNight = await pressed(page, 'day-night-toggle');
+      await press(page, 'saved-places-toggle');
+      const listed = await page.evaluate(() => document.getElementById('saved-places')?.textContent.includes('From a file'));
+      await page.keyboard.press('Escape');
+      if (dayNight) await press(page, 'day-night-toggle');
+      await page.evaluate((keep) => {
+        for (const [key, value] of [['gev.dayNight', keep.dayNight], ['gev.savedPlaces', keep.places]]) {
+          if (value === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, value);
+        }
+      }, was);
+      expect(dayNight, 'day and night was not on after loading a file that switches it on');
+      expect(listed, 'the saved place from the file is not in the list');
     },
   ],
   [

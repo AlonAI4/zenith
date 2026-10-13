@@ -6,6 +6,7 @@
  * words, including whether the pin is on right now. It opens by itself the
  * first time; once closed it stays closed until its own "?" switch is pressed.
  */
+import { settingsFileControls } from './settingsFile.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 
 const STORAGE_KEY = 'gev.helpCard';
@@ -187,6 +188,9 @@ export function installHelpCard(
   const isOn = (id) =>
     doc.getElementById(id)?.getAttribute('aria-pressed') === 'true';
 
+  // Built once and kept, so its message survives the card being redrawn.
+  const settingsFile = settingsFileControls(doc, { storage, win });
+
   const render = () => {
     const head = element('div', 'zh-head');
     const close = element('button', 'zh-close', '×');
@@ -225,6 +229,8 @@ export function installHelpCard(
       clicks,
       element('h3', '', 'MOVING AROUND'),
       list(MOVING),
+      element('h3', '', 'YOUR SETTINGS'),
+      settingsFile,
     );
   };
 
