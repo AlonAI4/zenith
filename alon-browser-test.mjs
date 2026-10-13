@@ -86,6 +86,8 @@ function pageHelpers() {
       );
       return found ? Number(found[1]) : 0;
     },
+    // Labels really drawn on screen this frame, not just handed over.
+    painted: (name) => window.__gevWorldOverlay?.getDiagnostics?.().paintedBySource?.[name] ?? 0,
     imagery: () => {
       const { viewer, tileset } = app();
       const host = viewer.scene.globe.show ? viewer.imageryLayers : tileset?.imageryLayers;
@@ -448,7 +450,34 @@ const checks = [
       await page.mouse.up();
       await sleep(400);
       expect(/2 points$/.test(await readout()), 'dragging the map added a point');
-      await page.click('#measure-readout button');
+      // Undo, then closing a shape for its area.
+      await clickMap(page, 0.58, 0.74);
+      expect(/3 points$/.test(await readout()), 'the third click did not add a point');
+      await page.click('#measure-undo');
+      expect(/2 points$/.test(await readout()), 'Undo did not remove the last point');
+      await clickMap(page, 0.58, 0.74);
+      await page.click('#measure-close');
+      const shut = await readout();
+      expect(/^Area [\d.,]+ (m²|km²) · outline [\d.,]+ (m|km)$/.test(shut), `a closed shape read "${shut}"`);
+      expect((await page.evaluate(() => window.__zt.entities('alon-measure'))) === 5, 'three points, the outline and the filling were not drawn');
+      expect((await page.evaluate(() => window.__zt.labels('alon-measure'))) === 4, 'the area and the three sides were not labelled');
+      // The area label always shows. Side labels may give way to each other.
+      await until(page, () => window.__zt.painted('alon-measure') >= 1, 4000, 'no measuring label is drawn on screen');
+      await clickMap(page, 0.5, 0.5);
+      expect((await readout()) === shut, 'a click changed a closed shape');
+      await page.click('#measure-undo');
+      expect(/3 points$/.test(await readout()), 'Undo did not reopen the shape');
+      const first = await page.evaluate(() => {
+        const viewer = window.__zt.viewer();
+        const entity = viewer.dataSources.getByName('alon-measure')[0].entities.values[0];
+        const at = viewer.scene.cartesianToCanvasCoordinates(entity.position.getValue());
+        return at ? [at.x, at.y] : null;
+      });
+      expect(first, 'the first point is not on screen');
+      await page.mouse.click(first[0], first[1]);
+      await sleep(600);
+      expect(/^Area /.test(await readout()), 'clicking the first point did not close the shape');
+      await page.click('#measure-clear');
       expect(/start measuring/.test(await readout()), 'Clear did not clear');
       await press(page, 'measure-toggle');
       expect((await readout()) === null, 'the readout stayed after switching off');
@@ -534,7 +563,7 @@ const checks = [
         }
         return { credits: credits.length, shown: mine.length, covering, clashing };
       });
-      await page.click('#measure-readout button');
+      await page.click('#measure-clear');
       await press(page, 'measure-toggle');
       await press(page, 'day-night-toggle');
       expect(state.credits > 0, 'no map credits were found on screen');
@@ -694,9 +723,12 @@ const checks = [
       const home = await page.evaluate(() => location.hash);
       const [x, y] = spot(page, 0.5, 0.55);
       await page.mouse.move(x, y);
-      for (let i = 0; i < 60; i++) {
+      // Scroll until far out. How far one notch goes depends on how busy the
+      // browser is, so this keeps going until it is there, within a limit.
+      for (let i = 0; i < 300; i++) {
         await page.mouse.wheel({ deltaY: 500 });
         await sleep(40);
+        if (i % 10 === 9 && (await page.evaluate(() => window.__zt.height())) > 25_000_000) break;
       }
       await sleep(1500);
       const far = await page.evaluate(() => {
@@ -709,12 +741,16 @@ const checks = [
           offY: centre ? Math.abs(centre.y - viewer.canvas.clientHeight / 2) / viewer.canvas.clientHeight : 1,
         };
       });
-      for (let i = 0; i < 40; i++) {
+      // No zoom limit: more scrolling must keep going out, well past where
+      // the Earth fits.
+      let further = far.height;
+      for (let i = 0; i < 300 && further <= far.height * 2; i++) {
         await page.mouse.wheel({ deltaY: 800 });
         await sleep(30);
+        if (i % 10 === 9) further = await page.evaluate(() => window.__zt.height());
       }
       await sleep(600);
-      const further = await page.evaluate(() => window.__zt.height());
+      further = await page.evaluate(() => window.__zt.height());
       // Tilt memory: zooming back in gives back the tilt the view started with.
       const startPitch = Number(/pitch=(-?[\d.]+)/.exec(home)[1]);
       for (let i = 0; i < 400; i++) {

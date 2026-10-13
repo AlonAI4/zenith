@@ -62,7 +62,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Place names | Place and road names over the map. |
 | Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates, and in London the address. |
 | Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
-| Measure tool | Click two or more spots on the map to get the distance between them. |
+| Measure tool | Click two or more spots on the map to get the distance between them. Undo removes the last point. Close the shape, or click the first point again, to get its area. |
 | Saved places | Star the view on screen, name it, and fly back with one click. The list stays on your computer. |
 | Video mode | Hides the controls and slowly circles the spot in the middle of the screen, for recording. Any key or click ends it. The map credits stay on screen: keep them in frame in anything you post. |
 | Help card | The "?" switch explains every switch and what clicking the map does. |

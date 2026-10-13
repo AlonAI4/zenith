@@ -39,7 +39,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'measure-toggle',
     name: 'Measure',
-    what: 'Click two or more spots on the map to get the distance between them.',
+    what: 'Click two or more spots for the distance between them. Close the shape to get its area.',
   },
   {
     id: 'saved-places-toggle',
