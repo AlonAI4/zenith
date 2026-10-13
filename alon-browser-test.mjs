@@ -400,6 +400,84 @@ const checks = [
     },
   ],
   [
+    'train stations in every country on the list',
+    async (page, setup) => {
+      // The file the app is served: stops where they should be, none where
+      // they should not be.
+      const counts = await page.evaluate(async () => {
+        const file = await (await fetch('/alon/stations.json')).json();
+        const near = (lon, lat) => file.stations.filter((row) => Math.abs(row[0] - lon) < 0.15 && Math.abs(row[1] - lat) < 0.15).length;
+        return {
+          total: file.stations.length,
+          London: near(-0.12, 51.5),
+          Edinburgh: near(-3.19, 55.95),
+          Cardiff: near(-3.18, 51.48),
+          Belfast: near(-5.93, 54.6),
+          Berlin: near(13.37, 52.52),
+          Rome: near(12.5, 41.9),
+          Amsterdam: near(4.9, 52.38),
+          Madrid: near(-3.7, 40.42),
+          Lisbon: near(-9.14, 38.72),
+          'Tel Aviv': near(34.78, 32.08),
+          'New York': near(-73.99, 40.75),
+          'Los Angeles': near(-118.24, 34.05),
+          Chicago: near(-87.63, 41.88),
+          Houston: near(-95.37, 29.76),
+          Paris: near(2.35, 48.86),
+          Dublin: near(-6.26, 53.35),
+          Denver: near(-104.99, 39.74),
+        };
+      });
+      for (const [place, count] of Object.entries(counts)) {
+        if (place === 'total') continue;
+        const none = ['Paris', 'Dublin', 'Denver'].includes(place);
+        expect(none ? count === 0 : count >= 5, `${place} has ${count} stops in the stations file`);
+      }
+      expect(counts.total > 30_000 && counts.total < 60_000, `the stations file has ${counts.total} stops`);
+      // Markers really appear in a new country. Only on the satellite map:
+      // a jump on the 3D map would spend its metered allowance for nothing new.
+      if (setup.map !== 'esri-imagery') return;
+      const jump = (lon, lat, height) =>
+        page.evaluate(
+          (lon, lat, height) => {
+            const camera = window.__zt.viewer().camera;
+            const was = camera.positionCartographic;
+            const back = [(was.longitude * 180) / Math.PI, (was.latitude * 180) / Math.PI, was.height, camera.heading, camera.pitch];
+            const toRad = Math.PI / 180;
+            const ellipsoid = window.__zt.viewer().scene.globe.ellipsoid;
+            camera.setView({
+              destination: ellipsoid.cartographicToCartesian({ longitude: lon * toRad, latitude: lat * toRad, height }),
+              orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+            });
+            return back;
+          },
+          lon,
+          lat,
+          height,
+        );
+      const before = await page.evaluate(() => window.__zt.billboards());
+      const home = await jump(13.37, 52.52, 9000);
+      await press(page, 'train-stations-toggle');
+      let appeared = true;
+      try {
+        await until(page, (n) => window.__zt.billboards() > n + 20, 8000, 'no station markers appeared over Berlin', before);
+      } catch {
+        appeared = false;
+      }
+      await press(page, 'train-stations-toggle');
+      await page.evaluate((back) => {
+        const toRad = Math.PI / 180;
+        const viewer = window.__zt.viewer();
+        viewer.camera.setView({
+          destination: viewer.scene.globe.ellipsoid.cartographicToCartesian({ longitude: back[0] * toRad, latitude: back[1] * toRad, height: back[2] }),
+          orientation: { heading: back[3], pitch: back[4], roll: 0 },
+        });
+      }, home);
+      await sleep(1500);
+      expect(appeared, 'no station markers appeared over Berlin');
+    },
+  ],
+  [
     'earthquakes',
     async (page) => {
       // A made-up feed, so the check does not depend on today's earthquakes:

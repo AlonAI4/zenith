@@ -58,7 +58,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Time zones | Zone borders with their offsets from UTC, and a ticking local time for any spot you click. |
 | Tracking marker | A pulsing ring on whatever you are following when you zoom far out. Click it to fly back. |
 | HD buildings | A switch for sharper 3D buildings. It uses more data and graphics power. |
-| Train stations | Train, metro and tram stops in four countries. |
+| Train stations | Train, metro and tram stops across the UK, Germany, Italy, the Netherlands, Spain, Portugal and Israel, and in eleven big city areas of the USA. |
 | Earthquakes | The last day's earthquakes of magnitude 2.5 and up, from the U.S. Geological Survey, as circles sized by strength. Click one for its strength, place, time and depth. |
 | Place names | Place and road names over the map. |
 | Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates and the address. From very high up it gives everything but the address. |
