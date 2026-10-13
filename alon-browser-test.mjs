@@ -470,13 +470,77 @@ const checks = [
       await press(page, 'day-night-toggle');
       await sleep(1500);
       const on = await state();
+      // The time slider: six hours ahead turns the sun a quarter of the way
+      // round, and Now brings it back. The click card's clock is not touched.
+      const sunLon = () =>
+        page.evaluate(() => {
+          const { viewer, tileset } = window.__godsEyeView;
+          const sun = tileset?.customShader?.uniforms?.u_sun?.value ?? viewer.scene.globe.material?.uniforms?.sunDir;
+          return sun ? (Math.atan2(sun.y, sun.x) * 180) / Math.PI : null;
+        });
+      const sliderShown = await page.evaluate(() => window.__zt.shown(document.getElementById('day-night-time')));
+      const lonNow = await sunLon();
+      await page.evaluate(() => {
+        const slider = document.querySelector('#day-night-time input');
+        slider.value = '360';
+        slider.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      const lonLater = await sunLon();
+      const label = await page.evaluate(() => document.querySelector('#day-night-time span').textContent);
+      await page.click('#day-night-time button');
+      const lonBack = await sunLon();
       await press(page, 'day-night-toggle');
       await sleep(1300);
       const off = await state();
       const shaded = setup.map === 'photoreal' ? on.tiles && !on.globe : on.globe && !on.tiles;
       expect(shaded, `the wrong surface was shaded: ${JSON.stringify(on)}`);
+      expect(sliderShown, 'the time slider did not appear');
+      expect(Math.abs(turn(lonLater, lonNow) - 90) < 1, `six hours ahead moved the sun ${turn(lonLater, lonNow).toFixed(1)} degrees`);
+      expect(/6 h ahead$/.test(label), `the slider label said "${label}"`);
+      expect(Math.abs(turn(lonBack, lonNow)) < 0.5, 'Now did not return to the real time');
       expect(on.credit, 'the NASA credit is not on screen');
+      expect(!(await page.evaluate(() => window.__zt.shown(document.getElementById('day-night-time')))), 'the time slider stayed after switching off');
       expect(!off.tiles && !off.globe && !off.credit, `it did not switch off cleanly: ${JSON.stringify(off)}`);
+    },
+  ],
+  [
+    'nothing of mine covers the map credits or each other',
+    async (page) => {
+      await press(page, 'day-night-toggle');
+      await press(page, 'measure-toggle');
+      await clickMap(page, 0.42, 0.5);
+      await clickMap(page, 0.58, 0.5);
+      const state = await page.evaluate(() => {
+        const rect = (element) => {
+          const r = element.getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        };
+        const hit = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+        // The credits box itself has no size; its contents do.
+        const credits = [...document.querySelectorAll('#cesium-credits *')]
+          .filter((node) => node.children.length === 0)
+          .map(rect)
+          .filter((r) => r.right - r.left > 4 && r.bottom - r.top > 4 && r.left < innerWidth);
+        const mine = ['#day-night-time', '#measure-readout', '#scale-bar', '#compass-dial svg']
+          .map((selector) => [selector, document.querySelector(selector)])
+          .filter(([, element]) => window.__zt.shown(element))
+          .map(([selector, element]) => [selector, rect(element)]);
+        const covering = mine.filter(([, r]) => credits.some((credit) => hit(r, credit))).map(([selector]) => selector);
+        const clashing = [];
+        for (let i = 0; i < mine.length; i++) {
+          for (let j = i + 1; j < mine.length; j++) {
+            if (hit(mine[i][1], mine[j][1])) clashing.push(`${mine[i][0]} and ${mine[j][0]}`);
+          }
+        }
+        return { credits: credits.length, shown: mine.length, covering, clashing };
+      });
+      await page.click('#measure-readout button');
+      await press(page, 'measure-toggle');
+      await press(page, 'day-night-toggle');
+      expect(state.credits > 0, 'no map credits were found on screen');
+      expect(state.shown === 4, `only ${state.shown} of my four panels were showing`);
+      expect(state.covering.length === 0, `covering the map credits: ${state.covering.join(', ')}`);
+      expect(state.clashing.length === 0, `overlapping: ${state.clashing.join('; ')}`);
     },
   ],
   [

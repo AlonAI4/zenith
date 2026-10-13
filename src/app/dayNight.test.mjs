@@ -9,6 +9,8 @@ import {
   nextSunTimes,
   nightLook,
   partOfDay,
+  SLIDER_REACH_MIN,
+  sliderLabel,
   subsolarPoint,
   sunHeight,
   sunLine,
@@ -126,4 +128,21 @@ test('the card line names the part of the day and lists what comes next first', 
   assert.match(night, /^Night · sunrise 06:2\d · sunset 17:\d\d$/, night);
   const dusk = sunLine(51.5074, -0.1278, at('2026-10-13T17:25:00Z'), clock);
   assert.match(dusk, /^Twilight · sunrise/, dusk);
+});
+
+test('the time slider reaches half a day each way and says what it shows', () => {
+  assert.equal(SLIDER_REACH_MIN, 12 * 60);
+  const now = at('2026-10-13T12:00:00Z');
+  assert.equal(sliderLabel(0, now), 'Shading shows the real time');
+  assert.equal(sliderLabel(200, now), 'Shading shows 15:20 UTC, 3 h 20 min ahead');
+  assert.equal(sliderLabel(-45, now), 'Shading shows 11:15 UTC, 45 min back');
+  assert.equal(sliderLabel(-720, now), 'Shading shows 00:00 UTC, 12 h back');
+});
+
+test('moving the time by six hours moves the sun a quarter of the way round', () => {
+  const now = at('2026-10-13T12:00:00Z');
+  const here = subsolarPoint(now).lon;
+  const later = subsolarPoint(now + 6 * 3_600_000).lon;
+  const moved = ((here - later + 540) % 360) - 180;
+  assert.ok(Math.abs(moved - 90) < 0.5, String(moved));
 });

@@ -144,6 +144,23 @@ export function sunLine(lat, lon, from, clockAt) {
   return [label, ...events].join(' · ');
 }
 
+/** How far the time slider reaches each way from now: half a day. */
+export const SLIDER_REACH_MIN = 720;
+
+/** What the slider's label says for an offset from the real time. */
+export function sliderLabel(offsetMin, now = Date.now()) {
+  if (!offsetMin) return 'Shading shows the real time';
+  const shown = new Date(now + offsetMin * 60_000).toISOString().slice(11, 16);
+  const size = Math.abs(offsetMin);
+  const span = [
+    size >= 60 && `${Math.floor(size / 60)} h`,
+    size % 60 > 0 && `${size % 60} min`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return `Shading shows ${shown} UTC, ${span} ${offsetMin > 0 ? 'ahead' : 'back'}`;
+}
+
 /**
  * How strong the night look is from this camera height.
  * `floor` is how bright the night side stays (1 is full daylight) and `glow`
@@ -237,6 +254,47 @@ czm_material czm_getMaterial(czm_materialInput materialInput) {
   return material;
 }`;
 
+const STYLE = `
+#day-night-time {
+  position: fixed;
+  left: 50%;
+  /* Clear of the map credits line, which must never be covered. */
+  bottom: 136px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transform: translateX(-50%);
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 157, 77, 0.45);
+  border-radius: 10px;
+  background: rgba(4, 12, 20, 0.9);
+  color: #ffe3c7;
+  font: 11px var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+#day-night-time[hidden],
+body.ui-clean-view #day-night-time { display: none; }
+#day-night-time input { width: min(260px, 34vw); accent-color: #ff9d4d; }
+#day-night-time span { min-width: 250px; }
+#day-night-time button {
+  padding: 3px 9px;
+  border: 1px solid rgba(255, 157, 77, 0.5);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+#day-night-time button:disabled { opacity: 0.4; cursor: default; }
+@media (max-width: 720px) {
+  /* Narrow: it wraps onto two rows, so it also steps over the measure readout. */
+  #day-night-time { bottom: 230px; flex-wrap: wrap; justify-content: center; white-space: normal; }
+  #day-night-time span { min-width: 0; }
+}
+`;
+
 const ICON =
   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg>';
 
@@ -265,8 +323,33 @@ export function installDayNight({ viewer, tileset }, doc = document) {
   const { scene } = viewer;
   const { globe } = scene;
   let on = readSaved();
-  let sub = subsolarPoint();
+  /** Minutes the shading is moved from the real time by the slider. */
+  let offsetMin = 0;
+  const shownTime = () => Date.now() + offsetMin * 60_000;
+  let sub = subsolarPoint(shownTime());
   let sunAt = 0;
+
+  const style = doc.createElement('style');
+  style.textContent = STYLE;
+  doc.head.appendChild(style);
+  const timePanel = doc.createElement('div');
+  timePanel.id = 'day-night-time';
+  timePanel.hidden = true;
+  const slider = doc.createElement('input');
+  slider.type = 'range';
+  slider.min = String(-SLIDER_REACH_MIN);
+  slider.max = String(SLIDER_REACH_MIN);
+  slider.step = '5';
+  slider.value = '0';
+  slider.title = 'Drag to move the day and night shading through the day';
+  slider.setAttribute('aria-label', 'Time shown by the day and night shading');
+  const timeLabel = doc.createElement('span');
+  const nowButton = doc.createElement('button');
+  nowButton.type = 'button';
+  nowButton.textContent = 'Now';
+  nowButton.title = 'Back to the real time';
+  timePanel.append(slider, timeLabel, nowButton);
+  doc.body.appendChild(timePanel);
   let shader = null;
   let globeMaterial = null;
   const credit = new Cesium.Credit(CREDIT, true);
@@ -353,8 +436,10 @@ export function installDayNight({ viewer, tileset }, doc = document) {
   };
 
   const syncSun = () => {
-    sub = subsolarPoint();
+    sub = subsolarPoint(shownTime());
     sunAt = Date.now();
+    timeLabel.textContent = sliderLabel(offsetMin);
+    nowButton.disabled = offsetMin === 0;
     shader?.setUniform('u_sun', sunVector());
     if (globeMaterial) globeMaterial.uniforms.sunDir = sunVector();
     scene.requestRender();
@@ -373,11 +458,15 @@ export function installDayNight({ viewer, tileset }, doc = document) {
   };
 
   const apply = () => {
+    timePanel.hidden = !on;
     if (on) {
       viewer.creditDisplay.addStaticCredit(credit);
       syncSurface();
       syncSun();
     } else {
+      // Switching off puts the slider back on the real time.
+      offsetMin = 0;
+      slider.value = '0';
       syncSurface();
       viewer.creditDisplay.removeStaticCredit(credit);
       scene.requestRender();
@@ -393,6 +482,18 @@ export function installDayNight({ viewer, tileset }, doc = document) {
   const removeLook = scene.preRender.addEventListener(
     guard('Day and night', syncLook),
   );
+
+  slider.addEventListener('input', () => {
+    offsetMin = Number(slider.value) || 0;
+    syncSun();
+  });
+  // Arrow keys move the slider; they must not reach the app's shortcuts.
+  slider.addEventListener('keydown', (event) => event.stopPropagation());
+  nowButton.addEventListener('click', () => {
+    offsetMin = 0;
+    slider.value = '0';
+    syncSun();
+  });
 
   const button = doc.createElement('button');
   button.id = 'day-night-toggle';
@@ -421,5 +522,7 @@ export function installDayNight({ viewer, tileset }, doc = document) {
     removeLook();
     apply();
     button.remove();
+    timePanel.remove();
+    style.remove();
   };
 }
