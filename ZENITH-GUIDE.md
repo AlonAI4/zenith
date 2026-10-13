@@ -60,7 +60,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | HD buildings | A switch for sharper 3D buildings. It uses more data and graphics power. |
 | Train stations | Train, metro and tram stops in four countries. |
 | Place names | Place and road names over the map. |
-| Map pin | Click the map for the local time and coordinates there, and in London the address. |
+| Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates, and in London the address. |
 | Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
 | Measure tool | Click two or more spots on the map to get the distance between them. |
 | Saved places | Star the view on screen, name it, and fly back with one click. The list stays on your computer. |

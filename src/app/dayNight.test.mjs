@@ -5,10 +5,13 @@ import * as Cesium from 'cesium';
 
 import {
   directionTo,
+  HORIZON,
+  nextSunTimes,
   nightLook,
   partOfDay,
   subsolarPoint,
   sunHeight,
+  sunLine,
 } from './dayNight.js';
 
 const at = (iso) => Date.parse(iso);
@@ -83,4 +86,44 @@ test('the night look is strong from far out and mild close to the ground', () =>
 test('directions are unit vectors', () => {
   const [x, y, z] = directionTo({ lat: 37, lon: -122 });
   assert.ok(Math.abs(Math.hypot(x, y, z) - 1) < 1e-12);
+});
+
+const utc = (ms) => new Date(ms).toISOString().slice(11, 16);
+const minutes = (ms) => new Date(ms).getUTCHours() * 60 + new Date(ms).getUTCMinutes();
+
+test('sunrise and sunset match the almanac for London', () => {
+  // 13 October 2026: sunrise 07:21 and sunset 18:12 British Summer Time,
+  // which is 06:21 and 17:12 UTC.
+  const { rise, set } = nextSunTimes(51.5074, -0.1278, at('2026-10-13T00:00:00Z'));
+  assert.ok(Math.abs(minutes(rise) - (6 * 60 + 21)) <= 4, `sunrise ${utc(rise)} UTC`);
+  assert.ok(Math.abs(minutes(set) - (17 * 60 + 12)) <= 4, `sunset ${utc(set)} UTC`);
+  // At those moments the sun is on the horizon the shading draws its line at.
+  for (const moment of [rise, set]) {
+    assert.ok(Math.abs(sunHeight(51.5074, -0.1278, subsolarPoint(moment)) - HORIZON) < 1e-4);
+  }
+});
+
+test('on the equator at the equinox the day is a little over twelve hours', () => {
+  const { rise, set } = nextSunTimes(0, 0, at('2026-03-20T00:00:00Z'));
+  const dayMinutes = (set - rise) / 60_000;
+  assert.ok(dayMinutes > 12 * 60 && dayMinutes < 12 * 60 + 12, String(dayMinutes));
+});
+
+test('the far north has days with no sunset and days with no sunrise', () => {
+  const TROMSO = [69.65, 18.96];
+  assert.deepEqual(nextSunTimes(...TROMSO, at('2026-06-21T00:00:00Z')), { rise: null, set: null });
+  assert.deepEqual(nextSunTimes(...TROMSO, at('2026-12-21T00:00:00Z')), { rise: null, set: null });
+  const clock = () => '00:00';
+  assert.match(sunLine(...TROMSO, at('2026-06-21T12:00:00Z'), clock), /^Day · the sun does not set/);
+  assert.match(sunLine(...TROMSO, at('2026-12-21T00:00:00Z'), clock), /^Night · the sun does not rise/);
+});
+
+test('the card line names the part of the day and lists what comes next first', () => {
+  const clock = (ms) => utc(ms);
+  const noon = sunLine(51.5074, -0.1278, at('2026-10-13T12:00:00Z'), clock);
+  assert.match(noon, /^Day · sunset 17:1\d · sunrise 06:2\d$/, noon);
+  const night = sunLine(51.5074, -0.1278, at('2026-10-13T23:00:00Z'), clock);
+  assert.match(night, /^Night · sunrise 06:2\d · sunset 17:\d\d$/, night);
+  const dusk = sunLine(51.5074, -0.1278, at('2026-10-13T17:25:00Z'), clock);
+  assert.match(dusk, /^Twilight · sunrise/, dusk);
 });

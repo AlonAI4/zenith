@@ -388,6 +388,19 @@ const checks = [
       await until(page, () => /Local time\s*\d\d:\d\d:\d\d/.test(document.getElementById('address-card')?.textContent ?? ''), 5000, 'no local time in the card');
       const first = await card();
       expect(/Coordinates/.test(first), 'no coordinates in the card');
+      const sun = await page.evaluate(() => document.getElementById('address-card-sun')?.textContent ?? '');
+      expect(/^(Day|Twilight|Night) · (sunrise|sunset) \d\d:\d\d · (sunrise|sunset) \d\d:\d\d$/.test(sun), `the sun line said "${sun}"`);
+      // It must agree with the shading: the same sun maths, asked directly.
+      const agrees = await page.evaluate(async () => {
+        const { partOfDay, subsolarPoint } = await import('/src/app/dayNight.js');
+        const card = document.getElementById('address-card');
+        const lat = Number(card.dataset.lat);
+        const lon = Number(card.dataset.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return 'no coordinates to compare';
+        const part = partOfDay(lat, lon, subsolarPoint(Date.now()));
+        return document.getElementById('address-card-sun').textContent.toLowerCase().startsWith(part) ? 'yes' : `card disagrees with ${part}`;
+      });
+      expect(agrees === 'yes', `the sun line and the shading disagree: ${agrees}`);
       await sleep(1300);
       expect((await card()) !== first, 'the clock in the card is not ticking');
       await press(page, 'address-lookup-toggle');

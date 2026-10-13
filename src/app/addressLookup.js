@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { sunLine } from './dayNight.js';
 import { isMeasuring } from './measureTool.js';
 import {
   isTimeZonePick,
@@ -180,7 +181,10 @@ export function installAddressLookup({ viewer }, doc = document) {
     'font-weight:700;font-size:15px;letter-spacing:.04em;color:#ffc44d';
   const clockZone = doc.createElement('div');
   clockZone.style.cssText = 'opacity:.7;font-size:11px';
-  clock.append(clockTime, clockZone);
+  const clockSun = doc.createElement('div');
+  clockSun.id = 'address-card-sun';
+  clockSun.style.cssText = 'margin-top:2px;font-size:11px;color:#ffd9a0';
+  clock.append(clockTime, clockZone, clockSun);
   card.append(close, lines, clock);
   doc.body.appendChild(card);
 
@@ -201,11 +205,20 @@ export function installAddressLookup({ viewer }, doc = document) {
       return;
     }
     if (mine !== request) return;
+    let sunMinute = '';
     const tick = () => {
       const { time, day, offset, summer, city } = zoneClock(zone);
       const text = `Local time ${time}`;
       if (clockTime.textContent === text) return;
       clockTime.textContent = text;
+      // Day or night there, and the next sunrise and sunset in that place's
+      // own time. Worked out again each minute.
+      if (time.slice(0, 5) !== sunMinute) {
+        sunMinute = time.slice(0, 5);
+        clockSun.textContent = sunLine(lat, lon, Date.now(), (ms) =>
+          zoneClock(zone, new Date(ms)).time.slice(0, 5),
+        );
+      }
       clockZone.textContent = [
         day,
         summer ? `${offset} (summer time)` : offset,
@@ -305,6 +318,8 @@ export function installAddressLookup({ viewer }, doc = document) {
     const lat = Cesium.Math.toDegrees(where.latitude);
     const lon = Cesium.Math.toDegrees(where.longitude);
     const coordinates = [`Coordinates: ${formatCoordinates(lat, lon)}`];
+    card.dataset.lat = lat.toFixed(5);
+    card.dataset.lon = lon.toFixed(5);
     const mine = ++request;
 
     pins ||= scene.primitives.add(new Cesium.BillboardCollection({ scene }));

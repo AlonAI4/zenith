@@ -73,11 +73,75 @@ export function sunHeight(lat, lon, sub) {
   return here[0] * sun[0] + here[1] * sun[1] + here[2] * sun[2];
 }
 
+/**
+ * Where the sun's centre is on the horizon as people see it. The usual
+ * allowance: the air bends the light, and the sun is a disc, not a point.
+ * Sunrise and sunset times in an almanac use the same figure.
+ */
+export const HORIZON = Math.sin(rad(-0.833));
+
 /** Day, twilight (sun up to 6 degrees under the horizon) or night. */
 export function partOfDay(lat, lon, sub) {
   const height = sunHeight(lat, lon, sub);
-  if (height > 0) return 'day';
+  if (height > HORIZON) return 'day';
   return height > Math.sin(rad(-6)) ? 'twilight' : 'night';
+}
+
+/**
+ * The next sunrise and the next sunset at a place.
+ * @param {number} lat
+ * @param {number} lon
+ * @param {number} [from] Milliseconds since 1970.
+ * @returns {{ rise: number|null, set: number|null }} Each is null when the
+ *   sun does not cross the horizon in the next day, as in the far north and
+ *   south in summer and winter.
+ */
+export function nextSunTimes(lat, lon, from = Date.now()) {
+  const STEP = 5 * 60_000;
+  const up = (ms) => sunHeight(lat, lon, subsolarPoint(ms)) > HORIZON;
+  let rise = null;
+  let set = null;
+  let was = up(from);
+  for (let t = from + STEP; t <= from + 86_400_000 + STEP; t += STEP) {
+    const is = up(t);
+    if (is !== was) {
+      // Close in on the crossing: twelve halvings of five minutes is 0.1 s.
+      let before = t - STEP;
+      let after = t;
+      for (let i = 0; i < 12; i++) {
+        const middle = (before + after) / 2;
+        if (up(middle) === was) before = middle;
+        else after = middle;
+      }
+      if (is && rise === null) rise = after;
+      if (!is && set === null) set = after;
+      if (rise !== null && set !== null) break;
+    }
+    was = is;
+  }
+  return { rise, set };
+}
+
+/**
+ * One line for the click card: the part of the day there, then the next
+ * sunrise and sunset in the order they come.
+ * @param {(ms: number) => string} clockAt The local clock time at a moment.
+ */
+export function sunLine(lat, lon, from, clockAt) {
+  const part = partOfDay(lat, lon, subsolarPoint(from));
+  const { rise, set } = nextSunTimes(lat, lon, from);
+  const label = part[0].toUpperCase() + part.slice(1);
+  const events = [
+    rise !== null && [rise, `sunrise ${clockAt(rise)}`],
+    set !== null && [set, `sunset ${clockAt(set)}`],
+  ]
+    .filter(Boolean)
+    .sort((a, b) => a[0] - b[0])
+    .map((event) => event[1]);
+  if (events.length === 0) {
+    return `${label} · the sun does not ${part === 'day' ? 'set' : 'rise'} in the next day`;
+  }
+  return [label, ...events].join(' · ');
 }
 
 /**
@@ -109,9 +173,11 @@ float zenithDaylight(float sunHeight) {
 // The line where the sun is on the horizon, about a pixel and a half wide at
 // any zoom. Drawn here, not as a line on the ground: ground lines over the 3D
 // buildings cost the map a quarter of its speed.
+// It sits at the horizon almanacs use (0.833 degrees down), so it passes
+// through the places where the click card says the sun is rising or setting.
 float zenithDuskLine(float sunHeight) {
   float width = max(fwidth(sunHeight) * 1.5, 4.0e-7);
-  return (1.0 - smoothstep(0.0, width, abs(sunHeight))) * 0.85;
+  return (1.0 - smoothstep(0.0, width, abs(sunHeight + 0.014538))) * 0.85;
 }
 vec3 zenithLights(vec3 p, sampler2D picture) {
   float lon = atan(p.y, p.x);
