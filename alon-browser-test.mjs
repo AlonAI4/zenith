@@ -163,6 +163,52 @@ function pageHelpers() {
 const results = [];
 let pageErrors = [];
 
+/**
+ * What the 3D map's provider has been doing. When the 3D map is slow to come
+ * back, this is what tells "the provider is slow or refusing right now"
+ * (reported as skipped, with what was seen) from "the app is broken" (a
+ * failure).
+ */
+const SLOW_MS = 8000;
+const provider = { pending: new Map(), events: [] };
+function watchProvider(page) {
+  const isProvider = (url) => {
+    try {
+      return /(^|\.)cesium\.com$|^tile\.googleapis\.com$/.test(new URL(url).host);
+    } catch {
+      return false;
+    }
+  };
+  const finished = (request, what) => {
+    const started = provider.pending.get(request);
+    if (started === undefined) return;
+    provider.pending.delete(request);
+    const took = Date.now() - started;
+    if (what) provider.events.push({ at: Date.now(), what });
+    else if (took > SLOW_MS) provider.events.push({ at: Date.now(), what: `an answer took ${Math.round(took / 1000)} s` });
+    if (provider.events.length > 400) provider.events.splice(0, 200);
+  };
+  page.on('request', (request) => {
+    if (isProvider(request.url())) provider.pending.set(request, Date.now());
+  });
+  page.on('response', (response) => finished(response.request(), response.status() >= 400 ? `refused with ${response.status()}` : ''));
+  page.on('requestfailed', (request) => {
+    const why = request.failure()?.errorText ?? 'unknown';
+    // Leaving a page cancels what it was loading; that is not trouble.
+    if (/ERR_ABORTED/.test(why)) provider.pending.delete(request);
+    else finished(request, `a request failed (${why})`);
+  });
+}
+/** Trouble at the 3D map's provider in the last while, in words; '' when there was none. */
+function providerTrouble(withinMs = 45_000) {
+  const since = Date.now() - withinMs;
+  const seen = provider.events.filter((event) => event.at >= since).map((event) => event.what);
+  let waiting = 0;
+  for (const started of provider.pending.values()) if (Date.now() - started > SLOW_MS) waiting += 1;
+  if (waiting) seen.push(`${waiting} request${waiting === 1 ? '' : 's'} unanswered after ${SLOW_MS / 1000} s`);
+  return [...new Set(seen)].slice(0, 3).join(', ');
+}
+
 async function until(page, test, ms, why, ...testArgs) {
   const end = Date.now() + ms;
   for (;;) {
@@ -219,8 +265,9 @@ async function pickMap(page, id) {
   try {
     await until(page, (stack) => window.__zt.map() === stack, 20_000, `the map did not switch to ${id}`, id);
   } catch (error) {
-    if (id === 'photoreal' && (await provider3dDown(page))) {
-      throw new Skip('the 3D map provider is not answering right now (the app fell back to satellite by itself)');
+    const trouble = providerTrouble();
+    if (id === 'photoreal' && ((await provider3dDown(page)) || trouble)) {
+      throw new Skip(`the 3D map provider is not answering properly right now (${trouble || 'the app fell back to satellite by itself'})`);
     }
     throw error;
   }
@@ -1381,8 +1428,9 @@ const soloChecks = [
       try {
         await until(page, () => window.__zt.map() === 'photoreal', 20_000, 'the app stayed on the satellite map');
       } catch (error) {
-        if (await provider3dDown(page)) {
-          throw new Skip('the 3D map provider is not answering right now (the app fell back to satellite by itself)');
+        const trouble = providerTrouble();
+        if ((await provider3dDown(page)) || trouble) {
+          throw new Skip(`the 3D map provider is not answering properly right now (${trouble || 'the app fell back to satellite by itself'})`);
         }
         throw error;
       }
@@ -1600,8 +1648,18 @@ const soloChecks = [
           camera.setView({ destination: camera.position.constructor.fromDegrees(2.34, 48.86, 2_000_000) });
         });
         await sleep(1200);
-        await clickMap(page, 0.5, 0.5);
-        await until(page, () => /Zoom in closer/.test(document.getElementById('address-card')?.textContent ?? ''), 5000, 'from far out the card did not ask to zoom in');
+        // The old pin stands in the middle of this view. Click on the pin
+        // itself: that is a click on the map under it, not on a thing.
+        const pin = await page.evaluate(() => {
+          const viewer = window.__zt.viewer();
+          const card = document.getElementById('address-card');
+          const toRad = Math.PI / 180;
+          const at = viewer.scene.globe.ellipsoid.cartographicToCartesian({ longitude: Number(card.dataset.lon) * toRad, latitude: Number(card.dataset.lat) * toRad, height: 0 });
+          const spot = viewer.scene.cartesianToCanvasCoordinates(at);
+          return [Math.round(spot.x), Math.round(spot.y)];
+        });
+        await page.mouse.click(pin[0], pin[1] - 10);
+        await until(page, () => /Zoom in closer/.test(document.getElementById('address-card')?.textContent ?? ''), 5000, 'a click on the pin itself, from far out, did not ask to zoom in');
         expect(/Local time/.test(await cardText()), 'from far out the card lost its local time');
         expect(photon === 1 && wikipedia === 1, 'a click from far out still asked the lookup services');
         await press(page, 'address-lookup-toggle');
@@ -1864,12 +1922,28 @@ async function run(label, list, page, setup) {
   for (const [name, check] of list) {
     if (only && !only.some((word) => name.toLowerCase().includes(word))) continue;
     pageErrors = pageErrors.slice(0, 0);
+    // A check with its own page load starts from nothing saved, so that one
+    // check stopping half-way cannot make the next one fail too.
+    if (list === soloChecks) {
+      await page
+        .evaluate(() => {
+          localStorage.removeItem('gev.savedPlaces');
+          localStorage.removeItem('gev.satelliteByChoice');
+        })
+        .catch(() => {});
+    }
     try {
       await check(page, setup);
       results.push({ label, name, state: 'pass' });
       console.log(`  ✓ ${name}`);
     } catch (error) {
       const skipped = error instanceof Skip;
+      if (!skipped) {
+        // What was on screen, and how the 3D provider was doing, go in the report.
+        const showing = await page.evaluate(() => window.__zt?.map?.() ?? 'nothing').catch(() => 'unknown');
+        const trouble = providerTrouble();
+        error.message += ` [map showing: ${showing}${trouble ? `; 3D provider: ${trouble}` : ''}]`;
+      }
       results.push({ label, name, state: skipped ? 'skip' : 'fail', why: error.message });
       console.log(`  ${skipped ? '–' : '✗'} ${name}: ${skipped ? 'skipped, ' : ''}${error.message}`);
       if (!skipped) await calm(page).catch(() => {});
@@ -1893,6 +1967,7 @@ async function main() {
   }
   const page = await browser.newPage();
   page.on('pageerror', (error) => pageErrors.push(error.message));
+  watchProvider(page);
   await page.evaluateOnNewDocument(pageHelpers);
 
   // A new browser has no saved settings. Keep the two first-run panels out of
