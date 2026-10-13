@@ -1,2 +1,17 @@
+# This page is unlisted: it is meant for people who were given the link.
+#
+# Search engines may READ it, so that they see its "do not list" instruction
+# (the X-Robots-Tag header and the robots meta tag). A search engine that is
+# blocked from reading a page never sees that instruction and can still list
+# the bare address if another site links to it.
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: DuckDuckBot
+User-agent: Applebot
+User-agent: YandexBot
+User-agent: Baiduspider
+Allow: /
+
+# Every other crawler, including the ones that collect pages to train AI: keep out.
 User-agent: *
 Disallow: /
