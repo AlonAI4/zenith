@@ -3,7 +3,7 @@
 -- First run starts the app and opens it. Run it again while it is running to
 -- open it, update it or stop it.
 on helper(action)
-	set projectDir to (POSIX path of (path to home folder)) & "tools/gods-eye-view"
+	set projectDir to (POSIX path of (path to home folder)) & "tools/zenith"
 	return do shell script "/bin/zsh " & quoted form of (projectDir & "/alon-app.sh") & " " & action
 end helper
 
