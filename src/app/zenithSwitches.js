@@ -9,26 +9,31 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'map-labels-toggle',
     name: 'Place names',
-    what: 'Writes place and road names over the map.',
+    what: 'Place and road names over the map.',
   },
   {
     id: 'train-stations-toggle',
     name: 'Train stations',
-    what: 'Marks train, metro and tram stops. Click one for its name.',
+    what: 'Train, metro and tram stops. Click one for its name.',
   },
   {
     id: 'time-zones-toggle',
     name: 'Time zones',
-    what: 'Draws the time zone borders, each with its offset from UTC.',
+    what: 'Time zone borders with their offsets from UTC.',
   },
   {
     id: 'address-lookup-toggle',
     name: 'Map pin',
-    what: 'When on, clicking the map shows the local time and coordinates there, and in London the address.',
+    what: 'Click the map for local time and coordinates, and in London the address.',
   },
   {
     id: 'hd-detail-toggle',
     name: 'HD buildings',
-    what: 'Sharper 3D buildings. Uses more data and more graphics power.',
+    what: 'Sharper 3D buildings. Heavier on data and graphics.',
+  },
+  {
+    id: 'zenith-help-toggle',
+    name: 'Help',
+    what: 'Opens the card that explains the switches and map clicks.',
   },
 ]);

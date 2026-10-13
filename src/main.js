@@ -2,6 +2,7 @@ import { installAddressLookup } from './app/addressLookup.js';
 import { installCompassDial } from './app/compassDial.js';
 import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
+import { installHelpCard } from './app/helpCard.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
 import { installPanelGuard } from './app/panelGuard.js';
@@ -59,6 +60,7 @@ application
     installTimeZones(scene);
     installAddressLookup(scene);
     installHdDetail(scene);
+    installHelpCard();
     installToolbarFit();
   })
   .catch(() => {});
