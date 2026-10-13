@@ -1,5 +1,6 @@
 import { installAddressLookup } from './app/addressLookup.js';
 import { installCompassDial } from './app/compassDial.js';
+import { installDayNight } from './app/dayNight.js';
 import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
 import { installHelpCard } from './app/helpCard.js';
@@ -59,6 +60,7 @@ application
     install3dMapWatchdog(scene);
     installTrainStations(scene);
     installTimeZones(scene);
+    installDayNight(scene);
     installAddressLookup(scene);
     installMeasureTool(scene);
     installHdDetail(scene);

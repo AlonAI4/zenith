@@ -22,6 +22,11 @@ export const ZENITH_SWITCHES = Object.freeze([
     what: 'Time zone borders with their offsets from UTC.',
   },
   {
+    id: 'day-night-toggle',
+    name: 'Day and night',
+    what: 'Shades the night side of the Earth, with city lights and the line where night begins.',
+  },
+  {
     id: 'address-lookup-toggle',
     name: 'Map pin',
     what: 'Click the map for local time and coordinates, and in London the address.',
