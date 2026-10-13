@@ -149,9 +149,10 @@ body.ui-clean-view #compass-dial {
 /**
  * @param {Cesium.Viewer} viewer
  * @param {Document} [doc]
+ * @param {{ onTilted?: () => void }} [options] Called when a drag on the tilt arc ends.
  * @returns {() => void} Removes the dial.
  */
-export function installCompassDial(viewer, doc = document) {
+export function installCompassDial(viewer, doc = document, { onTilted } = {}) {
   const rotateView = createRotator(viewer);
 
   const style = doc.createElement('style');
@@ -285,10 +286,13 @@ export function installCompassDial(viewer, doc = document) {
   const onPointerUp = (event) => {
     if (!drag) return;
     const wasClickOnNorth = drag.part === 'north' && !drag.moved;
+    const wasTilt = drag.part === 'tilt';
     drag = null;
     root.classList.remove('is-turning');
     svg.releasePointerCapture?.(event.pointerId);
     if (wasClickOnNorth && event.type === 'pointerup') northUp();
+    // The app's own tilt button shows whether the view is tilted; tell it.
+    if (wasTilt) onTilted?.();
   };
 
   svg.addEventListener('pointerdown', onPointerDown);

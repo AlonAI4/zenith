@@ -1,8 +1,5 @@
 import * as Cesium from 'cesium';
-import {
-  readCameraTargetFrame,
-  setCameraTargetFrame,
-} from '../ui/cameraOrientationControls.js';
+import { setCameraTargetFrame } from '../ui/cameraOrientationControls.js';
 
 /**
  * A marker on whatever is being tracked, for when the view is zoomed far out.
@@ -139,26 +136,41 @@ export function installTrackingMarker(viewer, doc = document) {
     return offset ? Cesium.Cartesian3.magnitude(offset) : DEFAULT_HOME_M;
   };
 
+  /**
+   * Where the tracked thing is, and how far the camera is from it. Worked out
+   * here because the app's own helper gives up once the camera is more than a
+   * million kilometres out, and zooming has no limit.
+   */
+  const tracked = () => {
+    const entity = viewer.trackedEntity;
+    // The layer's own display position first: asking a flight for its
+    // position a second time in a frame can move it on.
+    const target =
+      entity &&
+      (entity.gevDisplayPosition?.() ||
+        entity.position?.getValue(viewer.clock.currentTime));
+    if (!target) return null;
+    const range = Cesium.Cartesian3.distance(viewer.camera.positionWC, target);
+    return Number.isFinite(range) ? { entity, target, range } : null;
+  };
+
   let shown = false;
   let shownName = '';
   const sync = () => {
-    const entity = viewer.trackedEntity;
-    // While something is tracked this reads its position without a depth
-    // pick, so it is cheap enough for every frame.
-    const frame = entity ? readCameraTargetFrame(viewer) : null;
-    const spot =
-      frame &&
-      markerShows({
+    const now = tracked();
+    if (
+      !now ||
+      !markerShows({
         tracking: true,
-        range: frame.range,
-        home: homeOf(entity),
-      }) &&
-      scene.cartesianToCanvasCoordinates(frame.target);
-    if (!spot) {
+        range: now.range,
+        home: homeOf(now.entity),
+      })
+    ) {
       if (shown) marker.classList.remove('is-shown');
       shown = false;
       return;
     }
+    const { entity } = now;
     const name = shortName(entity.gevLabelModel?.title || entity.name);
     if (name !== shownName) {
       shownName = name;
@@ -167,6 +179,12 @@ export function installTrackingMarker(viewer, doc = document) {
       marker.setAttribute('aria-label', `Fly back to ${name}`);
     }
     const box = scene.canvas.getBoundingClientRect();
+    // From extremely far the engine can no longer place the point on screen.
+    // A tracked thing is always what the camera looks at: the middle.
+    const spot = scene.cartesianToCanvasCoordinates(now.target) || {
+      x: box.width / 2,
+      y: box.height / 2,
+    };
     marker.style.transform = `translate(${Math.round(box.left + spot.x)}px, ${Math.round(box.top + spot.y)}px)`;
     if (!shown) marker.classList.add('is-shown');
     shown = true;
@@ -175,19 +193,20 @@ export function installTrackingMarker(viewer, doc = document) {
   let stopFlying = null;
   const flyBack = () => {
     stopFlying?.();
-    const entity = viewer.trackedEntity;
-    const start = entity && readCameraTargetFrame(viewer);
+    const start = tracked();
     if (!start) return;
-    const home = homeOf(entity);
+    const home = homeOf(start.entity);
     const began = performance.now();
     const remove = scene.preUpdate.addEventListener(() => {
       const progress = Math.min(1, (performance.now() - began) / FLY_MS);
-      const frame =
-        viewer.trackedEntity === entity && readCameraTargetFrame(viewer);
+      const now = tracked();
       const moved =
-        frame &&
+        now?.entity === start.entity &&
         setCameraTargetFrame(viewer, {
-          ...frame,
+          target: now.target,
+          // While tracking, these two are measured round the tracked thing.
+          heading: viewer.camera.heading,
+          pitch: viewer.camera.pitch,
           range: flyRange(
             start.range,
             home,
