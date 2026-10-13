@@ -16,6 +16,7 @@ import { initBranding } from './ui/branding.js';
 import { initButtonTooltips } from './ui/buttonTooltips.js';
 import { initCustomSelects } from './ui/customSelect.js';
 import { initPanelFullscreen } from './ui/panelFullscreen.js';
+import { initShortcutGuard } from './ui/shortcutGuard.js';
 import { initToggleLook } from './ui/toggleLook.js';
 
 const application = createStandaloneApplication({
@@ -36,6 +37,7 @@ initButtonTooltips();
 initCustomSelects();
 initPanelFullscreen();
 initToggleLook();
+initShortcutGuard();
 // start() hands back the same promise; its failure is reported above.
 application
   .start()
