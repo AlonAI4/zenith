@@ -17,6 +17,21 @@ runs programs on your Mac, and each of the free keys below needs an account.
 
 ## Install and start
 
+**The quick way.** Unzip the download, open the `Zenith` folder and
+double-click `Start Zenith.command`. A Terminal window opens, lists what it is
+about to do and waits for you to press Return. The first run downloads the
+packages Zenith needs (about 350 MB, a few minutes). After that it starts in
+seconds and opens Zenith in your browser. Closing that window stops Zenith.
+
+The first time, macOS will ask you to confirm the file, or block it until you
+allow it, because it was downloaded from the internet and does not come from
+the App Store. To allow it, open System Settings, choose Privacy & Security,
+scroll down and click **Open Anyway** next to its name. On older versions of
+macOS, right-click the file and choose Open instead. If you are not sure, ask
+a parent or guardian before you allow it.
+
+**By hand**, if you would rather type the commands yourself:
+
 1. Unzip the download. You get a folder called `Zenith`.
 2. Open the Terminal app, type `cd ` (with a space), drag the `Zenith` folder
    onto the window, and press Return.
@@ -30,10 +45,6 @@ runs programs on your Mac, and each of the free keys below needs an account.
 
 5. Open http://localhost:4173 in your browser. Leave the Terminal window open
    while you use it. Press Ctrl+C in the Terminal to stop it.
-
-macOS may ask whether you trust software downloaded from the internet. That is
-expected for software distributed outside the App Store. If you are not sure,
-ask a parent or guardian before you allow it.
 
 ## What this build adds
 
