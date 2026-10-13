@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { setCameraTargetFrame } from '../ui/cameraOrientationControls.js';
+import { guard } from './addOns.js';
 
 /**
  * Keeps the Earth in the middle of the screen when zooming far out.
@@ -195,7 +196,9 @@ export function installGlobeCentring(viewer) {
     });
   };
 
-  const removeStep = scene.preUpdate.addEventListener(step);
+  const removeStep = scene.preUpdate.addEventListener(
+    guard('Earth centring', step),
+  );
 
   return () => {
     removeStep();

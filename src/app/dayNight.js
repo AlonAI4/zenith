@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { guard } from './addOns.js';
 
 /**
  * Day and night: the night side of the Earth is shaded, city lights show on
@@ -346,7 +347,9 @@ export function installDayNight({ viewer, tileset }, doc = document) {
     syncSurface();
     if (on && Date.now() - sunAt >= SUN_EVERY_MS) syncSun();
   }, SURFACE_EVERY_MS);
-  const removeLook = scene.preRender.addEventListener(syncLook);
+  const removeLook = scene.preRender.addEventListener(
+    guard('Day and night', syncLook),
+  );
 
   const button = doc.createElement('button');
   button.id = 'day-night-toggle';

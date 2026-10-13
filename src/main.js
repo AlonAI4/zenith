@@ -1,3 +1,4 @@
+import { startAddOns } from './app/addOns.js';
 import { installAddressLookup } from './app/addressLookup.js';
 import { installCompassDial } from './app/compassDial.js';
 import { installDayNight } from './app/dayNight.js';
@@ -38,43 +39,63 @@ application.start().catch((error) => {
   loaderStatus.style.color = '#ff4444';
 });
 
-initBranding();
-initButtonTooltips();
-initCustomSelects();
-initPanelFullscreen();
-initToggleLook();
-initShortcutGuard();
-// start() hands back the same promise; its failure is reported above.
+// Each add-on starts on its own: one that fails is named in a notice and the
+// rest still start (see app/addOns.js).
+startAddOns([
+  ['Branding', () => initBranding()],
+  ['Button tooltips', () => initButtonTooltips()],
+  ['Menus', () => initCustomSelects()],
+  ['Full-screen panels', () => initPanelFullscreen()],
+  ['Blue switches', () => initToggleLook()],
+  ['Shortcut guard', () => initShortcutGuard()],
+]);
 application
   .start()
-  .then(() => {
-    const { scene, controls } = application.getComponents();
-    installPanelGuard(controls?.styleManager);
-    installRotateGestures(scene.viewer);
-    installCompassDial(scene.viewer, document, {
-      onTilted: () =>
-        controls?.styleManager?._cameraOrientationControls?.refreshTilt?.(),
-    });
-    installGlobeCentring(scene.viewer);
-    installTrackingMarker(scene.viewer);
-    installScaleBar(scene.viewer);
-    installMapLabels(scene);
-    install3dMapWatchdog(scene);
-    installTrainStations(scene);
-    installTimeZones(scene);
-    installDayNight(scene);
-    installAddressLookup(scene);
-    installMeasureTool(scene);
-    installSavedPlaces(scene);
-    installVideoMode(scene.viewer, {
-      setCleanView: controls?.styleManager?.setCleanView
-        ? (on) => controls.styleManager.setCleanView(on)
-        : undefined,
-    });
-    installHdDetail(scene);
-    installHelpCard();
-    installToolbarFit();
-  })
-  .catch(() => {});
+  .then(
+    () => {
+      const { scene, controls } = application.getComponents();
+      const styleManager = controls?.styleManager;
+      startAddOns([
+        ['Panel guard', () => installPanelGuard(styleManager)],
+        ['Rotate gestures', () => installRotateGestures(scene.viewer)],
+        [
+          'Compass',
+          () =>
+            installCompassDial(scene.viewer, document, {
+              onTilted: () =>
+                styleManager?._cameraOrientationControls?.refreshTilt?.(),
+            }),
+        ],
+        ['Earth centring', () => installGlobeCentring(scene.viewer)],
+        ['Tracking marker', () => installTrackingMarker(scene.viewer)],
+        ['Scale', () => installScaleBar(scene.viewer)],
+        ['Place names', () => installMapLabels(scene)],
+        ['3D map recovery', () => install3dMapWatchdog(scene)],
+        ['Train stations', () => installTrainStations(scene)],
+        ['Time zones', () => installTimeZones(scene)],
+        ['Day and night', () => installDayNight(scene)],
+        ['Map pin', () => installAddressLookup(scene)],
+        ['Measure', () => installMeasureTool(scene)],
+        ['Saved places', () => installSavedPlaces(scene)],
+        [
+          'Video mode',
+          () =>
+            installVideoMode(scene.viewer, {
+              setCleanView: styleManager?.setCleanView
+                ? (on) => styleManager.setCleanView(on)
+                : undefined,
+            }),
+        ],
+        ['HD buildings', () => installHdDetail(scene)],
+        ['Help card', () => installHelpCard()],
+        ['Narrow-window tray', () => installToolbarFit()],
+      ]);
+    },
+    // start() hands back the same promise; its failure is reported above.
+    () => {},
+  )
+  .catch((error) => {
+    console.error("Zenith's add-ons could not be started:", error);
+  });
 
 export { application };

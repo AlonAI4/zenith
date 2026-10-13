@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { guard } from './addOns.js';
 
 /**
  * Train, metro and tram stops, with one toolbar switch.
@@ -214,7 +215,9 @@ export function installTrainStations({ viewer }, doc = document) {
   });
   doc.getElementById('top-center-actions')?.appendChild(button);
 
-  const offMoveEnd = camera.moveEnd.addEventListener(redraw);
+  const offMoveEnd = camera.moveEnd.addEventListener(
+    guard('Train stations', redraw),
+  );
 
   // Hover or click a marker to read its name and kind.
   let lastPick = 0;

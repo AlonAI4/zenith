@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { guard } from './addOns.js';
 
 /**
  * Keeps the 3D buildings map alive.
@@ -272,19 +273,25 @@ export function install3dMapWatchdog(
     viewer.scene.requestRender?.();
   };
 
-  const offLoad = tileset.tileLoad.addEventListener(() => {
+  const onTileLoad = () => {
     failures = 0;
     // Tiles are loading again, so the next trouble starts from a short wait.
     if (phase === 'watching') attempt = 0;
-  });
-  const offFail = tileset.tileFailed.addEventListener(() => {
+  };
+  const offLoad = tileset.tileLoad.addEventListener(
+    guard('3D map recovery', onTileLoad),
+  );
+  const onTileFailed = () => {
     if (phase !== 'watching') return;
     if (viewer.scene.globe.show || !tileset.show) return;
     failures += 1;
     if (failures < FAILURES_BEFORE_ACTION) return;
     failures = 0;
     onRunOfFailures();
-  });
+  };
+  const offFail = tileset.tileFailed.addEventListener(
+    guard('3D map recovery', onTileFailed),
+  );
 
   const startRescue = () => {
     phase = 'fallback';

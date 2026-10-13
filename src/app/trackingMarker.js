@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { setCameraTargetFrame } from '../ui/cameraOrientationControls.js';
+import { guard } from './addOns.js';
 
 /**
  * A marker on whatever is being tracked, for when the view is zoomed far out.
@@ -197,7 +198,7 @@ export function installTrackingMarker(viewer, doc = document) {
     if (!start) return;
     const home = homeOf(start.entity);
     const began = performance.now();
-    const remove = scene.preUpdate.addEventListener(() => {
+    const flyStep = () => {
       const progress = Math.min(1, (performance.now() - began) / FLY_MS);
       const now = tracked();
       const moved =
@@ -214,7 +215,10 @@ export function installTrackingMarker(viewer, doc = document) {
           ),
         });
       if (!moved || progress === 1) stopFlying?.();
-    });
+    };
+    const remove = scene.preUpdate.addEventListener(
+      guard('Tracking marker', flyStep),
+    );
     stopFlying = () => {
       remove();
       stopFlying = null;
@@ -235,7 +239,9 @@ export function installTrackingMarker(viewer, doc = document) {
   scene.canvas.addEventListener('pointerdown', onCanvasInput);
   scene.canvas.addEventListener('wheel', onCanvasInput, { passive: true });
 
-  const removeSync = scene.postRender.addEventListener(sync);
+  const removeSync = scene.postRender.addEventListener(
+    guard('Tracking marker', sync),
+  );
 
   return () => {
     stopFlying?.();

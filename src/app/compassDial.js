@@ -5,6 +5,7 @@ import {
   setCameraTargetFrame,
 } from '../ui/cameraOrientationControls.js';
 import { createRotator } from './rotateGestures.js';
+import { guard } from './addOns.js';
 
 /**
  * A compass dial for turning the view by hand.
@@ -300,8 +301,12 @@ export function installCompassDial(viewer, doc = document, { onTilted } = {}) {
   svg.addEventListener('pointerup', onPointerUp);
   svg.addEventListener('pointercancel', onPointerUp);
 
-  const removeHeading = viewer.scene.preRender.addEventListener(syncHeading);
-  const removeTilt = viewer.camera.moveEnd.addEventListener(syncTilt);
+  const removeHeading = viewer.scene.preRender.addEventListener(
+    guard('Compass', syncHeading),
+  );
+  const removeTilt = viewer.camera.moveEnd.addEventListener(
+    guard('Compass', syncTilt),
+  );
   syncHeading();
   syncTilt();
 
