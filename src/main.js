@@ -16,6 +16,7 @@ import { initBranding } from './ui/branding.js';
 import { initButtonTooltips } from './ui/buttonTooltips.js';
 import { initCustomSelects } from './ui/customSelect.js';
 import { initPanelFullscreen } from './ui/panelFullscreen.js';
+import { initToggleLook } from './ui/toggleLook.js';
 
 const application = createStandaloneApplication({
   googleApiKey: import.meta.env.GOOGLE_MAPS_API_KEY,
@@ -34,6 +35,7 @@ initBranding();
 initButtonTooltips();
 initCustomSelects();
 initPanelFullscreen();
+initToggleLook();
 // start() hands back the same promise; its failure is reported above.
 application
   .start()
@@ -41,7 +43,10 @@ application
     const { scene, controls } = application.getComponents();
     installPanelGuard(controls?.styleManager);
     installRotateGestures(scene.viewer);
-    installCompassDial(scene.viewer);
+    installCompassDial(scene.viewer, document, {
+      onTilted: () =>
+        controls?.styleManager?._cameraOrientationControls?.refreshTilt?.(),
+    });
     installGlobeCentring(scene.viewer);
     installTrackingMarker(scene.viewer);
     installScaleBar(scene.viewer);
