@@ -8,6 +8,7 @@ import { installPanelGuard } from './app/panelGuard.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { installScaleBar } from './app/scaleBar.js';
 import { installTimeZones } from './app/timeZones.js';
+import { installToolbarFit } from './app/toolbarFit.js';
 import { installTrackingMarker } from './app/trackingMarker.js';
 import { installTrainStations } from './app/trainStations.js';
 import { createStandaloneApplication } from './standalone/application.js';
@@ -58,6 +59,7 @@ application
     installTimeZones(scene);
     installAddressLookup(scene);
     installHdDetail(scene);
+    installToolbarFit();
   })
   .catch(() => {});
 
