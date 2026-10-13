@@ -82,6 +82,93 @@ export function describeAddress(properties = {}) {
   return { title, place, exact: Boolean(number) };
 }
 
+/** How close a numbered house must be to be the house that was clicked. */
+export const HOUSE_WITHIN_M = 30;
+/** How far away a street may be and still be named as the street here. */
+export const STREET_WITHIN_M = 200;
+
+/**
+ * The address for a click, chosen from the nearest things the lookup found.
+ *
+ * Taking only the single nearest thing gave two houses on one street two
+ * different answers, because the nearest thing is sometimes a bare postcode
+ * and sometimes the street. So: a numbered house close by is the house that
+ * was clicked. Failing that, the nearest thing that knows its street names
+ * the street, with the nearest numbered house on that street as a guide.
+ * Only when nothing nearby knows a street is the nearest name used.
+ *
+ * @param {Array<{geometry?: {coordinates?: number[]}, properties?: object}>} features
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {{ title: string, place: string, exact: boolean, away: number,
+ *   guide: { number: string, away: number } | null } | null}
+ */
+export function chooseAddress(features, lat, lon) {
+  const text = (value) => String(value || '').trim();
+  const near = (Array.isArray(features) ? features : [])
+    .map((feature) => {
+      const [foundLon, foundLat] = feature?.geometry?.coordinates || [];
+      const about = feature?.properties || {};
+      if (!Number.isFinite(foundLat) || !Number.isFinite(foundLon)) return null;
+      return {
+        about,
+        metres: distanceMetres(lat, lon, foundLat, foundLon),
+        number: text(about.housenumber),
+        // A street is its own name; anything else says which street it is on.
+        street: about.type === 'street' ? text(about.name) : text(about.street),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.metres - b.metres);
+  if (near.length === 0) return null;
+
+  const house = near.find(
+    (found) => found.number && found.street && found.metres <= HOUSE_WITHIN_M,
+  );
+  const onStreet =
+    house ||
+    near.find((found) => found.street && found.metres <= STREET_WITHIN_M);
+  const chosen = onStreet || near[0];
+  // District, city and postcode: the chosen thing's own, or the nearest that has one.
+  const fill = (key) =>
+    text(chosen.about[key]) ||
+    text(near.find((found) => text(found.about[key]))?.about[key]);
+  const place = [fill('district'), fill('city'), fill('postcode')]
+    .filter(Boolean)
+    .join(', ');
+
+  if (house) {
+    return {
+      title: describeAddress(house.about).title,
+      place,
+      exact: true,
+      away: Math.round(house.metres),
+      guide: null,
+    };
+  }
+  if (onStreet) {
+    const numbered = near.find(
+      (found) => found.number && found.street === onStreet.street,
+    );
+    return {
+      title: onStreet.street,
+      place,
+      exact: false,
+      away: Math.round(onStreet.metres),
+      guide: numbered
+        ? { number: numbered.number, away: Math.round(numbered.metres) }
+        : null,
+    };
+  }
+  return {
+    title: describeAddress(chosen.about).title,
+    place,
+    exact: false,
+    away: Math.round(chosen.metres),
+    guide: null,
+  };
+}
+
 /**
  * The best-known Wikipedia place near a click. Many readers and close by
  * beats obscure and closest, so a palace wins over a statue in its garden.
@@ -257,11 +344,12 @@ export function installAddressLookup({ viewer }, doc = document) {
 
   const askAddress = async (lat, lon) => {
     const response = await fetch(
-      `${PHOTON_REVERSE}?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&limit=1&lang=en`,
+      // One request for the ten nearest things, not ten requests.
+      `${PHOTON_REVERSE}?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}&limit=10&lang=en`,
       { signal: AbortSignal.timeout(TIMEOUT_MS) },
     );
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return (await response.json())?.features?.[0] || null;
+    return (await response.json())?.features || [];
   };
 
   // A famous place is a bonus: if Wikipedia does not answer, the address
@@ -293,11 +381,11 @@ export function installAddressLookup({ viewer }, doc = document) {
     const wait = lastAskedAt + MIN_GAP_MS - Date.now();
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     lastAskedAt = Date.now();
-    const [feature, famous] = await Promise.all([
+    const [features, famous] = await Promise.all([
       askAddress(lat, lon),
       askFamous(lat, lon),
     ]);
-    const found = { feature, famous };
+    const found = { features, famous };
     if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
     cache.set(key, found);
     return found;
@@ -344,7 +432,7 @@ export function installAddressLookup({ viewer }, doc = document) {
     }
     show([['Looking up the address…', STRONG], coordinates]);
     try {
-      const { feature, famous } = await ask(lat, lon);
+      const { features, famous } = await ask(lat, lon);
       if (mine !== request) return;
       const famousRows = famous
         ? [
@@ -355,7 +443,8 @@ export function installAddressLookup({ viewer }, doc = document) {
             ],
           ]
         : [];
-      if (!feature) {
+      const address = chooseAddress(features, lat, lon);
+      if (!address) {
         show([
           ...famousRows,
           ['No address is mapped near here', famous ? '' : STRONG],
@@ -363,19 +452,19 @@ export function installAddressLookup({ viewer }, doc = document) {
         ]);
         return;
       }
-      const { title, place, exact } = describeAddress(feature.properties);
-      const [foundLon, foundLat] = feature.geometry?.coordinates || [];
-      const away = Number.isFinite(foundLat)
-        ? Math.round(distanceMetres(lat, lon, foundLat, foundLon))
-        : null;
       show([
         ...famousRows,
-        [title || 'Unnamed place', famous ? '' : STRONG],
-        place && [place],
+        [address.title || 'Unnamed place', famous ? '' : STRONG],
+        address.place && [address.place],
         coordinates,
         [
-          `${exact ? 'Nearest mapped address' : 'No house number is mapped here: nearest street or place'}` +
-            `${away === null ? '' : `, ${away} m from your click`}`,
+          address.exact
+            ? `House number as mapped, ${address.away} m from your click`
+            : `No house number is mapped here: nearest street or place, ${address.away} m from your click`,
+          FAINT,
+        ],
+        address.guide && [
+          `Nearest mapped house number on this street: ${address.guide.number}, ${address.guide.away} m away`,
           FAINT,
         ],
         [

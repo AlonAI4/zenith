@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  ADDRESS_MAX_HEIGHT_M,
+  chooseAddress,
+  closeEnoughForAddress,
   describeAddress,
   distanceMetres,
   formatCoordinates,
-  ADDRESS_MAX_HEIGHT_M,
-  closeEnoughForAddress,
+  HOUSE_WITHIN_M,
   pickFamousPlace,
+  STREET_WITHIN_M,
 } from './addressLookup.js';
 
 test('addresses are looked up from close in, not from far out', () => {
@@ -86,4 +89,62 @@ test('the well-known place wins over a nearer obscure one, but not from far away
   );
   assert.equal(pickFamousPlace([]), null);
   assert.equal(pickFamousPlace([{ title: 'No position' }]), null);
+});
+
+// Made-up places around one spot. One degree of latitude is about 111 km,
+// so 0.0001 degrees north is about 11 m.
+const HERE = [51.5, -0.1];
+const north = (metres) => HERE[0] + metres / 111_320;
+const thing = (metres, properties) => ({
+  geometry: { type: 'Point', coordinates: [HERE[1], north(metres)] },
+  properties,
+});
+const postcodeOnly = (metres) => thing(metres, { type: 'other', name: 'AB1 2CD', postcode: 'AB1 2CD', city: 'Testford' });
+const street = (metres) => thing(metres, { type: 'street', name: 'Example Avenue', postcode: 'AB1 3EF', district: 'West Test', city: 'Testford' });
+const house = (metres, number, streetName = 'Example Avenue') =>
+  thing(metres, { type: 'house', housenumber: number, street: streetName, postcode: 'AB1 3EF', city: 'Testford' });
+
+test('two clicks on one street name the same street', () => {
+  // The bug: nearest was a bare postcode for one house and the street for the next.
+  const first = chooseAddress([postcodeOnly(51), street(55)], ...HERE);
+  const second = chooseAddress([street(40), postcodeOnly(60)], ...HERE);
+  assert.equal(first.title, 'Example Avenue');
+  assert.equal(second.title, 'Example Avenue');
+  assert.equal(first.exact, false);
+  assert.equal(first.away, 55);
+  // The street's own postcode and district are used, not the bare postcode's.
+  assert.equal(first.place, 'West Test, Testford, AB1 3EF');
+  assert.equal(second.place, first.place);
+});
+
+test('a numbered house close by is the house that was clicked', () => {
+  const found = chooseAddress([street(9), house(12, '49'), house(26, '51')], ...HERE);
+  assert.deepEqual(
+    { title: found.title, exact: found.exact, away: found.away, guide: found.guide },
+    { title: '49 Example Avenue', exact: true, away: 12, guide: null },
+  );
+  const named = chooseAddress([thing(8, { type: 'house', name: 'The Old Bakery', housenumber: '7', street: 'Mill Lane', city: 'Testford' })], ...HERE);
+  assert.equal(named.title, 'The Old Bakery, 7 Mill Lane');
+});
+
+test('a numbered house further off is only a guide, not the answer', () => {
+  const found = chooseAddress([street(14), house(HOUSE_WITHIN_M + 15, '49')], ...HERE);
+  assert.equal(found.title, 'Example Avenue');
+  assert.equal(found.exact, false);
+  assert.deepEqual(found.guide, { number: '49', away: HOUSE_WITHIN_M + 15 });
+  // A numbered house on another street is not a guide for this one.
+  const other = chooseAddress([street(14), house(40, '3', 'Other Road')], ...HERE);
+  assert.equal(other.title, 'Example Avenue');
+  assert.equal(other.guide, null);
+});
+
+test('with no street nearby the nearest name is used, and nothing gives nothing', () => {
+  const village = chooseAddress([thing(900, { type: 'locality', name: 'Little Testing', city: 'Testford' })], ...HERE);
+  assert.equal(village.title, 'Little Testing');
+  assert.equal(village.exact, false);
+  const farStreet = chooseAddress([street(STREET_WITHIN_M + 50), postcodeOnly(20)], ...HERE);
+  assert.equal(farStreet.title, 'AB1 2CD');
+  assert.equal(chooseAddress([], ...HERE), null);
+  assert.equal(chooseAddress(null, ...HERE), null);
+  assert.equal(chooseAddress([{ properties: { name: 'No position' } }], ...HERE), null);
 });

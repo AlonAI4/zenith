@@ -1143,12 +1143,14 @@ const soloChecks = [
             status: 200,
             contentType: 'application/json',
             headers: { 'access-control-allow-origin': '*' },
+            // The nearest thing is a bare postcode, then the street, then a
+            // numbered house too far away to be the one clicked: the card must
+            // name the street, and give the number only as a guide.
             body: JSON.stringify({
               features: [
-                {
-                  geometry: { type: 'Point', coordinates: [Number(at.get('lon')), Number(at.get('lat'))] },
-                  properties: { name: 'Test Museum', street: 'Rue de Test', housenumber: '99', city: 'Paris', postcode: '75001', country: 'France' },
-                },
+                { geometry: { type: 'Point', coordinates: [Number(at.get('lon')), Number(at.get('lat')) + 0.0001] }, properties: { type: 'other', name: '75001', postcode: '75001', city: 'Paris' } },
+                { geometry: { type: 'Point', coordinates: [Number(at.get('lon')), Number(at.get('lat')) + 0.0003] }, properties: { type: 'street', name: 'Rue de Test', postcode: '75001', city: 'Paris' } },
+                { geometry: { type: 'Point', coordinates: [Number(at.get('lon')), Number(at.get('lat')) + 0.0005] }, properties: { type: 'house', housenumber: '99', street: 'Rue de Test', city: 'Paris' } },
               ],
             }),
           });
@@ -1173,8 +1175,10 @@ const soloChecks = [
       try {
         await press(page, 'address-lookup-toggle');
         await clickMap(page, 0.5, 0.6);
-        await until(page, () => /Test Museum|Rue de Test/.test(document.getElementById('address-card')?.textContent ?? ''), 10_000, 'no address appeared for a click in Paris');
+        await until(page, () => /Rue de Test/.test(document.getElementById('address-card')?.textContent ?? ''), 10_000, 'no address appeared for a click in Paris');
         const text = await cardText();
+        expect(/^Rue de Test/.test(text.replace(/^×/, '').trim()), `the card is not headed by the street: ${text.slice(0, 80)}`);
+        expect(/Nearest mapped house number on this street: 99/.test(text), 'the nearest house number was not given as a guide');
         expect(/Paris/.test(text) && !/London only/.test(text), `the card said: ${text.slice(0, 120)}`);
         expect(photon === 1 && wikipedia === 1, `one click made ${photon} address lookups and ${wikipedia} Wikipedia lookups`);
         expect(/Zenith/.test(asker ?? ''), 'the Wikipedia lookup did not say what program is asking');
