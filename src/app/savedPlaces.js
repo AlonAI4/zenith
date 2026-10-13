@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { startCinema } from './cinema.js';
+import { closeOnEscape } from './escapeKey.js';
 
 /**
  * Saved places: star the view on screen, name it, and fly back to it later.
@@ -533,17 +534,18 @@ export function installSavedPlaces(
     button.setAttribute('aria-pressed', String(open));
     if (open) input.focus();
   };
-  const onKey = (event) => {
-    if (event.key === 'Escape' && !panel.hidden) setOpen(false);
-  };
   button.addEventListener('click', () => setOpen(panel.hidden));
   close.addEventListener('click', () => setOpen(false));
-  doc.addEventListener('keydown', onKey);
+  const offEscape = closeOnEscape(
+    win,
+    () => !panel.hidden,
+    () => setOpen(false),
+  );
   button.setAttribute('aria-pressed', 'false');
   doc.getElementById('top-center-actions')?.appendChild(button);
 
   return () => {
-    doc.removeEventListener('keydown', onKey);
+    offEscape();
     button.remove();
     panel.remove();
     style.remove();

@@ -6,6 +6,7 @@
  * words, including whether the pin is on right now. It opens by itself the
  * first time; once closed it stays closed until its own "?" switch is pressed.
  */
+import { closeOnEscape } from './escapeKey.js';
 import { settingsFileControls } from './settingsFile.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 import { versionLine, ZENITH_VERSION } from './zenithVersion.js';
@@ -260,11 +261,12 @@ export function installHelpCard(
     button.setAttribute('aria-pressed', String(open));
   }
 
-  const onKey = (event) => {
-    if (event.key === 'Escape' && !card.hidden) setOpen(false);
-  };
   button.addEventListener('click', () => setOpen(card.hidden));
-  doc.addEventListener('keydown', onKey);
+  const offEscape = closeOnEscape(
+    win,
+    () => !card.hidden,
+    () => setOpen(false),
+  );
   bar?.appendChild(button);
   if (bar) {
     watcher.observe(bar, {
@@ -277,7 +279,7 @@ export function installHelpCard(
 
   return () => {
     watcher.disconnect();
-    doc.removeEventListener('keydown', onKey);
+    offEscape();
     button.remove();
     card.remove();
     style.remove();

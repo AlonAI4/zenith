@@ -11,6 +11,7 @@
  * The buttons themselves are moved, not copied, so each keeps its own click
  * handler and its on/off look.
  */
+import { closeOnEscape } from './escapeKey.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 
 export const GAP = 12;
@@ -265,9 +266,6 @@ export function installToolbarFit(doc = document, win = window) {
     if (tray.dataset.open === 'true' && !bar.contains(event.target))
       setOpen(false);
   };
-  const onKey = (event) => {
-    if (event.key === 'Escape') setOpen(false);
-  };
   more.addEventListener('click', onMore);
   // A switch that opens its own panel closes the tray, so they do not stack.
   const onTrayClick = (event) => {
@@ -276,7 +274,11 @@ export function installToolbarFit(doc = document, win = window) {
   };
   tray.addEventListener('click', onTrayClick);
   doc.addEventListener('pointerdown', onOutside, true);
-  doc.addEventListener('keydown', onKey);
+  const offEscape = closeOnEscape(
+    win,
+    () => tray.dataset.open === 'true',
+    () => setOpen(false),
+  );
   win.addEventListener('resize', fitSoon);
   fit();
 
@@ -285,7 +287,7 @@ export function installToolbarFit(doc = document, win = window) {
     watching.disconnect();
     win.removeEventListener('resize', fitSoon);
     doc.removeEventListener('pointerdown', onOutside, true);
-    doc.removeEventListener('keydown', onKey);
+    offEscape();
     for (const button of switches()) bar.insertBefore(button, more);
     more.remove();
     tray.remove();

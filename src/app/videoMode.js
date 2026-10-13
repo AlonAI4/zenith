@@ -1,4 +1,5 @@
 import { keyEndsVideo, startCinema } from './cinema.js';
+import { closeOnEscape } from './escapeKey.js';
 import { createRotator } from './rotateGestures.js';
 
 /**
@@ -280,17 +281,18 @@ export function installVideoMode(
     frameId = win.requestAnimationFrame(frame);
   }
 
-  const onEscape = (event) => {
-    if (event.key === 'Escape' && !panel.hidden) setPanel(false);
-  };
   button.addEventListener('click', () => setPanel(panel.hidden));
   startButton.addEventListener('click', start);
-  doc.addEventListener('keydown', onEscape);
+  const offEscape = closeOnEscape(
+    win,
+    () => !panel.hidden,
+    () => setPanel(false),
+  );
   doc.getElementById('top-center-actions')?.appendChild(button);
 
   return () => {
     stop();
-    doc.removeEventListener('keydown', onEscape);
+    offEscape();
     button.remove();
     panel.remove();
     style.remove();
