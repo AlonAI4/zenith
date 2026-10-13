@@ -110,6 +110,47 @@ function pageHelpers() {
       }
       return total;
     },
+    // The picture on screen, shrunk to a small grid of brightness values
+    // (0 to 255). Drawn and read in one go, because the map does not keep
+    // its picture between frames.
+    frame: () => {
+      const { scene } = app().viewer;
+      scene.render();
+      const small = document.createElement('canvas');
+      small.width = 96;
+      small.height = 60;
+      const ctx = small.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(scene.canvas, 0, 0, small.width, small.height);
+      const data = ctx.getImageData(0, 0, small.width, small.height).data;
+      const grid = [];
+      for (let i = 0; i < data.length; i += 4) grid.push(Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]));
+      return grid;
+    },
+    // Is the map still drawing, and has any add-on been switched off?
+    alive: async () => {
+      const { scene } = app().viewer;
+      const before = scene.frameState.frameNumber;
+      for (let i = 0; i < 4; i++) {
+        scene.requestRender();
+        await new Promise((next) => requestAnimationFrame(next));
+      }
+      return {
+        frames: scene.frameState.frameNumber - before,
+        loop: app().viewer.useDefaultRenderLoop,
+        notice: document.getElementById('zenith-addon-notice')?.textContent ?? '',
+      };
+    },
+    dayNightDrawn: () => {
+      const { viewer, tileset } = app();
+      return viewer.scene.globe.show ? viewer.scene.globe.material?.type === 'ZenithDayNight' : Boolean(tileset?.customShader);
+    },
+    creditsClear: () => {
+      const link = document.querySelector('#cesium-credits a, #cesium-credits img');
+      if (!link) return false;
+      const r = link.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return r.width > 0 && Boolean(top?.closest('#cesium-credits'));
+    },
     box: (selector) => {
       const element = document.querySelector(selector);
       if (!window.__zt.shown(element)) return null;
@@ -255,6 +296,36 @@ async function chooseSettingsFile(page, text) {
     bad: document.getElementById('zenith-settings-message').dataset.bad === 'true',
     reload: !document.getElementById('zenith-settings-reload').hidden,
   }));
+}
+
+/**
+ * Open the app over Heathrow with live flights on and click a plane, so the
+ * view follows it. Skips the check when no plane is there to follow.
+ */
+async function followPlane(page) {
+  await open(page, WIDE, 'lat=51.47&lon=-0.45&alt=90000&heading=0&pitch=-89&l=f');
+  await sleep(8000);
+  const plane = await page.evaluate(() => {
+    const viewer = window.__zt.viewer();
+    const primitives = viewer.scene.primitives;
+    for (let i = 0; i < primitives.length; i++) {
+      const one = primitives.get(i);
+      if (!one || typeof one.length !== 'number' || typeof one.get !== 'function') continue;
+      for (let j = 0; j < one.length; j++) {
+        const item = one.get(j);
+        if (!item || typeof item.id !== 'string' || !item.position || item.show === false) continue;
+        const at = viewer.scene.cartesianToCanvasCoordinates(item.position);
+        if (at && at.x > 380 && at.x < 1050 && at.y > 260 && at.y < 640) return [Math.round(at.x), Math.round(at.y)];
+      }
+    }
+    return null;
+  });
+  if (!plane) throw new Skip('no plane on screen to follow');
+  await page.mouse.click(plane[0], plane[1]);
+  await sleep(4500);
+  if (!(await page.evaluate(() => Boolean(window.__zt.viewer().trackedEntity)))) {
+    throw new Skip('the click did not start following a plane');
+  }
 }
 
 // ── The checks ───────────────────────────────────────────────────────────────
@@ -1168,6 +1239,136 @@ const checks = [
       expect(Math.abs(backIn.pitch - startPitch) < 5, `after zooming back in the tilt was ${backIn.pitch.toFixed(0)} degrees, it started at ${startPitch}`);
     },
   ],
+  [
+    'one add-on failing does not stop the map or the other add-ons',
+    async (page) => {
+      // An add-on made to fail on purpose, wired in the way the real ones are.
+      const result = await page.evaluate(async () => {
+        const { guard } = await import('/src/app/addOns.js');
+        const viewer = window.__zt.viewer();
+        let calls = 0;
+        const remove = viewer.scene.preRender.addEventListener(
+          guard('Test add-on', () => {
+            calls += 1;
+            throw new Error('made to fail by the browser test');
+          }),
+        );
+        const alive = await window.__zt.alive();
+        await new Promise((done) => setTimeout(done, 300));
+        const notice = document.getElementById('zenith-addon-notice');
+        const said = notice?.textContent ?? '';
+        remove();
+        notice?.remove();
+        return { calls, said, ...alive };
+      });
+      expect(result.calls === 1, `the failing add-on was called ${result.calls} times, expected once and then never again`);
+      expect(result.frames >= 3 && result.loop, 'the map stopped drawing when one add-on failed');
+      expect(/Test add-on has a problem and was switched off/.test(result.said), `the notice said "${result.said}"`);
+      // And another add-on still does its job.
+      const before = await page.evaluate(() => window.__zt.billboards());
+      await press(page, 'train-stations-toggle');
+      await until(page, (n) => window.__zt.billboards() > n, 8000, 'train stations stopped working after another add-on failed', before);
+      await press(page, 'train-stations-toggle');
+    },
+  ],
+  [
+    'every visual preset, close to the ground and far out, with the add-ons on',
+    async (page, setup) => {
+      const DRAWN = ['map-labels-toggle', 'train-stations-toggle', 'time-zones-toggle', 'day-night-toggle'];
+      const home = await page.evaluate(() => {
+        const camera = window.__zt.viewer().camera;
+        const at = camera.positionCartographic;
+        return [at.longitude, at.latitude, at.height, camera.heading, camera.pitch];
+      });
+      const goTo = (lon, lat, height, heading, pitch) =>
+        page.evaluate(
+          (lon, lat, height, heading, pitch) => {
+            const viewer = window.__zt.viewer();
+            viewer.camera.setView({
+              destination: viewer.scene.globe.ellipsoid.cartographicToCartesian({ longitude: lon, latitude: lat, height }),
+              orientation: { heading, pitch, roll: 0 },
+            });
+          },
+          lon,
+          lat,
+          height,
+          heading,
+          pitch,
+        );
+      const problems = [];
+      let styles = [];
+      try {
+        for (const where of ['close', 'far']) {
+          if (where === 'far') {
+            // Over the line where night is falling right now, so half the
+            // view is in daylight and half in the dark at any hour.
+            const hours = new Date().getUTCHours() + new Date().getUTCMinutes() / 60;
+            const duskLon = (((12 - hours) * 15 + 78 + 540) % 360) - 180;
+            await goTo((duskLon * Math.PI) / 180, (25 * Math.PI) / 180, 11_000_000, 0, -Math.PI / 2);
+            await sleep(3000);
+          }
+          for (const id of DRAWN) if (!(await pressed(page, id))) await press(page, id);
+          await until(page, () => window.__zt.dayNightDrawn() && window.__zt.entities('alon-time-zones') > 0, 15_000, `${where}: day and night or time zones did not come on`);
+          await sleep(1200);
+          for (let key = 1; key <= 7; key++) {
+            await page.keyboard.press(String(key));
+            await sleep(1300);
+            const state = await page.evaluate(async (ids) => ({
+              style: /style=([a-z]+)/.exec(location.hash)?.[1] ?? 'normal',
+              alive: await window.__zt.alive(),
+              dayNight: window.__zt.dayNightDrawn(),
+              zones: window.__zt.entities('alon-time-zones'),
+              on: ids.filter((id) => window.__zt.pressed(id)).length,
+              credits: window.__zt.creditsClear(),
+              slider: window.__zt.shown(document.getElementById('day-night-time')),
+              parts: ['compass-dial', 'scale-bar'].filter((id) => window.__zt.shown(document.getElementById(id))).length,
+            }), DRAWN);
+            const tag = `${where}, preset ${key} (${state.style})`;
+            styles.push(state.style);
+            if (!(state.alive.frames >= 3 && state.alive.loop)) problems.push(`${tag}: the map stopped drawing`);
+            if (state.alive.notice) problems.push(`${tag}: ${state.alive.notice}`);
+            if (!state.dayNight) problems.push(`${tag}: the day and night shading was taken off the map`);
+            if (!(state.zones > 0)) problems.push(`${tag}: the time zone borders went away`);
+            if (state.on !== DRAWN.length) problems.push(`${tag}: only ${state.on} of ${DRAWN.length} switches stayed on`);
+            if (!state.credits) problems.push(`${tag}: the map credits are covered or gone`);
+            if (!state.slider) problems.push(`${tag}: the time slider is not showing`);
+            if (state.parts !== 2) problems.push(`${tag}: the compass or the scale is not showing`);
+            if (pageErrors.length) problems.push(`${tag}: page error ${pageErrors[0]}`);
+            if (where === 'far') {
+              // Proof on the screen itself: the picture with day and night on
+              // differs from the picture with it off, by far more than two
+              // pictures in a row differ (some presets flicker on purpose).
+              const withIt = await page.evaluate(() => [window.__zt.frame(), window.__zt.frame()]);
+              await press(page, 'day-night-toggle');
+              await sleep(500);
+              const without = await page.evaluate(() => window.__zt.frame());
+              await press(page, 'day-night-toggle');
+              await until(page, () => window.__zt.dayNightDrawn(), 8000, `${tag}: day and night did not come back on`);
+              const differs = (a, b) => a.reduce((sum, value, at) => sum + Math.abs(value - b[at]), 0) / a.length;
+              const change = differs(withIt[0], without);
+              const flicker = differs(withIt[0], withIt[1]);
+              if (process.env.ZT_DEBUG) console.log(`    ${tag}: change ${change.toFixed(2)}, flicker ${flicker.toFixed(2)}`);
+              if (!(change > 1 && change > 3 * flicker)) {
+                problems.push(`${tag}: switching day and night off changed the picture by ${change.toFixed(2)} (flicker ${flicker.toFixed(2)}), so it is not reaching the screen`);
+              }
+            }
+          }
+          await page.keyboard.press('1');
+          await sleep(900);
+        }
+      } finally {
+        await page.keyboard.press('1');
+        await sleep(600);
+        for (const id of DRAWN) if (await pressed(page, id)) await press(page, id);
+        await goTo(...home);
+        await sleep(2000);
+      }
+      const names = [...new Set(styles)];
+      expect(names.length === 7, `the number keys reached ${names.length} presets (${names.join(', ')}), expected 7`);
+      expect(problems.length === 0, problems.slice(0, 4).join(' | ') + (problems.length > 4 ? ` | and ${problems.length - 4} more` : ''));
+      void setup;
+    },
+  ],
 ];
 
 /** Checks that need their own page load. They run once, at the end. */
@@ -1457,29 +1658,7 @@ const soloChecks = [
   [
     'tracking marker when following a plane',
     async (page) => {
-      await open(page, WIDE, 'lat=51.47&lon=-0.45&alt=90000&heading=0&pitch=-89&l=f');
-      await sleep(8000);
-      const plane = await page.evaluate(() => {
-        const viewer = window.__zt.viewer();
-        const primitives = viewer.scene.primitives;
-        for (let i = 0; i < primitives.length; i++) {
-          const one = primitives.get(i);
-          if (!one || typeof one.length !== 'number' || typeof one.get !== 'function') continue;
-          for (let j = 0; j < one.length; j++) {
-            const item = one.get(j);
-            if (!item || typeof item.id !== 'string' || !item.position || item.show === false) continue;
-            const at = viewer.scene.cartesianToCanvasCoordinates(item.position);
-            if (at && at.x > 380 && at.x < 1050 && at.y > 260 && at.y < 640) return [Math.round(at.x), Math.round(at.y)];
-          }
-        }
-        return null;
-      });
-      if (!plane) throw new Skip('no plane on screen to follow');
-      await page.mouse.click(plane[0], plane[1]);
-      await sleep(4500);
-      if (!(await page.evaluate(() => Boolean(window.__zt.viewer().trackedEntity)))) {
-        throw new Skip('the click did not start following a plane');
-      }
+      await followPlane(page);
       const marker = () => page.evaluate(() => window.__zt.shown(document.getElementById('tracking-marker')) && getComputedStyle(document.getElementById('tracking-marker')).display !== 'none');
       expect(!(await marker()), 'the marker shows while the plane is close');
       await page.mouse.move(720, 450);
@@ -1494,6 +1673,187 @@ const soloChecks = [
       const back = await page.evaluate(() => ({ height: window.__zt.height(), tracked: Boolean(window.__zt.viewer().trackedEntity) }));
       expect(back.tracked && back.height < 100_000, 'clicking the marker did not fly back to the plane');
       expect(!(await marker()), 'the marker stayed after flying back');
+    },
+  ],
+  [
+    'the add-ons work while following a plane',
+    async (page) => {
+      // Carries on from the check before when that one left a plane followed.
+      const following = () => page.evaluate(() => Boolean(window.__zt.viewer()?.trackedEntity));
+      if (!(await following().catch(() => false))) await followPlane(page);
+      const problems = [];
+      const note = async (what) => {
+        const state = await page.evaluate(() => window.__zt.alive());
+        if (!(state.frames >= 3 && state.loop)) problems.push(`${what}: the map stopped drawing`);
+        if (state.notice) problems.push(`${what}: ${state.notice}`);
+        if (pageErrors.length) problems.push(`${what}: page error ${pageErrors[0]}`);
+        if (!(await following())) problems.push(`${what}: the plane stopped being followed`);
+      };
+      try {
+        for (const id of ['map-labels-toggle', 'train-stations-toggle', 'time-zones-toggle', 'day-night-toggle', 'earthquakes-toggle']) {
+          await press(page, id);
+          await sleep(900);
+          if (!(await pressed(page, id))) problems.push(`${id} did not switch on`);
+          await note(id);
+        }
+        const drawn = await page.evaluate(() => ({
+          dayNight: window.__zt.dayNightDrawn(),
+          zones: window.__zt.entities('alon-time-zones'),
+          parts: ['compass-dial', 'scale-bar'].filter((id) => window.__zt.shown(document.getElementById(id))).length,
+          credits: window.__zt.creditsClear(),
+        }));
+        if (!drawn.dayNight) problems.push('day and night is not drawn');
+        if (!(drawn.zones > 0)) problems.push('the time zone borders are not drawn');
+        if (drawn.parts !== 2) problems.push('the compass or the scale is not showing');
+        if (!drawn.credits) problems.push('the map credits are covered or gone');
+        // Escape closes a panel of this build and nothing else: the original
+        // app also uses Escape to stop following, and must not hear this one.
+        for (const [id, panelId] of [
+          ['video-mode-toggle', 'video-mode-panel'],
+          ['zenith-help-toggle', 'zenith-help'],
+          ['saved-places-toggle', 'saved-places'],
+        ]) {
+          await press(page, id, { leaveTray: true });
+          const shown = (selector) => page.evaluate((one) => window.__zt.shown(document.getElementById(one)), selector);
+          if (!(await shown(panelId))) problems.push(`#${panelId} did not open`);
+          await page.keyboard.press('Escape');
+          await sleep(500);
+          if (await shown(panelId)) problems.push(`Escape did not close #${panelId}`);
+          await note(`Escape on #${panelId}`);
+        }
+        // The measure tool takes the clicks while it is on. The original app
+        // stops following a plane on any click on empty map (it does so with
+        // every add-on left out too), so the follow is not expected to
+        // outlive these clicks: only the tool itself is checked.
+        await press(page, 'measure-toggle');
+        await clickMap(page, 0.3, 0.72);
+        await clickMap(page, 0.42, 0.78);
+        const readout = await page.evaluate(() => document.getElementById('measure-readout')?.textContent ?? '');
+        if (!/\d.*(m|km)\b.*2 points/.test(readout)) problems.push(`the measure tool read "${readout}" after two clicks`);
+        const after = await page.evaluate(() => window.__zt.alive());
+        if (!(after.frames >= 3 && after.loop) || after.notice) problems.push(`measure tool: the map stopped drawing or an add-on was switched off (${after.notice})`);
+        await page.click('#measure-clear').catch(() => {});
+        await press(page, 'measure-toggle');
+      } finally {
+        await calm(page).catch(() => {});
+        if (await pressed(page, 'earthquakes-toggle')) await press(page, 'earthquakes-toggle');
+      }
+      expect(problems.length === 0, problems.slice(0, 4).join(' | '));
+    },
+  ],
+  [
+    'camera picture cards only near the middle of the view',
+    async (page) => {
+      // On the satellite map: the rule is the same on both, and this keeps
+      // one more load off the metered 3D map.
+      await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      try {
+        await open(page, WIDE, 'lat=51.5055&lon=-0.0754&alt=2500&heading=0&pitch=-89&l=c&map=esri-imagery');
+        const REACH_KM = 1;
+        // Where the cameras are, and how the view sees them.
+        const look = () =>
+          page.evaluate((reachKm) => {
+            const viewer = window.__zt.viewer();
+            const { scene, camera } = viewer;
+            const ellipsoid = scene.globe.ellipsoid;
+            let markers = null;
+            for (let i = 0; i < scene.primitives.length; i++) {
+              const one = scene.primitives.get(i);
+              if (one && typeof one.get === 'function' && one.length > 500 && typeof one.get(0).id === 'string') markers = one;
+            }
+            if (!markers) return null;
+            const middle = camera.pickEllipsoid({ x: scene.canvas.clientWidth / 2, y: scene.canvas.clientHeight / 2 });
+            const here = ellipsoid.cartesianToCartographic(middle);
+            const km = (a, b) => {
+              const dLat = b.latitude - a.latitude;
+              const dLon = (b.longitude - a.longitude) * Math.cos((a.latitude + b.latitude) / 2);
+              return Math.hypot(dLat, dLon) * 6371;
+            };
+            const cameras = [];
+            let inReach = 0;
+            let onScreen = 0;
+            for (let i = 0; i < markers.length; i++) {
+              const at = ellipsoid.cartesianToCartographic(markers.get(i).position);
+              if (Math.abs(at.latitude - here.latitude) > 0.004 || Math.abs(at.longitude - here.longitude) > 0.006) continue;
+              cameras.push([at.longitude, at.latitude]);
+              if (km(here, at) <= reachKm) inReach += 1;
+              const spot = scene.cartesianToCanvasCoordinates(markers.get(i).position);
+              if (spot && spot.x > 0 && spot.y > 0 && spot.x < scene.canvas.clientWidth && spot.y < scene.canvas.clientHeight) onScreen += 1;
+            }
+            const overlay = window.__gevWorldOverlay.getDiagnostics();
+            return {
+              inReach,
+              onScreen,
+              cameras,
+              here: [here.longitude, here.latitude],
+              cards: overlay.entriesBySource?.cctv ?? 0,
+              painted: overlay.paintedBySource?.cctv ?? 0,
+            };
+          }, REACH_KM);
+        const moveTo = (lon, lat) =>
+          page.evaluate(
+            (lon, lat) => {
+              const viewer = window.__zt.viewer();
+              viewer.camera.setView({
+                destination: viewer.scene.globe.ellipsoid.cartographicToCartesian({ longitude: lon, latitude: lat, height: 2500 }),
+                orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+              });
+            },
+            lon,
+            lat,
+          );
+        try {
+          await until(page, () => window.__gevWorldOverlay.getDiagnostics().entriesBySource?.cctv > 0, 25_000, 'no camera cards');
+        } catch {
+          throw new Skip('the camera list or its pictures did not load');
+        }
+        await sleep(3000);
+        const busy = await look();
+        if (!busy) throw new Skip('the camera markers could not be found');
+        expect(busy.inReach >= 1, 'the test view has no camera within 1 km of its middle');
+        expect(busy.cards >= 1, 'no picture card for cameras within 1 km of the middle');
+        expect(busy.cards <= busy.inReach, `${busy.cards} picture cards, but only ${busy.inReach} cameras are within 1 km of the middle`);
+
+        // A spot whose middle has no camera within reach, but with cameras
+        // towards the edges of the screen: there must be no picture card.
+        const quiet = await page.evaluate(
+          (cameras, here) => {
+            const toKm = (lon, lat, to) => [(to[0] - lon) * Math.cos(lat) * 6371, (to[1] - lat) * 6371];
+            for (let dy = -0.003; dy <= 0.003; dy += 0.0002) {
+              for (let dx = -0.004; dx <= 0.004; dx += 0.0002) {
+                const lon = here[0] + dx;
+                const lat = here[1] + dy;
+                let near = 0;
+                let edge = 0;
+                for (const camera of cameras) {
+                  const [x, y] = toKm(lon, lat, camera);
+                  const far = Math.hypot(x, y);
+                  if (far <= 1.2) near += 1;
+                  else if (Math.abs(x) <= 1.35 && Math.abs(y) <= 0.8) edge += 1;
+                }
+                if (near === 0 && edge >= 1) return [lon, lat];
+              }
+            }
+            return null;
+          },
+          busy.cameras,
+          busy.here,
+        );
+        if (quiet) {
+          await moveTo(quiet[0], quiet[1]);
+          await until(page, () => (window.__gevWorldOverlay.getDiagnostics().entriesBySource?.cctv ?? 0) === 0, 20_000, 'picture cards stayed although no camera is within 1 km of the middle');
+          const empty = await look();
+          expect(empty.inReach === 0, 'the quiet spot was not quiet after all');
+          expect(empty.onScreen >= 1, 'no camera marker on screen at the quiet spot, so the check proves nothing');
+          expect(empty.cards === 0 && empty.painted === 0, `${empty.cards} picture cards with no camera within 1 km of the middle`);
+        }
+        // Back onto a camera: its card returns.
+        await moveTo(busy.cameras[0][0], busy.cameras[0][1]);
+        await until(page, () => window.__gevWorldOverlay.getDiagnostics().paintedBySource?.cctv > 0, 20_000, 'the picture card did not come back when the view was centred on a camera');
+        if (!quiet) throw new Skip('picture cards show near cameras, but no spot without a nearby camera was found to test the opposite');
+      } finally {
+        await page.evaluate(() => localStorage.removeItem('gev.satelliteByChoice'));
+      }
     },
   ],
 ];
