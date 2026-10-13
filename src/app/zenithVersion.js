@@ -7,22 +7,16 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.0',
+  number: '1.1',
   date: '13 October 2026',
   changes: Object.freeze([
-    "Live earthquakes: the last day's earthquakes around the world, sized by strength.",
-    'Fly-through: tick two or more saved places and the view travels between them.',
-    'The measure tool now has undo, the area of a closed shape, and a chart of the heights along your path.',
-    'The map pin gives an address anywhere in the world, with the house number where the map data has one, plus sunrise and sunset.',
-    'Train stations for the whole UK, Germany, Italy, the Netherlands and eleven big city areas in the USA.',
-    'Day and night has a time slider, sharper city lights and a clear line where night begins.',
-    'Saved places remember the map, the look and the layers that were on.',
-    'Video mode lets you pick the speed and the direction.',
-    'Your switches and saved places can be saved to a file and loaded in another browser.',
+    'From the original project: Street Level can now open Google Street View on the 3D map.',
+    'Street View stays off until you switch it on. It needs your own Google Maps key, and Google charges that key for every view.',
+    'Everything from version 1.0 is still here: earthquakes, fly-through, the height profile, addresses worldwide and more stations.',
   ]),
 });
 
-/** "Zenith 1.0 · 13 October 2026" */
+/** "Zenith 1.1 · 13 October 2026" */
 export function versionLine(version = ZENITH_VERSION) {
   return `Zenith ${version.number} · ${version.date}`;
 }
