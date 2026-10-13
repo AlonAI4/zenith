@@ -5,3 +5,4 @@ cd "$(dirname "$0")/.."
 node security-tests/share-zip.mjs
 node security-tests/packages.mjs
 node security-tests/site-unlisted.mjs
+zsh security-tests/update-preview.sh

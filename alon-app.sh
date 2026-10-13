@@ -46,12 +46,27 @@ case "$1" in
   speed) running || start > /dev/null; node alon-speed-check.mjs ;;
   stop) stop ;;
   status) running && echo running || echo stopped ;;
+  # The Mac app's Update button: describe first, install only on a yes.
+  update-preview) ./alon-update.sh --preview 2>&1 ;;
+  update-install)
+    before=$(git rev-parse alon)
+    ./alon-update.sh --install "$2" 2>&1 | tail -8
+    if [ "$(git rev-parse alon)" != "$before" ]; then
+      # Restart so the new code is the code that runs, then check the add-ons.
+      running && stop > /dev/null
+      start
+      browser_test || echo "An add-on is not working after this update. Ask Claude."
+    fi
+    ;;
+  # In a terminal: describe, ask, install.
   update)
-    ./alon-update.sh 2>&1 | tail -5
-    # Restart so the new code is the code that runs.
-    running && stop > /dev/null
-    start
-    browser_test || echo "An add-on is not working after this update. Ask Claude."
+    before=$(git rev-parse alon)
+    ./alon-update.sh
+    if [ "$(git rev-parse alon)" != "$before" ]; then
+      running && stop > /dev/null
+      start
+      browser_test || echo "An add-on is not working after this update. Ask Claude."
+    fi
     ;;
   *) echo "usage: $0 start|stop|status|update|test|speed"; exit 2 ;;
 esac

@@ -15,9 +15,20 @@ try
 		else if choice is "Stop" then
 			helper("stop")
 		else
-			display notification "Downloading the newest version and running the tests. This takes a minute or two." with title "Zenith"
-			set report to helper("update")
-			display dialog report buttons {"OK"} default button "OK" with title "Zenith update"
+			-- Nothing is installed unread: first say what the update is, then ask.
+			display notification "Checking the original project for updates…" with title "Zenith"
+			set preview to helper("update-preview")
+			if preview contains "ID: " then
+				set updateId to last word of preview
+				set answer to button returned of (display dialog preview buttons {"Not now", "Install"} default button "Not now" with title "Zenith update")
+				if answer is "Install" then
+					display notification "Installing, then testing every add-on. This takes about ten minutes." with title "Zenith"
+					set report to helper("update-install " & quoted form of updateId)
+					display dialog report buttons {"OK"} default button "OK" with title "Zenith update"
+				end if
+			else
+				display dialog preview buttons {"OK"} default button "OK" with title "Zenith update"
+			end if
 		end if
 	else
 		display notification "Starting…" with title "Zenith"
