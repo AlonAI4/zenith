@@ -60,7 +60,7 @@ application
   .start()
   .then(
     () => {
-      const { scene, controls } = application.getComponents();
+      const { scene, controls, data } = application.getComponents();
       const styleManager = controls?.styleManager;
       startMine([
         ['Panel guard', () => installPanelGuard(styleManager)],
@@ -83,7 +83,17 @@ application
         ['Day and night', () => installDayNight(scene)],
         ['Map pin', () => installAddressLookup(scene)],
         ['Measure', () => installMeasureTool(scene)],
-        ['Saved places', () => installSavedPlaces(scene)],
+        [
+          'Saved places',
+          () =>
+            installSavedPlaces(scene, document, {
+              look: {
+                styleManager,
+                mapStackController: scene.mapStackController,
+                dataManager: data?.dataManager,
+              },
+            }),
+        ],
         [
           'Video mode',
           () =>

@@ -5,7 +5,9 @@ import {
   addPlace,
   cleanName,
   describePlace,
+  isLook,
   isPlace,
+  lookChanges,
   MAX_NAME,
   MAX_PLACES,
   parsePlaces,
@@ -74,4 +76,37 @@ test('the line under a name says where it is and how high', () => {
   assert.equal(describePlace(place('A')), '51.51°N 0.08°W · 900 m up');
   assert.equal(describePlace(place('B', { lat: -33.87, lon: 151.21, height: 4200 })), '33.87°S 151.21°E · 4.2 km up');
   assert.equal(describePlace(place('C', { height: 14_000_000 })), '51.51°N 0.08°W · 14,000 km up');
+});
+
+const look = (extra = {}) => ({ style: 'noir', map: 'photoreal', layers: ['flights'], ...extra });
+
+test('a place saved before looks were remembered still counts', () => {
+  assert.equal(isPlace(place('Old one')), true);
+  assert.equal(isPlace(place('New one', { look: look() })), true);
+  assert.deepEqual(parsePlaces(JSON.stringify([place('Old one')])).length, 1);
+});
+
+test('a damaged or odd look is refused', () => {
+  assert.equal(isLook(undefined), true);
+  assert.equal(isLook(look({ style: null, map: null, layers: [] })), true);
+  assert.equal(isLook(null), false);
+  assert.equal(isLook(look({ style: 'no spaces allowed' })), false);
+  assert.equal(isLook(look({ layers: 'flights' })), false);
+  assert.equal(isLook(look({ layers: ['<script>'] })), false);
+  assert.equal(isLook(look({ layers: Array.from({ length: 200 }, (_, i) => `l${i}`) })), false);
+  assert.equal(isPlace(place('Bad look', { look: look({ map: 7 }) })), false);
+});
+
+test('putting a look back changes only what differs', () => {
+  const now = { style: 'normal', map: 'photoreal', layers: ['cctv', 'flights'] };
+  assert.deepEqual(lookChanges(now, look()), { style: 'noir', map: null, toggle: ['cctv'] });
+  assert.deepEqual(lookChanges(now, { style: 'normal', map: 'esri-imagery', layers: ['flights', 'vessels'] }), {
+    style: null,
+    map: 'esri-imagery',
+    toggle: ['cctv', 'vessels'],
+  });
+  // No look saved: leave everything as it is.
+  assert.deepEqual(lookChanges(now, undefined), { style: null, map: null, toggle: [] });
+  // A look with no style or map recorded leaves those alone too.
+  assert.deepEqual(lookChanges(now, { style: null, map: null, layers: ['cctv', 'flights'] }), { style: null, map: null, toggle: [] });
 });

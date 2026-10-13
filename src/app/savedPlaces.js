@@ -4,7 +4,9 @@ import * as Cesium from 'cesium';
  * Saved places: star the view on screen, name it, and fly back to it later.
  *
  * One toolbar switch opens a small panel with a name box and the list. A
- * saved place is the camera's position, height, direction and tilt. The list
+ * saved place is the camera's position, height, direction and tilt, and the
+ * look it was saved with: the visual preset, which map was showing and which
+ * data layers were on. Flying to it puts the look back as well. The list
  * is kept in this browser's storage on this computer only: it is never put in
  * the page address, and the copy of the app that gets shared does not hold it.
  */
@@ -29,10 +31,49 @@ const finite = (value, low, high) =>
   value >= low &&
   value <= high;
 
+const isWord = (value) =>
+  typeof value === 'string' && /^[\w.:-]{1,60}$/.test(value);
+
+/**
+ * True for a stored look that is safe to put back. A place saved before
+ * looks were remembered has none, and that is fine.
+ */
+export function isLook(look) {
+  if (look === undefined) return true;
+  return (
+    Boolean(look) &&
+    typeof look === 'object' &&
+    (look.style === null || isWord(look.style)) &&
+    (look.map === null || isWord(look.map)) &&
+    Array.isArray(look.layers) &&
+    look.layers.length <= 80 &&
+    look.layers.every(isWord)
+  );
+}
+
+/**
+ * What has to change to get from the look now to a saved look.
+ * @returns {{ style: string|null, map: string|null, toggle: string[] }}
+ *   A null means leave it; toggle lists the layers to switch on or off.
+ */
+export function lookChanges(now, wanted) {
+  if (!wanted) return { style: null, map: null, toggle: [] };
+  const on = new Set(now.layers);
+  const want = new Set(wanted.layers);
+  return {
+    style: wanted.style && wanted.style !== now.style ? wanted.style : null,
+    map: wanted.map && wanted.map !== now.map ? wanted.map : null,
+    toggle: [...new Set([...on, ...want])]
+      .filter((id) => on.has(id) !== want.has(id))
+      .sort(),
+  };
+}
+
 /** True for a stored record that is safe to fly to. */
 export function isPlace(place) {
   return (
     Boolean(place) &&
+    isLook(place.look) &&
     typeof place.name === 'string' &&
     cleanName(place.name) === place.name &&
     place.name.length > 0 &&
@@ -181,9 +222,35 @@ body.ui-clean-view #saved-places { display: none; }
 export function installSavedPlaces(
   { viewer },
   doc = document,
-  { storage = globalThis.localStorage } = {},
+  { storage = globalThis.localStorage, look: parts = {} } = {},
 ) {
   const { camera } = viewer;
+  const { styleManager, mapStackController, dataManager } = parts;
+
+  /** The look now, read from the app's own controls. */
+  const readLook = () => ({
+    style: styleManager?.activeStyle ?? null,
+    map: mapStackController?.getActiveId?.() ?? null,
+    layers: [...(dataManager?.getEnabledLayerIds?.() ?? [])].map(String).sort(),
+  });
+
+  /** Put a saved look back, changing only what differs. */
+  const applyLook = (wanted) => {
+    const { style, map, toggle } = lookChanges(readLook(), wanted);
+    if (style) styleManager?.setStyle?.(style, { revealParameters: false });
+    if (map) {
+      // Through the map's own button, so it counts as a map picked by hand.
+      const chip = [...doc.querySelectorAll('.map-stack-chip')].find(
+        (candidate) => candidate.dataset.stackId === map,
+      );
+      if (chip) chip.click();
+      else mapStackController?.setStack?.(map);
+    }
+    for (const id of toggle) {
+      if (dataManager?.layers?.has?.(id))
+        dataManager.toggle(id, { origin: 'user' });
+    }
+  };
   const read = () => {
     try {
       return parsePlaces(storage?.getItem(STORAGE_KEY));
@@ -255,6 +322,7 @@ export function installSavedPlaces(
   };
 
   const flyTo = (place) => {
+    applyLook(place.look);
     // Let go of anything being followed, or the view would be pulled back.
     viewer.trackedEntity = undefined;
     camera.cancelFlight();
@@ -279,7 +347,7 @@ export function installSavedPlaces(
       ? 'This browser would not save the list, so it lasts only until the page is closed.'
       : places.length === 0
         ? 'Nothing saved yet. Move to a view you like, name it and press Save.'
-        : 'Kept on this computer only.';
+        : 'A place remembers its map, look and layers. Kept on this computer only.';
     list.replaceChildren(
       ...places.map((place) => {
         const go = element('button', 'sp-go');
@@ -313,7 +381,7 @@ export function installSavedPlaces(
       input.focus();
       return;
     }
-    places = addPlace(places, { name, ...here() });
+    places = addPlace(places, { name, ...here(), look: readLook() });
     write();
     input.value = '';
     render();

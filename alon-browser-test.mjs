@@ -610,6 +610,43 @@ const checks = [
       expect(Math.abs(turn(saved.heading, back.heading)) < 1, 'it flew back facing the wrong way');
       await page.click('#saved-places .sp-delete');
       expect((await names()).length === 0, 'delete did not remove the place');
+      // A place remembers the look: the visual preset and the layers that were on.
+      const layerState = () =>
+        page.evaluate(() => ({
+          style: window.__godsEyeView.styleManager.activeStyle,
+          layers: [...window.__godsEyeView.dataManager.getEnabledLayerIds()].sort().join(','),
+        }));
+      const plain = await layerState();
+      const spare = await page.evaluate(() => {
+        const manager = window.__godsEyeView.dataManager;
+        return ['satellites', 'flights'].find((id) => manager.layers.has(id) && !manager.isEnabled(id)) ?? null;
+      });
+      await page.evaluate((id) => {
+        window.__godsEyeView.styleManager.setStyle('noir', { revealParameters: false });
+        if (id) window.__godsEyeView.dataManager.toggle(id, { origin: 'user' });
+      }, spare);
+      await sleep(1500);
+      const dressed = await layerState();
+      await page.type('#saved-places input', 'With a look');
+      await page.keyboard.press('Enter');
+      await page.evaluate((id) => {
+        window.__godsEyeView.styleManager.setStyle('normal', { revealParameters: false });
+        if (id) window.__godsEyeView.dataManager.toggle(id, { origin: 'user' });
+      }, spare);
+      await sleep(1500);
+      expect(JSON.stringify(await layerState()) === JSON.stringify(plain), 'could not put the plain look back before the test');
+      await page.click('#saved-places .sp-go');
+      await sleep(3500);
+      const restored = await layerState();
+      // Leave things as they were found.
+      await page.click('#saved-places .sp-delete');
+      await page.evaluate((id) => {
+        window.__godsEyeView.styleManager.setStyle('normal', { revealParameters: false });
+        if (id && window.__godsEyeView.dataManager.isEnabled(id)) window.__godsEyeView.dataManager.toggle(id, { origin: 'user' });
+      }, spare);
+      await sleep(1200);
+      expect(dressed.style === 'noir', `could not set the noir look for the test (${dressed.style})`);
+      expect(JSON.stringify(restored) === JSON.stringify(dressed), `flying to the place gave ${JSON.stringify(restored)}, it was saved with ${JSON.stringify(dressed)}`);
       await page.keyboard.press('Escape');
       expect(await page.evaluate(() => document.getElementById('saved-places').hidden), 'Escape did not close the panel');
     },
@@ -798,6 +835,28 @@ const soloChecks = [
       await sleep(4000);
       expect((await page.evaluate(() => window.__zt.map())) === 'esri-imagery', 'the hand-picked satellite map was switched away');
       await pickMap(page, 'photoreal');
+    },
+  ],
+  [
+    'a saved place brings its map back',
+    async (page) => {
+      await open(page, WIDE, LONDON);
+      await pickMap(page, 'esri-imagery');
+      await press(page, 'saved-places-toggle');
+      await page.type('#saved-places input', 'On satellite');
+      await page.keyboard.press('Enter');
+      await page.keyboard.press('Escape');
+      await pickMap(page, 'photoreal');
+      await press(page, 'saved-places-toggle');
+      await page.click('#saved-places .sp-go');
+      await until(page, () => window.__zt.map() === 'esri-imagery', 15_000, 'flying to the place did not bring the satellite map back');
+      // It was put back the way a person picks it, so it must stay.
+      await sleep(5000);
+      const stayed = (await page.evaluate(() => window.__zt.map())) === 'esri-imagery';
+      await page.click('#saved-places .sp-delete');
+      await page.keyboard.press('Escape');
+      await pickMap(page, 'photoreal');
+      expect(stayed, 'the satellite map was switched away again after a few seconds');
     },
   ],
   [
