@@ -351,8 +351,12 @@ export function installTimeZones({ viewer }, doc = document) {
   const apply = async () => {
     clearInterval(timer);
     timer = null;
-    if (layer) layer.show = on;
     if (!on) {
+      // Taken off the map, not just hidden: hidden ground lines over the 3D
+      // buildings still cost the map about a quarter of its speed.
+      if (layer && viewer.dataSources.contains(layer)) {
+        viewer.dataSources.remove(layer, false);
+      }
       setOverlaySourceVisible(LAYER_NAME, false);
       viewer.creditDisplay.removeStaticCredit(credit);
       viewer.scene.requestRender();
@@ -368,8 +372,14 @@ export function installTimeZones({ viewer }, doc = document) {
       return;
     }
     if (viewer.isDestroyed()) return;
-    layer.show = on;
-    if (!on) return;
+    if (!on) {
+      if (viewer.dataSources.contains(layer))
+        viewer.dataSources.remove(layer, false);
+      return;
+    }
+    if (!viewer.dataSources.contains(layer))
+      await viewer.dataSources.add(layer);
+    layer.show = true;
     viewer.creditDisplay.addStaticCredit(credit);
     relabel();
     setOverlaySourceVisible(LAYER_NAME, true);

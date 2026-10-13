@@ -5,12 +5,10 @@ import * as Cesium from 'cesium';
 
 import {
   directionTo,
-  isDayNightPick,
   nightLook,
   partOfDay,
   subsolarPoint,
   sunHeight,
-  terminatorLine,
 } from './dayNight.js';
 
 const at = (iso) => Date.parse(iso);
@@ -68,22 +66,6 @@ test('day and night agree with the clock on the wall', () => {
   assert.ok(Math.abs(sunHeight(noonUtc.lat, noonUtc.lon, noonUtc) - 1) < 1e-12);
 });
 
-test('the line where night begins has the sun exactly on the horizon', () => {
-  for (const sub of [subsolarPoint(at('2026-10-13T12:00:00Z')), { lat: 0, lon: 100 }, { lat: 23.44, lon: -170 }]) {
-    const ring = terminatorLine(sub, 90);
-    assert.equal(ring.length, 91 * 2);
-    for (let i = 0; i < ring.length; i += 2) {
-      assert.ok(Math.abs(ring[i]) <= 180 && Math.abs(ring[i + 1]) <= 90);
-      assert.ok(Math.abs(sunHeight(ring[i + 1], ring[i], sub)) < 1e-9, `point ${i / 2}`);
-    }
-    // A closed ring: it ends where it starts (compared as points on the globe,
-    // because at a pole every longitude is the same place).
-    const first = directionTo({ lon: ring[0], lat: ring[1] });
-    const last = directionTo({ lon: ring.at(-2), lat: ring.at(-1) });
-    assert.ok(Math.hypot(first[0] - last[0], first[1] - last[1], first[2] - last[2]) < 1e-9);
-  }
-});
-
 test('the night look is strong from far out and mild close to the ground', () => {
   const far = nightLook(10_000_000);
   const near = nightLook(1000);
@@ -98,10 +80,7 @@ test('the night look is strong from far out and mild close to the ground', () =>
   }
 });
 
-test('directions are unit vectors, and only this layer counts as its own pick', () => {
+test('directions are unit vectors', () => {
   const [x, y, z] = directionTo({ lat: 37, lon: -122 });
   assert.ok(Math.abs(Math.hypot(x, y, z) - 1) < 1e-12);
-  assert.equal(isDayNightPick({ id: { entityCollection: { owner: { name: 'alon-day-night' } } } }), true);
-  assert.equal(isDayNightPick({ id: { entityCollection: { owner: { name: 'alon-time-zones' } } } }), false);
-  assert.equal(isDayNightPick(undefined), false);
 });

@@ -20,11 +20,7 @@
  * The app must be running (./alon-app.sh start). A new add-on gets a check
  * here before it is committed.
  */
-import { existsSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-
-import puppeteer from 'puppeteer';
+import { launchBrowser, sleep } from './alon-browser.mjs';
 
 const BASE = process.env.ZENITH_URL || 'http://localhost:4173';
 const LONDON = 'lat=51.5055&lon=-0.0754&alt=900&heading=20&pitch=-35';
@@ -62,7 +58,6 @@ const onlySetup = setupAt >= 0 ? Number(args[setupAt + 1]) : null;
 const onlyAt = args.indexOf('--only');
 const only = onlyAt >= 0 ? (args[onlyAt + 1] || '').toLowerCase().split(',') : null;
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 class Skip extends Error {}
 const expect = (condition, why) => {
   if (!condition) throw new Error(why);
@@ -114,58 +109,6 @@ function pageHelpers() {
       return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
     },
   };
-}
-
-/**
- * Browsers this test could drive, best first. The browser-driving package
- * wants one exact version of its own test browser, which is not always on
- * this Mac (or is only half there), so the run tries each of these in turn:
- * the one named in ZENITH_CHROME, the package's own, test browsers already
- * downloaded by other tools, then Google Chrome itself. Chrome is run with a
- * throwaway profile, so the real one is not touched.
- */
-function browserCandidates() {
-  const found = [];
-  const add = (path) => {
-    if (typeof path === 'string' && path && existsSync(path) && !found.includes(path)) found.push(path);
-  };
-  add(process.env.ZENITH_CHROME);
-  try {
-    add(puppeteer.executablePath());
-  } catch {
-    // The package's own browser is not installed.
-  }
-  const inside = (root, ...appPath) => {
-    if (!existsSync(root)) return;
-    for (const version of readdirSync(root).sort().reverse()) {
-      const base = join(root, version);
-      let folders = [];
-      try {
-        folders = readdirSync(base);
-      } catch {
-        continue;
-      }
-      for (const folder of folders) add(join(base, folder, ...appPath));
-    }
-  };
-  const testChrome = ['Google Chrome for Testing.app', 'Contents', 'MacOS', 'Google Chrome for Testing'];
-  inside(join(homedir(), '.cache', 'puppeteer', 'chrome'), ...testChrome);
-  inside(join(homedir(), 'Library', 'Caches', 'ms-playwright'), ...testChrome);
-  inside(join(homedir(), 'Library', 'Caches', 'ms-playwright'), 'Chromium.app', 'Contents', 'MacOS', 'Chromium');
-  add('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
-  return found;
-}
-
-async function launchBrowser() {
-  const flags = process.platform === 'darwin' ? ['--use-angle=metal', '--enable-gpu'] : ['--use-gl=angle'];
-  for (const executablePath of browserCandidates()) {
-    try {
-      return await puppeteer.launch({ headless: true, executablePath, args: flags });
-    } catch {
-      // Half-installed or too old: try the next one.
-    }
-  }
-  return null;
 }
 
 const results = [];
@@ -423,6 +366,11 @@ const checks = [
         5000,
         'the zone borders stayed after switching off',
       );
+      // Off means taken off the map, so on again has to bring them back.
+      await press(page, 'time-zones-toggle');
+      await until(page, () => window.__zt.entities('alon-time-zones') > 1000, 10_000, 'the borders did not come back the second time');
+      await press(page, 'time-zones-toggle');
+      await until(page, () => window.__zt.entities('alon-time-zones') === 0, 5000, 'the borders stayed after the second switch-off');
     },
   ],
   [
@@ -503,7 +451,6 @@ const checks = [
           return {
             tiles: Boolean(tileset?.customShader),
             globe: Boolean(viewer.scene.globe.material),
-            line: window.__zt.entities('alon-day-night'),
             credit: /NASA/.test(document.getElementById('cesium-credits')?.textContent ?? ''),
           };
         });
@@ -515,9 +462,8 @@ const checks = [
       const off = await state();
       const shaded = setup.map === 'photoreal' ? on.tiles && !on.globe : on.globe && !on.tiles;
       expect(shaded, `the wrong surface was shaded: ${JSON.stringify(on)}`);
-      expect(on.line === 1, 'the dusk line was not drawn');
       expect(on.credit, 'the NASA credit is not on screen');
-      expect(!off.tiles && !off.globe && off.line === 0 && !off.credit, `it did not switch off cleanly: ${JSON.stringify(off)}`);
+      expect(!off.tiles && !off.globe && !off.credit, `it did not switch off cleanly: ${JSON.stringify(off)}`);
     },
   ],
   [

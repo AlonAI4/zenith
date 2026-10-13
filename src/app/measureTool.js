@@ -4,7 +4,6 @@ import {
   setOverlayEntries,
 } from '../overlays/worldOverlay.js';
 import { formatDistance } from './scaleBar.js';
-import { isDayNightPick } from './dayNight.js';
 import { isTimeZonePick } from './timeZones.js';
 
 /**
@@ -227,7 +226,6 @@ export function installMeasureTool({ viewer }, doc = document) {
       picked.primitive instanceof Cesium.Cesium3DTileset ||
       picked instanceof Cesium.Cesium3DTileFeature ||
       isTimeZonePick(picked) ||
-      isDayNightPick(picked) ||
       isMine(picked);
     if (!onMap) return;
     const spot =

@@ -1,6 +1,5 @@
 import * as Cesium from 'cesium';
 import { isMeasuring } from './measureTool.js';
-import { isDayNightPick } from './dayNight.js';
 import {
   isTimeZonePick,
   loadTimeZones,
@@ -296,8 +295,7 @@ export function installAddressLookup({ viewer }, doc = document) {
       !picked ||
       picked.primitive instanceof Cesium.Cesium3DTileset ||
       picked instanceof Cesium.Cesium3DTileFeature ||
-      isTimeZonePick(picked) ||
-      isDayNightPick(picked);
+      isTimeZonePick(picked);
     if (!onMap) return;
     const spot =
       (scene.pickPositionSupported && scene.pickPosition(click.position)) ||

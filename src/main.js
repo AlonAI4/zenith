@@ -39,9 +39,16 @@ application.start().catch((error) => {
   loaderStatus.style.color = '#ff4444';
 });
 
+// Adding ?addons=off to the address starts the original app alone. It tells
+// whether a problem, or a slow map, comes from this build's add-ons.
+const addOnsOff =
+  new URLSearchParams(globalThis.location?.search ?? '').get('addons') ===
+  'off';
+
 // Each add-on starts on its own: one that fails is named in a notice and the
 // rest still start (see app/addOns.js).
-startAddOns([
+const startMine = (list) => (addOnsOff ? [] : startAddOns(list));
+startMine([
   ['Branding', () => initBranding()],
   ['Button tooltips', () => initButtonTooltips()],
   ['Menus', () => initCustomSelects()],
@@ -55,7 +62,7 @@ application
     () => {
       const { scene, controls } = application.getComponents();
       const styleManager = controls?.styleManager;
-      startAddOns([
+      startMine([
         ['Panel guard', () => installPanelGuard(styleManager)],
         ['Rotate gestures', () => installRotateGestures(scene.viewer)],
         [

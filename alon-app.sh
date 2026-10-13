@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Start, stop or update Zenith (Alon's build of God's Eye View). Zenith.app in ~/Applications
-# calls this; it also works by hand: ./alon-app.sh start|stop|status|update|test
+# calls this; it also works by hand: ./alon-app.sh start|stop|status|update|test|speed
 cd "$(dirname "$0")"
 # A Mac app starts with a bare PATH; use the same Node the project is run with.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
@@ -43,6 +43,7 @@ browser_test() {
 case "$1" in
   start) start ;;
   test) browser_test ;;
+  speed) running || start > /dev/null; node alon-speed-check.mjs ;;
   stop) stop ;;
   status) running && echo running || echo stopped ;;
   update)
@@ -52,5 +53,5 @@ case "$1" in
     start
     browser_test || echo "An add-on is not working after this update. Ask Claude."
     ;;
-  *) echo "usage: $0 start|stop|status|update|test"; exit 2 ;;
+  *) echo "usage: $0 start|stop|status|update|test|speed"; exit 2 ;;
 esac

@@ -18,9 +18,7 @@ import { guard } from './addOns.js';
  */
 
 const STORAGE_KEY = 'gev.dayNight';
-const LAYER_NAME = 'alon-day-night';
 const LIGHTS_URL = '/alon/night-lights.webp';
-const LINE_COLOR = '#ff9d4d';
 const CREDIT = 'Night lights: NASA Earth Observatory (Black Marble 2016)';
 const SUN_EVERY_MS = 30_000;
 const SURFACE_EVERY_MS = 1000;
@@ -83,24 +81,6 @@ export function partOfDay(lat, lon, sub) {
 }
 
 /**
- * The line where the sun is on the horizon, as a closed ring.
- * @returns {number[]} lon, lat, lon, lat, ...
- */
-export function terminatorLine(sub, steps = 180) {
-  const sinSub = Math.sin(rad(sub.lat));
-  const cosSub = Math.cos(rad(sub.lat));
-  const ring = [];
-  for (let i = 0; i <= steps; i++) {
-    const bearing = (i / steps) * 2 * Math.PI;
-    const sinLat = cosSub * Math.cos(bearing);
-    const lon =
-      sub.lon + deg(Math.atan2(Math.sin(bearing) * cosSub, -sinSub * sinLat));
-    ring.push(turn(lon + 180) - 180, deg(Math.asin(sinLat)));
-  }
-  return ring;
-}
-
-/**
  * How strong the night look is from this camera height.
  * `floor` is how bright the night side stays (1 is full daylight) and `glow`
  * is how bright the city lights are.
@@ -120,15 +100,18 @@ export function nightLook(heightM) {
   };
 }
 
-/** True for a click that landed on the line this layer draws. */
-export function isDayNightPick(picked) {
-  return picked?.id?.entityCollection?.owner?.name === LAYER_NAME;
-}
-
-/** Shared by both shaders: how much daylight a point gets, and its lights. */
+/** Shared by both shaders: daylight, the dusk line and the lights at a point. */
 const NIGHT_GLSL = `
-float zenithDaylight(vec3 p, vec3 sun) {
-  return smoothstep(-0.12, 0.10, dot(normalize(p), sun));
+const vec3 ZENITH_DUSK = vec3(1.0, 0.62, 0.3);
+float zenithDaylight(float sunHeight) {
+  return smoothstep(-0.12, 0.10, sunHeight);
+}
+// The line where the sun is on the horizon, about a pixel and a half wide at
+// any zoom. Drawn here, not as a line on the ground: ground lines over the 3D
+// buildings cost the map a quarter of its speed.
+float zenithDuskLine(float sunHeight) {
+  float width = max(fwidth(sunHeight) * 1.5, 4.0e-7);
+  return (1.0 - smoothstep(0.0, width, abs(sunHeight))) * 0.85;
 }
 vec3 zenithLights(vec3 p, sampler2D picture) {
   float lon = atan(p.y, p.x);
@@ -154,14 +137,21 @@ vec3 zenithLights(vec3 p, sampler2D picture) {
     g1.y * (g0.x * texture(picture, vec2(h0.x, h1.y)).rgb + g1.x * texture(picture, vec2(h1.x, h1.y)).rgb);
 }`;
 
+// Both shaders stop early in full daylight, and read the lights picture only
+// when the lights are showing: on every pixel of every frame, skipped work
+// counts.
 const TILES_SHADER = `${NIGHT_GLSL}
 void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
   // From eye coordinates: the tiles' own world position is too coarse here,
   // and makes the lights blocky.
   vec3 p = (czm_inverseView * vec4(fsInput.attributes.positionEC, 1.0)).xyz;
-  float day = zenithDaylight(p, u_sun);
-  vec3 night = material.diffuse * u_floor * vec3(0.6, 0.75, 1.0) + zenithLights(p, u_lights) * u_glow;
-  material.diffuse = mix(night, material.diffuse, day);
+  float sunHeight = dot(normalize(p), u_sun);
+  float line = zenithDuskLine(sunHeight);
+  float day = zenithDaylight(sunHeight);
+  if (day > 0.999) return;
+  vec3 night = material.diffuse * u_floor * vec3(0.6, 0.75, 1.0);
+  if (u_glow > 0.0) night += zenithLights(p, u_lights) * u_glow;
+  material.diffuse = mix(mix(night, material.diffuse, day), ZENITH_DUSK, line);
 }`;
 
 // Drawn over the globe's pictures: see-through by day, dark with lights by night.
@@ -169,8 +159,15 @@ const GLOBE_SHADER = `${NIGHT_GLSL}
 czm_material czm_getMaterial(czm_materialInput materialInput) {
   czm_material material = czm_getDefaultMaterial(materialInput);
   vec3 p = (czm_inverseView * vec4(-materialInput.positionToEyeEC, 1.0)).xyz;
-  material.diffuse = vec3(0.0, 0.01, 0.03) + zenithLights(p, lightsImage) * nightGlow;
-  material.alpha = (1.0 - zenithDaylight(p, sunDir)) * (1.0 - nightFloor);
+  float sunHeight = dot(normalize(p), sunDir);
+  float line = zenithDuskLine(sunHeight);
+  float day = zenithDaylight(sunHeight);
+  material.diffuse = vec3(0.0, 0.01, 0.03);
+  material.alpha = 0.0;
+  if (day > 0.999) return material;
+  if (nightGlow > 0.0) material.diffuse += zenithLights(p, lightsImage) * nightGlow;
+  material.diffuse = mix(material.diffuse, ZENITH_DUSK, line);
+  material.alpha = max((1.0 - day) * (1.0 - nightFloor), line);
   return material;
 }`;
 
@@ -205,24 +202,10 @@ export function installDayNight({ viewer, tileset }, doc = document) {
   let sub = subsolarPoint();
   let sunAt = 0;
   let shader = null;
-  let source = null;
   let globeMaterial = null;
   const credit = new Cesium.Credit(CREDIT, true);
 
   const sunVector = () => Cesium.Cartesian3.fromArray(directionTo(sub));
-
-  const drawLine = () => {
-    if (!source) return;
-    source.entities.removeAll();
-    source.entities.add({
-      polyline: {
-        positions: Cesium.Cartesian3.fromDegreesArray(terminatorLine(sub)),
-        clampToGround: true,
-        width: 1.5,
-        material: Cesium.Color.fromCssColorString(LINE_COLOR).withAlpha(0.85),
-      },
-    });
-  };
 
   const litGlobe = () => {
     // Never replace a look some other part of the app gave the globe.
@@ -308,7 +291,6 @@ export function installDayNight({ viewer, tileset }, doc = document) {
     sunAt = Date.now();
     shader?.setUniform('u_sun', sunVector());
     if (globeMaterial) globeMaterial.uniforms.sunDir = sunVector();
-    drawLine();
     scene.requestRender();
   };
 
@@ -326,16 +308,11 @@ export function installDayNight({ viewer, tileset }, doc = document) {
 
   const apply = () => {
     if (on) {
-      if (!source) {
-        source = new Cesium.CustomDataSource(LAYER_NAME);
-        viewer.dataSources.add(source);
-      }
       viewer.creditDisplay.addStaticCredit(credit);
       syncSurface();
       syncSun();
     } else {
       syncSurface();
-      source?.entities.removeAll();
       viewer.creditDisplay.removeStaticCredit(credit);
       scene.requestRender();
     }
@@ -377,7 +354,6 @@ export function installDayNight({ viewer, tileset }, doc = document) {
     clearInterval(surfaceTimer);
     removeLook();
     apply();
-    if (source) viewer.dataSources.remove(source, true);
     button.remove();
   };
 }
