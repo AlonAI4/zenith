@@ -968,6 +968,47 @@ const checks = [
     },
   ],
   [
+    'version and what is new',
+    async (page) => {
+      const { ZENITH_VERSION, versionLine } = await import('./src/app/zenithVersion.js');
+      await press(page, 'zenith-help-toggle');
+      const read = () =>
+        page.evaluate(() => {
+          const box = document.getElementById('zenith-whats-new');
+          const card = document.getElementById('zenith-help').getBoundingClientRect();
+          const r = box.getBoundingClientRect();
+          return {
+            title: box.querySelector('summary').textContent,
+            open: box.open,
+            lines: [...box.querySelectorAll('li')].map((li) => li.textContent),
+            // A closed list keeps its place in the page, so ask the browser.
+            shown: box.querySelector('li').checkVisibility(),
+            inside: r.left >= card.left && r.right <= card.right + 1,
+          };
+        });
+      const closed = await read();
+      expect(closed.title.includes(versionLine()), `the card says "${closed.title}", expected ${versionLine()}`);
+      expect(!closed.open && !closed.shown, 'the list of changes was open before being asked for');
+      await page.evaluate(() => {
+        const summary = document.querySelector('#zenith-whats-new summary');
+        summary.scrollIntoView({ block: 'center' });
+        summary.click();
+      });
+      await sleep(250);
+      const opened = await read();
+      expect(opened.open && opened.shown, 'clicking the title did not open the list of changes');
+      expect(opened.lines.length === ZENITH_VERSION.changes.length && opened.lines[0] === ZENITH_VERSION.changes[0], 'the list in the card is not the list for this build');
+      expect(opened.inside, 'the list sticks out of the help card');
+      // A switch changing redraws the card: the list must stay open.
+      await press(page, 'address-lookup-toggle');
+      const redrawn = await read();
+      await press(page, 'address-lookup-toggle');
+      await page.evaluate(() => (document.getElementById('zenith-whats-new').open = false));
+      await page.keyboard.press('Escape');
+      expect(redrawn.open, 'the list closed itself when the card was redrawn');
+    },
+  ],
+  [
     'settings file: saved without keys, a bad file refused, a good one loaded',
     async (page) => {
       await press(page, 'zenith-help-toggle');

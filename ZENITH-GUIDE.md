@@ -70,6 +70,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Video mode | Hides the controls and circles the spot in the middle of the screen, for recording. Choose slow, normal or fast and which way round, then Start. Any key or click ends it. The map credits stay on screen: keep them in frame in anything you post. |
 | Help card | The "?" switch explains every switch and what clicking the map does. |
 | Settings file | At the bottom of the help card: save your switches and saved places to a file, and load that file in another browser or on another Mac. The file never holds a key. |
+| Version | The bottom of the help card says which build this is and lists what is new in it. |
 
 ## API keys: bring your own
 

@@ -16,4 +16,16 @@ SIZE="$(du -h "$OUT/Zenith.zip" | cut -f1 | tr -d ' ')B"
 SHA=$(shasum -a 256 "$OUT/Zenith.zip" | cut -d' ' -f1)
 DAY=$(date "+%-d %B %Y")
 sed -i '' -e "s/__SIZE__/$SIZE/" -e "s/__SHA__/$SHA/" -e "s/__DATE__/$DAY/" "$OUT/index.html"
+# The version number and the list of what is new come from the one file the
+# app itself reads, so the page and the app cannot disagree.
+node --input-type=module -e '
+  import { readFileSync, writeFileSync } from "node:fs";
+  import { ZENITH_VERSION, changesAsHtml } from "./src/app/zenithVersion.js";
+  const file = process.argv[1];
+  const page = readFileSync(file, "utf8")
+    .replaceAll("__VERSION__", () => ZENITH_VERSION.number)
+    .replaceAll("__WHATS_NEW__", () => changesAsHtml());
+  if (/__[A-Z_]+__/.test(page)) throw new Error("the page still has an unfilled blank");
+  writeFileSync(file, page);
+' "$OUT/index.html"
 echo "Built $OUT ($(du -sh "$OUT" | cut -f1)). Nothing was published."

@@ -8,6 +8,7 @@
  */
 import { settingsFileControls } from './settingsFile.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
+import { versionLine, ZENITH_VERSION } from './zenithVersion.js';
 
 const STORAGE_KEY = 'gev.helpCard';
 const CLOSED = 'closed';
@@ -129,6 +130,9 @@ body.ui-clean-view #zenith-help { display: none; }
 #zenith-help ul { margin: 0; padding-left: 16px; }
 #zenith-help li { margin: 2px 0; }
 #zenith-help .zh-pin { color: #ffd27a; }
+#zenith-help .zh-new { margin-top: 12px; padding-top: 9px; border-top: 1px solid rgba(0, 246, 255, 0.2); }
+#zenith-help .zh-new summary { cursor: pointer; color: rgba(0, 246, 255, 0.85); letter-spacing: 0.06em; }
+#zenith-help .zh-new ul { margin-top: 7px; }
 `;
 
 /**
@@ -191,6 +195,14 @@ export function installHelpCard(
   // Built once and kept, so its message survives the card being redrawn.
   const settingsFile = settingsFileControls(doc, { storage, win });
 
+  // Also built once, so it stays open while the card is redrawn.
+  const whatsNew = element('details', 'zh-new');
+  whatsNew.id = 'zenith-whats-new';
+  whatsNew.append(
+    element('summary', '', `What's new in ${versionLine()}`),
+    list(ZENITH_VERSION.changes),
+  );
+
   const render = () => {
     const head = element('div', 'zh-head');
     const close = element('button', 'zh-close', '×');
@@ -231,6 +243,7 @@ export function installHelpCard(
       list(MOVING),
       element('h3', '', 'YOUR SETTINGS'),
       settingsFile,
+      whatsNew,
     );
   };
 
