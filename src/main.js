@@ -15,6 +15,7 @@ import { installTimeZones } from './app/timeZones.js';
 import { installToolbarFit } from './app/toolbarFit.js';
 import { installTrackingMarker } from './app/trackingMarker.js';
 import { installTrainStations } from './app/trainStations.js';
+import { installVideoMode } from './app/videoMode.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
 import { initBranding } from './ui/branding.js';
@@ -65,6 +66,11 @@ application
     installAddressLookup(scene);
     installMeasureTool(scene);
     installSavedPlaces(scene);
+    installVideoMode(scene.viewer, {
+      setCleanView: controls?.styleManager?.setCleanView
+        ? (on) => controls.styleManager.setCleanView(on)
+        : undefined,
+    });
     installHdDetail(scene);
     installHelpCard();
     installToolbarFit();

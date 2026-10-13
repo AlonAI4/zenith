@@ -47,6 +47,11 @@ export const ZENITH_SWITCHES = Object.freeze([
     what: 'Star the view on screen, name it, and fly back to it later. Kept on this computer only.',
   },
   {
+    id: 'video-mode-toggle',
+    name: 'Video mode',
+    what: 'Hides the controls and slowly circles the spot in the middle of the screen, for recording. Any key or click ends it.',
+  },
+  {
     id: 'zenith-help-toggle',
     name: 'Help',
     what: 'Opens the card that explains the switches and map clicks.',
