@@ -14,10 +14,22 @@ import * as Cesium from 'cesium';
  * 2. if tiles still fail (no network, say), shows the satellite map and says
  *    so, then keeps trying: each try gets a new session and switches 3D back
  *    on. No reload is needed.
+ *
+ * The app saves whichever map is showing into its address the next time a
+ * setting changes. So a fallback used to get saved as if satellite had been
+ * chosen, and from then on every reload opened flat. This remembers when
+ * satellite really was chosen by hand; starting on satellite without that is
+ * treated as a fallback, and 3D is tried.
  */
 
 const FAILURES_BEFORE_ACTION = 12;
 const FALLBACK_STACK = 'esri-imagery';
+const PHOTOREAL_STACK = 'photoreal';
+const CHOICE_KEY = 'gev.satelliteByChoice';
+const STARTUP_RETRY_MS = 1_500;
+/** A map change this soon after pressing a map in the app's menu is a choice. */
+const HAND_PICK_MS = 3_000;
+const MAP_MENU_SELECTOR = '.map-stack-chip';
 /** Failing again this soon after a new session means the session was not the problem. */
 const RENEW_GRACE_MS = 60_000;
 /** Requests already on their way still carry the old session; let them finish. */
@@ -86,6 +98,15 @@ async function renewSession(tileset) {
   return true;
 }
 
+/** Calls `mark` whenever one of the app's own map buttons is pressed. */
+function watchMapMenu(doc, mark) {
+  const onClick = (event) => {
+    if (event.target?.closest?.(MAP_MENU_SELECTOR)) mark();
+  };
+  doc.addEventListener('click', onClick, true);
+  return () => doc.removeEventListener('click', onClick, true);
+}
+
 function showNotice(doc, text, ms) {
   doc.getElementById(NOTICE_ID)?.remove();
   const notice = doc.createElement('div');
@@ -112,6 +133,8 @@ function showNotice(doc, text, ms) {
  * @param {() => number} [options.now]
  * @param {() => boolean} [options.isHidden] True while the page is not on screen.
  * @param {number} [options.settleMs]
+ * @param {Storage} [options.storage] Where "satellite was my choice" is kept.
+ * @param {(mark: () => void) => (() => void)} [options.onMapMenuPress]
  * @returns {() => void} Stops watching.
  */
 export function install3dMapWatchdog(
@@ -123,6 +146,8 @@ export function install3dMapWatchdog(
     now = () => Date.now(),
     isHidden = () => globalThis.document?.visibilityState === 'hidden',
     settleMs = SETTLE_MS,
+    storage = globalThis.localStorage,
+    onMapMenuPress = (mark) => watchMapMenu(document, mark),
   } = {},
 ) {
   if (!tileset?.tileFailed || !tileset.tileLoad || !mapStackController)
@@ -133,9 +158,34 @@ export function install3dMapWatchdog(
   let phase = 'watching';
   let renewedAt = -Infinity;
   let attempt = 0;
-  let stackBefore = null;
   let switchSeen = null;
   let stopped = false;
+  // True while this file is the one changing the map.
+  let mine = false;
+
+  const satelliteWasChosen = () => {
+    try {
+      return storage?.getItem(CHOICE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  };
+  const rememberChoice = (chosen) => {
+    try {
+      if (chosen) storage?.setItem(CHOICE_KEY, '1');
+      else storage?.removeItem(CHOICE_KEY);
+    } catch {
+      // Private windows may refuse storage; the rescue still works this visit.
+    }
+  };
+  const switchTo = async (id, options) => {
+    mine = true;
+    try {
+      await mapStackController.setStack(id, options);
+    } finally {
+      mine = false;
+    }
+  };
 
   const tryRenew = async () => {
     try {
@@ -152,10 +202,9 @@ export function install3dMapWatchdog(
       return;
     }
     phase = 'fallback';
-    stackBefore = mapStackController.getActiveId?.() ?? null;
     notify(FALLBACK_MESSAGE, NOTICE_MS);
     try {
-      await mapStackController.setStack(FALLBACK_STACK, { silent: true });
+      await switchTo(FALLBACK_STACK, { silent: true });
     } catch {
       // The retry below still runs.
     }
@@ -184,9 +233,8 @@ export function install3dMapWatchdog(
       return;
     }
     try {
-      await mapStackController.setStack(stackBefore || 'photoreal', {
-        silent: true,
-      });
+      // Not silent: the app's own map menu and saved address follow it back.
+      await switchTo(PHOTOREAL_STACK);
     } catch {
       attempt += 1;
       schedule(tryAgain, retryDelayMs(attempt));
@@ -238,9 +286,45 @@ export function install3dMapWatchdog(
     onRunOfFailures();
   });
 
+  const startRescue = () => {
+    phase = 'fallback';
+    switchSeen = mapStackController.getSwitchGeneration?.();
+    schedule(tryAgain, STARTUP_RETRY_MS);
+  };
+
+  let lastMenuPress = -Infinity;
+  const offMenu = onMapMenuPress(() => {
+    lastMenuPress = now();
+  });
+  const offChoice = mapStackController.subscribe?.(() => {
+    if (mine || mapStackController.getSwitchOrigin?.() !== 'manual') return;
+    if (mapStackController.getActiveId?.() !== FALLBACK_STACK) {
+      rememberChoice(false);
+      return;
+    }
+    // Satellite picked from the app's own menu is a choice, and is remembered.
+    if (now() - lastMenuPress < HAND_PICK_MS) {
+      rememberChoice(true);
+      return;
+    }
+    // Satellite arrived without being picked: the app restoring its saved
+    // address, which an earlier fallback had been written into.
+    if (!satelliteWasChosen() && phase === 'watching') startRescue();
+  });
+
+  // The same, for an app that is already on satellite when this starts.
+  if (
+    mapStackController.getActiveId?.() === FALLBACK_STACK &&
+    !satelliteWasChosen() &&
+    mapStackController.isStackAvailable(PHOTOREAL_STACK)
+  )
+    startRescue();
+
   return () => {
     stopped = true;
     offLoad();
     offFail();
+    offMenu?.();
+    if (typeof offChoice === 'function') offChoice();
   };
 }

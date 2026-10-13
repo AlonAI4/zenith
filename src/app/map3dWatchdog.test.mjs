@@ -24,7 +24,12 @@ function event() {
 /** Lets promise chains inside the watchdog run. */
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-function harness({ globeShown = false, renewAnswers = [true] } = {}) {
+function harness({
+  globeShown = false,
+  renewAnswers = [true],
+  startOn = 'photoreal',
+  stored = {},
+} = {}) {
   const tileset = { show: true, tileFailed: event(), tileLoad: event() };
   const switches = [];
   const notices = [];
@@ -33,15 +38,30 @@ function harness({ globeShown = false, renewAnswers = [true] } = {}) {
   let clock = 1_000_000;
   let hidden = false;
   let generation = 0;
-  let active = 'photoreal';
+  let active = startOn;
+  let origin = 'manual';
+  let pressMapMenu = () => {};
+  const subscribers = new Set();
+  const storage = {
+    getItem: (key) => stored[key] ?? null,
+    setItem: (key, value) => (stored[key] = String(value)),
+    removeItem: (key) => delete stored[key],
+  };
   const controller = {
     isStackAvailable: () => true,
     getActiveId: () => active,
     getSwitchGeneration: () => generation,
+    getSwitchOrigin: () => origin,
+    subscribe(listener) {
+      subscribers.add(listener);
+      return () => subscribers.delete(listener);
+    },
     setStack: async (id, options) => {
       switches.push([id, options]);
       active = id;
       generation += 1;
+      origin = 'manual';
+      subscribers.forEach((listener) => listener());
     },
   };
   const stop = install3dMapWatchdog(
@@ -61,6 +81,11 @@ function harness({ globeShown = false, renewAnswers = [true] } = {}) {
       now: () => clock,
       isHidden: () => hidden,
       settleMs: 0,
+      storage,
+      onMapMenuPress: (mark) => {
+        pressMapMenu = mark;
+        return () => {};
+      },
     },
   );
   return {
@@ -73,9 +98,28 @@ function harness({ globeShown = false, renewAnswers = [true] } = {}) {
     renews: () => renews,
     pass: (ms) => (clock += ms),
     hide: (value) => (hidden = value),
+    stored,
+    /** Press a map in the app's menu, which then switches to it. */
     pickByHand: (id) => {
+      pressMapMenu();
       active = id;
       generation += 1;
+      origin = 'manual';
+      subscribers.forEach((listener) => listener());
+    },
+    /** The app puts back the map its saved address names: nobody pressed anything. */
+    restoreFromAddress: (id) => {
+      active = id;
+      generation += 1;
+      origin = 'manual';
+      subscribers.forEach((listener) => listener());
+    },
+    /** The app itself changes the map, for example for a comparison. */
+    switchByApp: (id) => {
+      active = id;
+      generation += 1;
+      origin = 'automatic';
+      subscribers.forEach((listener) => listener());
     },
     fail: (times) => {
       for (let i = 0; i < times; i += 1) tileset.tileFailed.raise();
@@ -165,7 +209,7 @@ test('with no way to get a session it falls back, keeps trying, and brings 3D ba
   assert.equal(await h.tick(), 5_000); // first try: still no session
   assert.equal(h.switches.length, 1);
   assert.equal(await h.tick(), 10_000); // second try works
-  assert.deepEqual(h.switches[1], ['photoreal', { silent: true }]);
+  assert.deepEqual(h.switches[1], ['photoreal', undefined]);
   assert.equal(h.notices[1], '3D map is back.');
   assert.equal(h.timers.length, 0);
 });
@@ -219,5 +263,67 @@ test('nothing is tried while the page is not on screen', async () => {
   assert.equal(h.timers.length, 1);
   h.hide(false);
   await h.tick();
-  assert.deepEqual(h.switches[1], ['photoreal', { silent: true }]);
+  assert.deepEqual(h.switches[1], ['photoreal', undefined]);
+});
+
+test('satellite picked from the menu is remembered as a choice; picking 3D forgets it', () => {
+  const h = harness();
+  h.pickByHand('esri-imagery');
+  assert.equal(h.stored['gev.satelliteByChoice'], '1');
+  h.pickByHand('photoreal');
+  assert.equal(h.stored['gev.satelliteByChoice'], undefined);
+  // A map change the app makes for itself is not a choice.
+  h.switchByApp('esri-imagery');
+  assert.equal(h.stored['gev.satelliteByChoice'], undefined);
+});
+
+test('the fallback itself is never remembered as a choice', async () => {
+  const h = harness({ renewAnswers: [false, true] });
+  h.fail(12);
+  await settle();
+  assert.equal(h.switches[0][0], 'esri-imagery');
+  assert.equal(h.stored['gev.satelliteByChoice'], undefined);
+});
+
+test('starting on satellite that was never chosen is a saved fallback: 3D is brought back', async () => {
+  const h = harness({ startOn: 'esri-imagery' });
+  assert.equal(await h.tick(), 1_500);
+  assert.deepEqual(h.switches, [['photoreal', undefined]]);
+  assert.deepEqual(h.notices, ['3D map is back.']);
+});
+
+test('starting on satellite that was chosen by hand is left alone', async () => {
+  const h = harness({
+    startOn: 'esri-imagery',
+    stored: { 'gev.satelliteByChoice': '1' },
+  });
+  await settle();
+  assert.equal(h.timers.length, 0);
+  assert.deepEqual(h.switches, []);
+});
+
+test('satellite restored from the saved address, never chosen, is a saved fallback: 3D comes back', async () => {
+  const h = harness();
+  h.restoreFromAddress('esri-imagery');
+  assert.equal(h.stored['gev.satelliteByChoice'], undefined);
+  assert.equal(await h.tick(), 1_500);
+  assert.deepEqual(h.switches, [['photoreal', undefined]]);
+  assert.deepEqual(h.notices, ['3D map is back.']);
+});
+
+test('satellite restored from the saved address after being chosen by hand stays', async () => {
+  const h = harness({ stored: { 'gev.satelliteByChoice': '1' } });
+  h.restoreFromAddress('esri-imagery');
+  await settle();
+  assert.equal(h.timers.length, 0);
+  assert.deepEqual(h.switches, []);
+});
+
+test('a press on the map menu only counts for the change that follows it', async () => {
+  const h = harness();
+  h.pickByHand('photoreal');
+  h.pass(10_000);
+  h.restoreFromAddress('esri-imagery');
+  assert.equal(h.stored['gev.satelliteByChoice'], undefined);
+  assert.equal(h.timers.length, 1);
 });
