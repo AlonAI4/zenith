@@ -1,5 +1,6 @@
 import { installAddressLookup } from './app/addressLookup.js';
 import { installCompassDial } from './app/compassDial.js';
+import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
@@ -39,6 +40,7 @@ application
     const { scene } = application.getComponents();
     installRotateGestures(scene.viewer);
     installCompassDial(scene.viewer);
+    installGlobeCentring(scene.viewer);
     installTrackingMarker(scene.viewer);
     installScaleBar(scene.viewer);
     installMapLabels(scene);
