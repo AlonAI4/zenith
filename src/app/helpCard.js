@@ -49,7 +49,7 @@ const STYLE = `
   top: 92px;
   left: 50%;
   z-index: 180;
-  width: min(430px, calc(100vw - 32px));
+  width: min(660px, calc(100vw - 32px));
   max-height: calc(100vh - 130px);
   overflow-y: auto;
   scrollbar-width: thin;
@@ -93,6 +93,14 @@ body.ui-clean-view #zenith-help { display: none; }
   font-size: 15px;
   line-height: 1;
   cursor: pointer;
+}
+#zenith-help .zh-switches {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 20px;
+}
+@media (max-width: 640px) {
+  #zenith-help .zh-switches { grid-template-columns: 1fr; }
 }
 #zenith-help .zh-row {
   display: grid;
@@ -188,7 +196,7 @@ export function installHelpCard(
     close.addEventListener('click', () => setOpen(false));
     head.append(element('h2', '', 'ZENITH CONTROLS'), close);
 
-    const rows = doc.createDocumentFragment();
+    const rows = element('div', 'zh-switches');
     for (const entry of ZENITH_SWITCHES) {
       const source = doc.getElementById(entry.id);
       if (!source || entry.id === HELP_SWITCH_ID) continue;
