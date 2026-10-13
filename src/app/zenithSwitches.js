@@ -42,6 +42,11 @@ export const ZENITH_SWITCHES = Object.freeze([
     what: 'Click two or more spots on the map to get the distance between them.',
   },
   {
+    id: 'saved-places-toggle',
+    name: 'Saved places',
+    what: 'Star the view on screen, name it, and fly back to it later. Kept on this computer only.',
+  },
+  {
     id: 'zenith-help-toggle',
     name: 'Help',
     what: 'Opens the card that explains the switches and map clicks.',

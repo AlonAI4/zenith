@@ -9,6 +9,7 @@ import { installMapLabels } from './app/mapLabels.js';
 import { installMeasureTool } from './app/measureTool.js';
 import { installPanelGuard } from './app/panelGuard.js';
 import { installRotateGestures } from './app/rotateGestures.js';
+import { installSavedPlaces } from './app/savedPlaces.js';
 import { installScaleBar } from './app/scaleBar.js';
 import { installTimeZones } from './app/timeZones.js';
 import { installToolbarFit } from './app/toolbarFit.js';
@@ -63,6 +64,7 @@ application
     installDayNight(scene);
     installAddressLookup(scene);
     installMeasureTool(scene);
+    installSavedPlaces(scene);
     installHdDetail(scene);
     installHelpCard();
     installToolbarFit();

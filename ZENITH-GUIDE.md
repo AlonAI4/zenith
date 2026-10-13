@@ -63,6 +63,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Map pin | Click the map for the local time and coordinates there, and in London the address. |
 | Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
 | Measure tool | Click two or more spots on the map to get the distance between them. |
+| Saved places | Star the view on screen, name it, and fly back with one click. The list stays on your computer. |
 | Help card | The "?" switch explains every switch and what clicking the map does. |
 
 ## API keys: bring your own
