@@ -3,7 +3,8 @@
  *
  * One list so the two things that need it agree: the tray that holds the
  * switches on a narrow window, and the help card that explains them. A new
- * switch gets one line here.
+ * switch gets one line here. `panel: true` marks a switch that opens a panel
+ * of its own: the tray closes when one is pressed, so the two do not stack.
  */
 export const ZENITH_SWITCHES = Object.freeze([
   {
@@ -43,16 +44,19 @@ export const ZENITH_SWITCHES = Object.freeze([
   },
   {
     id: 'saved-places-toggle',
+    panel: true,
     name: 'Saved places',
     what: 'Star the view on screen, name it, and fly back later. It remembers the map, the look and the layers too. Kept on this computer only.',
   },
   {
     id: 'video-mode-toggle',
+    panel: true,
     name: 'Video mode',
-    what: 'Hides the controls and slowly circles the spot in the middle of the screen, for recording. Any key or click ends it.',
+    what: 'Hides the controls and circles the spot in the middle of the screen, for recording. Pick the speed and direction, then Start. Any key or click ends it.',
   },
   {
     id: 'zenith-help-toggle',
+    panel: true,
     name: 'Help',
     what: 'Opens the card that explains the switches and map clicks.',
   },

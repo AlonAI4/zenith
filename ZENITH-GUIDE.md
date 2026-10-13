@@ -64,7 +64,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
 | Measure tool | Click two or more spots on the map to get the distance between them. Undo removes the last point. Close the shape, or click the first point again, to get its area. |
 | Saved places | Star the view on screen, name it, and fly back with one click. A place also remembers which map, visual preset and data layers were on. The list stays on your computer. |
-| Video mode | Hides the controls and slowly circles the spot in the middle of the screen, for recording. Any key or click ends it. The map credits stay on screen: keep them in frame in anything you post. |
+| Video mode | Hides the controls and circles the spot in the middle of the screen, for recording. Choose slow, normal or fast and which way round, then Start. Any key or click ends it. The map credits stay on screen: keep them in frame in anything you post. |
 | Help card | The "?" switch explains every switch and what clicking the map does. |
 
 ## API keys: bring your own

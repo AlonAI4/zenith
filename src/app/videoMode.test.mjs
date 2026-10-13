@@ -1,11 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { keyEndsVideo, orbitStep, TURN_SECONDS } from './videoMode.js';
+import {
+  keyEndsVideo,
+  orbitStep,
+  readChoice,
+  TURN_SECONDS,
+} from './videoMode.js';
 
 test('the view turns at a steady rate: one full turn in the set time', () => {
   const perFrame = orbitStep(1000 / 60);
-  const turn = perFrame * 60 * TURN_SECONDS;
+  const turn = perFrame * 60 * TURN_SECONDS.normal;
   assert.ok(Math.abs(turn - 2 * Math.PI) < 1e-9, String(turn));
   assert.ok(Math.abs(orbitStep(20) - 2 * orbitStep(10)) < 1e-12);
 });
@@ -31,4 +36,26 @@ test('starting a screen recording does not end it', () => {
   assert.equal(keyEndsVideo({ key: '5', metaKey: true, shiftKey: true }), false);
   assert.equal(keyEndsVideo({ key: 'Control', ctrlKey: true }), false);
   assert.equal(keyEndsVideo({ key: 'Alt', altKey: true }), false);
+});
+
+test('slow takes twice as long as normal and fast half as long', () => {
+  const normal = orbitStep(16);
+  assert.ok(Math.abs(orbitStep(16, { speed: 'slow' }) - normal / 2) < 1e-12);
+  assert.ok(Math.abs(orbitStep(16, { speed: 'fast' }) - normal * 2) < 1e-12);
+  assert.equal(orbitStep(16, { speed: 'warp' }), normal);
+});
+
+test('anticlockwise turns the other way at the same rate', () => {
+  assert.equal(orbitStep(16, { clockwise: false }), -orbitStep(16));
+  assert.equal(orbitStep(16, { speed: 'fast', clockwise: false }), -orbitStep(16, { speed: 'fast' }));
+});
+
+test('the saved choice is read back, and anything odd falls back to the usual one', () => {
+  const usual = { speed: 'normal', clockwise: true };
+  assert.deepEqual(readChoice(null), usual);
+  assert.deepEqual(readChoice('not json'), usual);
+  assert.deepEqual(readChoice('{"speed":"warp","clockwise":"yes"}'), usual);
+  assert.deepEqual(readChoice('{"speed":"fast","clockwise":false}'), { speed: 'fast', clockwise: false });
+  assert.deepEqual(readChoice('{"speed":"slow"}'), { speed: 'slow', clockwise: true });
+  assert.deepEqual(readChoice('{"speed":"constructor"}'), usual);
 });

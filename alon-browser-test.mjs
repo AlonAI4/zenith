@@ -665,7 +665,13 @@ const checks = [
           }),
           exit: window.__zt.shown(document.getElementById('clean-view-exit')),
         }));
+      // The switch opens a panel first: speed, direction, Start.
       await press(page, 'video-mode-toggle', { leaveTray: true });
+      expect(!(await page.evaluate(() => document.getElementById('video-mode-panel').hidden)), 'the video panel did not open');
+      expect(!(await trayOpen(page)), 'the tray stayed open over the video panel');
+      await page.click('#video-mode-panel [data-speed="normal"]');
+      await page.click('#video-mode-panel [data-way="clockwise"]');
+      await page.click('#video-mode-start');
       await sleep(600);
       const start = await state();
       expect(start.clean && start.on, 'video mode did not hide the controls');
@@ -689,6 +695,31 @@ const checks = [
       const stopped = await state();
       await sleep(800);
       expect(Math.abs(turn(stopped.heading, (await state()).heading)) < 0.05, 'the view kept turning');
+      // Fast and the other way round, and the choice is remembered.
+      await press(page, 'video-mode-toggle', { leaveTray: true });
+      await page.click('#video-mode-panel [data-speed="fast"]');
+      await page.click('#video-mode-panel [data-way="anticlockwise"]');
+      await page.click('#video-mode-start');
+      await sleep(600);
+      const fastA = await state();
+      await sleep(2000);
+      const fastB = await state();
+      await page.keyboard.press('Escape');
+      await sleep(400);
+      const fastRate = turn(fastA.heading, fastB.heading) / 2;
+      const saved = await page.evaluate(() => localStorage.getItem('gev.videoMode'));
+      await press(page, 'video-mode-toggle', { leaveTray: true });
+      const remembered = await page.evaluate(() => [
+        document.querySelector('#video-mode-panel [data-speed="fast"]').getAttribute('aria-pressed'),
+        document.querySelector('#video-mode-panel [data-way="anticlockwise"]').getAttribute('aria-pressed'),
+      ]);
+      await page.click('#video-mode-panel [data-speed="normal"]');
+      await page.click('#video-mode-panel [data-way="clockwise"]');
+      await page.keyboard.press('Escape');
+      expect(fastRate < -7 && fastRate > -13, `fast and anticlockwise turned at ${fastRate.toFixed(1)} degrees a second`);
+      expect(saved === '{"speed":"fast","clockwise":false}', `the choice was saved as ${saved}`);
+      expect(remembered.join() === 'true,true', 'the panel did not show the remembered choice');
+      expect(await page.evaluate(() => document.getElementById('video-mode-panel').hidden), 'Escape did not close the video panel');
     },
   ],
   [

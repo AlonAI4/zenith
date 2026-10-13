@@ -155,6 +155,9 @@ export function installToolbarFit(doc = document, win = window) {
   bar.append(more, tray);
 
   const names = new Map(ZENITH_SWITCHES.map((entry) => [entry.id, entry.name]));
+  const opensPanel = new Set(
+    ZENITH_SWITCHES.filter((entry) => entry.panel).map((entry) => entry.id),
+  );
   const switches = () =>
     ZENITH_SWITCHES.map((entry) => doc.getElementById(entry.id)).filter(
       Boolean,
@@ -266,6 +269,12 @@ export function installToolbarFit(doc = document, win = window) {
     if (event.key === 'Escape') setOpen(false);
   };
   more.addEventListener('click', onMore);
+  // A switch that opens its own panel closes the tray, so they do not stack.
+  const onTrayClick = (event) => {
+    const pressed = event.target.closest?.('button');
+    if (pressed && opensPanel.has(pressed.id)) setOpen(false);
+  };
+  tray.addEventListener('click', onTrayClick);
   doc.addEventListener('pointerdown', onOutside, true);
   doc.addEventListener('keydown', onKey);
   win.addEventListener('resize', fitSoon);
