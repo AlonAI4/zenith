@@ -64,6 +64,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates, and in London the address. |
 | Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
 | Measure tool | Click two or more spots on the map to get the distance between them. Undo removes the last point. Close the shape, or click the first point again, to get its area. |
+| Height profile | In the measure tool, Profile draws a chart of the height along the path, with its highest and lowest points. The 3D map measures the scanned surface (roofs and treetops count); the satellite map measures bare ground and needs the Cesium key. Heights are shown above the lowest point on the path, not above sea level. |
 | Saved places | Star the view on screen, name it, and fly back with one click. A place also remembers which map, visual preset and data layers were on. The list stays on your computer. |
 | Fly-through | In saved places, tick two or more places and press Fly through: the controls hide and the view travels from one to the next, for recording. Any key or click ends it. |
 | Video mode | Hides the controls and circles the spot in the middle of the screen, for recording. Choose slow, normal or fast and which way round, then Start. Any key or click ends it. The map credits stay on screen: keep them in frame in anything you post. |

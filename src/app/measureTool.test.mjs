@@ -11,9 +11,13 @@ import {
   isMeasuring,
   metresBetween,
   pathMetres,
+  pathSamples,
+  profileLine,
+  profileStats,
   readoutText,
   ringArea,
   shapeMiddle,
+  whereAlong,
 } from './measureTool.js';
 
 const LONDON = { lon: -0.1276, lat: 51.5072 };
@@ -136,4 +140,55 @@ test('the middle of a shape is inside it', () => {
   const lon = Cesium.Math.toDegrees(middle.longitude);
   assert.ok(Math.abs(lat - 51.50535) < 0.0002, String(lat));
   assert.ok(Math.abs(lon + 0.07585) < 0.0002, String(lon));
+});
+
+test('heights are read at evenly spaced spots along the whole path', () => {
+  const path = [LONDON, PARIS, { lon: 4.9, lat: 52.37 }];
+  const samples = pathSamples(path, 11);
+  const total = pathMetres(path);
+  assert.equal(samples.length, 11);
+  assert.equal(samples[0].along, 0);
+  assert.ok(Math.abs(samples.at(-1).along - total) < 1e-6);
+  assert.ok(Math.abs(samples[5].along - total / 2) < 1e-6);
+  // It starts and ends on the path's own ends.
+  assert.ok(Math.abs(samples[0].lon - LONDON.lon) < 1e-9 && Math.abs(samples[0].lat - LONDON.lat) < 1e-9);
+  assert.ok(Math.abs(samples.at(-1).lon - 4.9) < 1e-6 && Math.abs(samples.at(-1).lat - 52.37) < 1e-6);
+  // Every spot is the right distance along, measured again from the start.
+  const corner = metresBetween(LONDON, PARIS);
+  for (const sample of samples) {
+    const back = sample.along <= corner ? metresBetween(LONDON, sample) : corner + metresBetween(PARIS, sample);
+    assert.ok(Math.abs(back - sample.along) < 1, `${back} vs ${sample.along}`);
+  }
+  assert.deepEqual(pathSamples([LONDON], 10), []);
+  assert.deepEqual(pathSamples([LONDON, LONDON], 10), []);
+});
+
+test('a closed shape is profiled all the way round', () => {
+  const ring = square(0, 0, 1);
+  const samples = pathSamples(ring, 9, true);
+  assert.ok(Math.abs(samples.at(-1).along - pathMetres(ring, true)) < 1e-6);
+  assert.ok(Math.abs(samples.at(-1).lon - ring[0].lon) < 1e-6 && Math.abs(samples.at(-1).lat - ring[0].lat) < 1e-6);
+});
+
+test('the highest and lowest points are found, skipping heights that are missing', () => {
+  const stats = profileStats([40, undefined, 55, 12, NaN, 300, 80]);
+  assert.deepEqual(stats, { lowIndex: 3, highIndex: 5, low: 12, high: 300, rise: 288 });
+  assert.equal(profileStats([undefined, 5, NaN]), null);
+  assert.equal(profileStats([10, 10.2, 10.1]), null);
+  assert.equal(profileStats([]), null);
+});
+
+test('the chart line runs from the bottom at the lowest point to the top at the highest', () => {
+  const heights = [0, 50, 100, undefined, 100, 0];
+  const stats = profileStats(heights);
+  const line = profileLine(heights, stats, 106, 56, 6);
+  // Lowest sits on the bottom edge, highest on the top, and the gap lifts the pen.
+  assert.equal(line, 'M6.0 50.0L24.8 28.0L43.6 6.0M81.2 6.0L100.0 50.0');
+});
+
+test('where a point is along the path is said in words', () => {
+  assert.equal(whereAlong(0, 12_000), 'at the start');
+  assert.equal(whereAlong(12_000, 12_000), 'at the end');
+  assert.equal(whereAlong(11_400, 12_000), '11.4 km along');
+  assert.equal(whereAlong(350, 12_000), '350 m along');
 });

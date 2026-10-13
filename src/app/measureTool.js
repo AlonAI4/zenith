@@ -17,6 +17,14 @@ import { isTimeZonePick } from './timeZones.js';
  * area. A readout beside the scale shows the numbers and has Undo, Close
  * shape and Clear. Distances are the shortest path over the curved Earth,
  * worded the way the scale words them.
+ *
+ * Profile draws a small chart of the height along the path, with its highest
+ * and lowest points. Both maps can give heights: the 3D map gives the scanned
+ * surface, so roofs and treetops count; the satellite map gives bare ground
+ * and needs the terrain that comes with the Cesium key. Both measure from a
+ * mathematical Earth shape, not from sea level (about 50 m apart around
+ * Britain), so the chart shows height above the lowest point on the path,
+ * which that difference does not touch.
  */
 
 const LAYER_NAME = 'alon-measure';
@@ -125,6 +133,105 @@ export function areaLabel(squareMetres) {
   return `${(Math.round(km2 * factor) / factor).toLocaleString('en-GB')} km²`;
 }
 
+/** How many spots along the path the height is read at. */
+export const PROFILE_SAMPLES = 96;
+
+/**
+ * Evenly spaced spots along a path, each with how far along it is.
+ * @returns {{lon: number, lat: number, along: number}[]}
+ */
+export function pathSamples(points, count = PROFILE_SAMPLES, closed = false) {
+  const route = closed && points.length > 2 ? [...points, points[0]] : points;
+  if (route.length < 2 || count < 2) return [];
+  const legs = [];
+  let total = 0;
+  for (let i = 1; i < route.length; i++) {
+    const length = metresBetween(route[i - 1], route[i]);
+    legs.push({ from: route[i - 1], to: route[i], start: total, length });
+    total += length;
+  }
+  if (!(total > 0)) return [];
+  const samples = [];
+  let leg = 0;
+  for (let i = 0; i < count; i++) {
+    const along = (total * i) / (count - 1);
+    while (leg < legs.length - 1 && along > legs[leg].start + legs[leg].length)
+      leg += 1;
+    const { from, to, start, length } = legs[leg];
+    const fraction =
+      length > 0 ? Math.min(1, Math.max(0, (along - start) / length)) : 0;
+    let where;
+    try {
+      where = new Cesium.EllipsoidGeodesic(
+        Cesium.Cartographic.fromDegrees(from.lon, from.lat),
+        Cesium.Cartographic.fromDegrees(to.lon, to.lat),
+      ).interpolateUsingFraction(fraction);
+    } catch {
+      where = Cesium.Cartographic.fromDegrees(from.lon, from.lat);
+    }
+    samples.push({
+      lon: Cesium.Math.toDegrees(where.longitude),
+      lat: Cesium.Math.toDegrees(where.latitude),
+      along,
+    });
+  }
+  return samples;
+}
+
+/**
+ * The lowest and highest of a list of heights, and where they are.
+ * Null when fewer than two heights are known, or the ground is level.
+ */
+export function profileStats(heights) {
+  let lowIndex = -1;
+  let highIndex = -1;
+  let known = 0;
+  heights.forEach((height, index) => {
+    if (!Number.isFinite(height)) return;
+    known += 1;
+    if (lowIndex < 0 || height < heights[lowIndex]) lowIndex = index;
+    if (highIndex < 0 || height > heights[highIndex]) highIndex = index;
+  });
+  if (known < 2 || heights[highIndex] - heights[lowIndex] < 0.5) return null;
+  return {
+    lowIndex,
+    highIndex,
+    low: heights[lowIndex],
+    high: heights[highIndex],
+    rise: heights[highIndex] - heights[lowIndex],
+  };
+}
+
+/** Where along the path something is, in words. */
+export function whereAlong(along, total) {
+  if (along <= total * 0.005) return 'at the start';
+  if (along >= total * 0.995) return 'at the end';
+  return `${distanceLabel(along)} along`;
+}
+
+/**
+ * The chart's line, as the points of an SVG path. Heights that could not be
+ * read leave a gap.
+ * @returns {string}
+ */
+export function profileLine(heights, stats, width, height, pad = 6) {
+  const usable = Math.max(1, heights.length - 1);
+  let path = '';
+  let pen = 'M';
+  heights.forEach((value, index) => {
+    if (!Number.isFinite(value)) {
+      pen = 'M';
+      return;
+    }
+    const x = pad + ((width - 2 * pad) * index) / usable;
+    const y =
+      height - pad - ((height - 2 * pad) * (value - stats.low)) / stats.rise;
+    path += `${pen}${x.toFixed(1)} ${y.toFixed(1)}`;
+    pen = 'L';
+  });
+  return path;
+}
+
 /** What the readout says. */
 export function readoutText(points, closed = false) {
   if (points.length === 0) return 'Click the map to start measuring';
@@ -181,6 +288,46 @@ body.ui-clean-view #measure-readout { display: none; }
 }
 #measure-readout button:hover { background: rgba(125, 255, 155, 0.16); }
 #measure-readout button[hidden] { display: none; }
+#measure-profile {
+  position: fixed;
+  top: 92px;
+  left: 50%;
+  z-index: 181;
+  width: min(380px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  padding: 12px 14px;
+  border: 1px solid rgba(125, 255, 155, 0.45);
+  border-radius: 12px;
+  background: rgba(4, 12, 20, 0.95);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+  color: #d9ffe3;
+  font: 12px/1.4 var(--font-mono, ui-monospace, monospace);
+}
+#measure-profile[hidden],
+body.ui-clean-view #measure-profile { display: none; }
+#measure-profile .mp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  letter-spacing: 0.18em;
+  color: #7dff9b;
+}
+#measure-profile .mp-close {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(125, 255, 155, 0.5);
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+#measure-profile svg { display: block; width: 100%; height: 120px; }
+#measure-profile .mp-ends { display: flex; justify-content: space-between; opacity: 0.7; font-size: 10px; }
+#measure-profile p { margin: 6px 0 0; }
+#measure-profile .mp-note { opacity: 0.65; font-size: 10px; }
 `;
 
 /**
@@ -218,8 +365,49 @@ export function installMeasureTool({ viewer }, doc = document) {
     'Close shape',
     'Join the last point to the first and show the area inside',
   );
+  const profile = make(
+    'measure-profile-open',
+    'Profile',
+    'Show the height of the ground along the path',
+  );
   const clear = make('measure-clear', 'Clear', 'Remove every measuring point');
-  readout.append(words, undo, close, clear);
+  readout.append(words, undo, close, profile, clear);
+
+  // The height profile: a small chart in its own panel.
+  const SVG = 'http://www.w3.org/2000/svg';
+  const CHART = { width: 352, height: 120 };
+  const chartPanel = doc.createElement('section');
+  chartPanel.id = 'measure-profile';
+  chartPanel.setAttribute('role', 'dialog');
+  chartPanel.setAttribute('aria-label', 'Height profile');
+  chartPanel.hidden = true;
+  const chartHead = doc.createElement('div');
+  chartHead.className = 'mp-head';
+  const chartTitle = doc.createElement('span');
+  chartTitle.textContent = 'HEIGHT PROFILE';
+  const chartClose = doc.createElement('button');
+  chartClose.type = 'button';
+  chartClose.className = 'mp-close';
+  chartClose.textContent = '×';
+  chartClose.title = 'Close the height profile';
+  chartClose.setAttribute('aria-label', 'Close the height profile');
+  chartHead.append(chartTitle, chartClose);
+  const chart = doc.createElementNS(SVG, 'svg');
+  chart.setAttribute('viewBox', `0 0 ${CHART.width} ${CHART.height}`);
+  chart.setAttribute('preserveAspectRatio', 'none');
+  const chartEnds = doc.createElement('div');
+  chartEnds.className = 'mp-ends';
+  const chartStart = doc.createElement('span');
+  const chartEnd = doc.createElement('span');
+  chartEnds.append(chartStart, chartEnd);
+  const chartWords = doc.createElement('p');
+  const chartNote = doc.createElement('p');
+  chartNote.className = 'mp-note';
+  chartPanel.append(chartHead, chart, chartEnds, chartWords, chartNote);
+  doc.body.appendChild(chartPanel);
+  /** Where the highest and lowest points are, to mark them on the map too. */
+  let marks = [];
+  let reading = 0;
   doc.body.appendChild(readout);
 
   const midpoint = (a, b) => {
@@ -263,6 +451,7 @@ export function installMeasureTool({ viewer }, doc = document) {
     words.textContent = readoutText(points, closed);
     undo.hidden = points.length === 0;
     close.hidden = closed || points.length < 3;
+    profile.hidden = points.length < 2;
     clear.hidden = points.length === 0;
 
     if (!source) {
@@ -347,6 +536,17 @@ export function installMeasureTool({ viewer }, doc = document) {
         });
       }
     }
+    for (const mark of marks) {
+      labels.push({
+        id: mark.id,
+        position: mark.position,
+        variant: 'label',
+        title: mark.title,
+        accent: COLOR,
+        protected: true,
+        priority: 8,
+      });
+    }
     setOverlayEntries(LAYER_NAME, labels, {
       cohortLimit: 64,
       collisionCapacity: 64,
@@ -354,11 +554,115 @@ export function installMeasureTool({ viewer }, doc = document) {
     scene.requestRender();
   };
 
+  const hideProfile = () => {
+    reading += 1;
+    chartPanel.hidden = true;
+    marks = [];
+  };
+
+  const element = (name, attributes) => {
+    const node = doc.createElementNS(SVG, name);
+    for (const [key, value] of Object.entries(attributes))
+      node.setAttribute(key, value);
+    return node;
+  };
+
+  /** Read the heights along the path and draw the chart. */
+  const showProfile = async () => {
+    const mine = ++reading;
+    const samples = pathSamples(points, PROFILE_SAMPLES, closed);
+    if (samples.length < 2) return;
+    chartPanel.hidden = false;
+    chart.replaceChildren();
+    chartStart.textContent = '';
+    chartEnd.textContent = '';
+    chartWords.textContent = 'Reading the heights…';
+    chartNote.textContent = '';
+    const spots = samples.map((sample) =>
+      Cesium.Cartographic.fromDegrees(sample.lon, sample.lat),
+    );
+    let heights;
+    try {
+      // The most detailed heights the map has, loading what it needs. Slow
+      // links get what is already on screen instead.
+      const detailed = await Promise.race([
+        scene.sampleHeightMostDetailed(spots.map((spot) => spot.clone())),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('slow')), 15_000),
+        ),
+      ]);
+      heights = detailed.map((spot) => spot.height);
+    } catch {
+      heights = spots.map((spot) =>
+        scene.sampleHeightSupported ? scene.sampleHeight(spot) : undefined,
+      );
+    }
+    if (mine !== reading) return;
+    const stats = profileStats(heights);
+    const total = samples.at(-1).along;
+    if (!stats) {
+      chartWords.textContent =
+        'This map has no height differences to show along this path.';
+      chartNote.textContent = scene.globe.show
+        ? 'The satellite map gets its heights from the terrain that comes with the Cesium key.'
+        : '';
+      return;
+    }
+    const line = profileLine(heights, stats, CHART.width, CHART.height);
+    const x = (index) =>
+      6 + ((CHART.width - 12) * index) / (heights.length - 1);
+    chart.append(
+      element('path', {
+        d: line,
+        fill: 'none',
+        stroke: COLOR,
+        'stroke-width': '1.6',
+        'vector-effect': 'non-scaling-stroke',
+      }),
+      element('circle', {
+        cx: x(stats.highIndex).toFixed(1),
+        cy: '6',
+        r: '3.5',
+        fill: COLOR,
+      }),
+      element('circle', {
+        cx: x(stats.lowIndex).toFixed(1),
+        cy: String(CHART.height - 6),
+        r: '3.5',
+        fill: 'none',
+        stroke: COLOR,
+        'stroke-width': '1.5',
+      }),
+    );
+    chartStart.textContent = 'Start';
+    chartEnd.textContent = distanceLabel(total);
+    chartWords.textContent = `The highest point is ${distanceLabel(stats.rise)} above the lowest. Highest ${whereAlong(samples[stats.highIndex].along, total)}, lowest ${whereAlong(samples[stats.lowIndex].along, total)}.`;
+    chartNote.textContent = scene.globe.show
+      ? 'Heights are bare ground, compared with the lowest point on the path.'
+      : 'Heights are the scanned surface, so roofs and treetops count. They are compared with the lowest point on the path.';
+    const at = (index) =>
+      Cesium.Cartesian3.fromRadians(
+        spots[index].longitude,
+        spots[index].latitude,
+        heights[index] + 2,
+      );
+    marks = [
+      {
+        id: 'high',
+        position: at(stats.highIndex),
+        title: `Highest +${distanceLabel(stats.rise)}`,
+      },
+      { id: 'low', position: at(stats.lowIndex), title: 'Lowest' },
+    ];
+    draw();
+  };
+
   const isMine = (picked) =>
     picked?.id?.entityCollection?.owner?.name === LAYER_NAME;
 
   const onClick = (click) => {
     if (!measuring || closed) return;
+    hideProfile();
     const first =
       points.length > 0
         ? scene.cartesianToCanvasCoordinates(points[0].position)
@@ -402,6 +706,8 @@ export function installMeasureTool({ viewer }, doc = document) {
   const wipe = () => {
     points = [];
     closed = false;
+    hideProfile();
+    profile.hidden = true;
     source?.entities.removeAll();
     clearOverlaySource(LAYER_NAME);
     words.textContent = readoutText(points);
@@ -424,6 +730,7 @@ export function installMeasureTool({ viewer }, doc = document) {
     paint();
   });
   undo.addEventListener('click', () => {
+    hideProfile();
     // A closed shape opens again; otherwise the last point goes.
     if (closed) closed = false;
     else points.pop();
@@ -432,10 +739,16 @@ export function installMeasureTool({ viewer }, doc = document) {
   });
   close.addEventListener('click', () => {
     if (points.length < 3) return;
+    hideProfile();
     closed = true;
     draw();
   });
   clear.addEventListener('click', wipe);
+  profile.addEventListener('click', showProfile);
+  chartClose.addEventListener('click', () => {
+    hideProfile();
+    draw();
+  });
   paint();
   wipe();
   doc.getElementById('top-center-actions')?.appendChild(button);
@@ -448,6 +761,7 @@ export function installMeasureTool({ viewer }, doc = document) {
     scene.canvas.style.cursor = '';
     button.remove();
     readout.remove();
+    chartPanel.remove();
     style.remove();
   };
 }

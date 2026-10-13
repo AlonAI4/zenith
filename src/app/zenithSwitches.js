@@ -45,7 +45,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'measure-toggle',
     name: 'Measure',
-    what: 'Click two or more spots for the distance between them. Close the shape to get its area.',
+    what: 'Click two or more spots for the distance between them. Close the shape for its area, or press Profile for the heights along the path.',
   },
   {
     id: 'saved-places-toggle',

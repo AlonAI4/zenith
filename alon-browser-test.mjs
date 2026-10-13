@@ -152,13 +152,33 @@ async function open(page, size, hash) {
   await sleep(2500);
 }
 
+/**
+ * True when the 3D map's provider is refusing to load right now. The app then
+ * falls back to the satellite map by itself and says so. That is a state of
+ * the outside world, not a fault in the app, so checks that need the 3D map
+ * are skipped with this as the reason, never counted as passed.
+ */
+const provider3dDown = (page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[role="status"]')].some((notice) =>
+      /3D map stopped loading/.test(notice.textContent),
+    ),
+  );
+
 async function pickMap(page, id) {
   if ((await page.evaluate(() => window.__zt.map())) === id) return;
   await page.evaluate(
     (stack) => document.querySelector(`.map-stack-chip[data-stack-id="${stack}"]`)?.click(),
     id,
   );
-  await until(page, (stack) => window.__zt.map() === stack, 20_000, `the map did not switch to ${id}`, id);
+  try {
+    await until(page, (stack) => window.__zt.map() === stack, 20_000, `the map did not switch to ${id}`, id);
+  } catch (error) {
+    if (id === 'photoreal' && (await provider3dDown(page))) {
+      throw new Skip('the 3D map provider is not answering right now (the app fell back to satellite by itself)');
+    }
+    throw error;
+  }
   // The map chips live in the Visual Presets tray. Close it again, as a
   // person would: on a narrow window it covers the lower left of the map.
   await page.evaluate(() => {
@@ -950,7 +970,14 @@ const soloChecks = [
     async (page) => {
       await page.evaluate(() => localStorage.removeItem('gev.satelliteByChoice'));
       await open(page, WIDE, `${LONDON}&map=esri-imagery`);
-      await until(page, () => window.__zt.map() === 'photoreal', 20_000, 'the app stayed on the satellite map');
+      try {
+        await until(page, () => window.__zt.map() === 'photoreal', 20_000, 'the app stayed on the satellite map');
+      } catch (error) {
+        if (await provider3dDown(page)) {
+          throw new Skip('the 3D map provider is not answering right now (the app fell back to satellite by itself)');
+        }
+        throw error;
+      }
     },
   ],
   [
@@ -1057,6 +1084,48 @@ const soloChecks = [
     },
   ],
   [
+    'height profile along a measured line, on both maps',
+    async (page) => {
+      // Hills: a line across the Lake District, from a lake over the fells.
+      await open(page, WIDE, 'lat=54.48&lon=-2.9&alt=40000&heading=0&pitch=-89');
+      const profileOf = async (mapName) => {
+        await press(page, 'measure-toggle');
+        await clickMap(page, 0.46, 0.75);
+        await clickMap(page, 0.54, 0.3);
+        await page.click('#measure-profile-open');
+        await until(page, () => /highest point is|no height differences/.test(document.querySelector('#measure-profile p').textContent), 30_000, `the ${mapName} gave no answer about heights`);
+        const result = await page.evaluate(() => {
+          const panel = document.getElementById('measure-profile');
+          const words = panel.querySelector('p').textContent;
+          const rise = /highest point is ([\d.,]+) (m|km) above/.exec(words);
+          return {
+            words,
+            rise: rise ? Number(rise[1].replace(/,/g, '')) * (rise[2] === 'km' ? 1000 : 1) : 0,
+            line: panel.querySelector('svg path')?.getAttribute('d')?.length ?? 0,
+            dots: panel.querySelectorAll('svg circle').length,
+            note: panel.querySelector('.mp-note').textContent,
+            labels: window.__zt.labels('alon-measure'),
+          };
+        });
+        // Adding a point makes the chart out of date: it must close.
+        await clickMap(page, 0.6, 0.5);
+        const closedAfterChange = await page.evaluate(() => document.getElementById('measure-profile').hidden);
+        await press(page, 'measure-toggle');
+        expect(result.rise > 150, `the ${mapName} found a rise of ${result.rise} m across the fells: "${result.words}"`);
+        expect(result.line > 200 && result.dots === 2, `the ${mapName} chart was not drawn`);
+        expect(result.labels === 3, `the highest and lowest points were not marked on the ${mapName}`);
+        expect(closedAfterChange, `the chart stayed open on the ${mapName} after the path changed`);
+        return result;
+      };
+      const tiles = await profileOf('3D map');
+      expect(/scanned surface/.test(tiles.note), 'the 3D map chart does not say it measures the scanned surface');
+      await pickMap(page, 'esri-imagery');
+      const ground = await profileOf('satellite map');
+      await pickMap(page, 'photoreal');
+      expect(/bare ground/.test(ground.note), 'the satellite chart does not say it measures bare ground');
+    },
+  ],
+  [
     'tracking marker when following a plane',
     async (page) => {
       await open(page, WIDE, 'lat=51.47&lon=-0.45&alt=90000&heading=0&pitch=-89&l=f');
@@ -1155,19 +1224,25 @@ async function main() {
     .slice(0, quick ? 1 : 4)
     .filter((_, index) => onlySetup === null || index + 1 === onlySetup);
 
+  // With --only, a page that none of the named checks needs is not opened:
+  // every load of the 3D map counts against a metered allowance.
+  const wanted = (list) =>
+    !only || list.some(([name]) => only.some((word) => name.toLowerCase().includes(word)));
   for (const setup of setups) {
+    if (!wanted(checks)) break;
     console.log(`\n${setup.label}`);
     try {
       await open(page, setup.narrow ? NARROW : WIDE, LONDON);
       await pickMap(page, setup.map);
     } catch (error) {
-      results.push({ label: setup.label, name: 'open the app', state: 'fail', why: error.message });
-      console.log(`  ✗ open the app: ${error.message}`);
+      const skipped = error instanceof Skip;
+      results.push({ label: setup.label, name: 'open the app', state: skipped ? 'skip' : 'fail', why: error.message });
+      console.log(`  ${skipped ? '–' : '✗'} open the app: ${skipped ? 'skipped, ' : ''}${error.message}`);
       continue;
     }
     await run(setup.label, checks, page, setup);
   }
-  if (!quick && onlySetup === null) {
+  if (!quick && onlySetup === null && wanted(soloChecks)) {
     console.log('\nown page loads');
     await pickMap(page, 'photoreal').catch(() => {});
     await run('own page loads', soloChecks, page, { map: 'photoreal', narrow: false });
