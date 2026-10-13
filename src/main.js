@@ -2,6 +2,7 @@ import { startAddOns } from './app/addOns.js';
 import { installAddressLookup } from './app/addressLookup.js';
 import { installCompassDial } from './app/compassDial.js';
 import { installDayNight } from './app/dayNight.js';
+import { installEarthquakes } from './app/earthquakes.js';
 import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
 import { installHelpCard } from './app/helpCard.js';
@@ -79,6 +80,7 @@ application
         ['Place names', () => installMapLabels(scene)],
         ['3D map recovery', () => install3dMapWatchdog(scene)],
         ['Train stations', () => installTrainStations(scene)],
+        ['Earthquakes', () => installEarthquakes(scene)],
         ['Time zones', () => installTimeZones(scene)],
         ['Day and night', () => installDayNight(scene)],
         ['Map pin', () => installAddressLookup(scene)],

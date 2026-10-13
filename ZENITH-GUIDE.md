@@ -59,6 +59,7 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Tracking marker | A pulsing ring on whatever you are following when you zoom far out. Click it to fly back. |
 | HD buildings | A switch for sharper 3D buildings. It uses more data and graphics power. |
 | Train stations | Train, metro and tram stops in four countries. |
+| Earthquakes | The last day's earthquakes of magnitude 2.5 and up, from the U.S. Geological Survey, as circles sized by strength. Click one for its strength, place, time and depth. |
 | Place names | Place and road names over the map. |
 | Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates, and in London the address. |
 | Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
@@ -91,7 +92,8 @@ Zenith has no accounts and sends nothing to its author or to whoever shared it
 with you. But to draw the map it asks other services for data, and they see
 your internet address (your IP) and roughly which areas you look at: the map
 and 3D building providers (Google through Cesium, Esri, OpenStreetMap), the
-camera networks, and Google Fonts. If you switch on the map pin and click the
+camera networks, and Google Fonts. With the earthquakes switch on, the
+U.S. Geological Survey's feed is asked every five minutes. If you switch on the map pin and click the
 map, the coordinates of that spot go to Photon and Wikipedia to look up the
 address.
 

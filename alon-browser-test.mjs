@@ -31,6 +31,7 @@ const NARROW = { width: 900, height: 800 };
 const SWITCHES = [
   'map-labels-toggle',
   'train-stations-toggle',
+  'earthquakes-toggle',
   'time-zones-toggle',
   'day-night-toggle',
   'address-lookup-toggle',
@@ -45,6 +46,7 @@ const PARTS = [...SWITCHES, 'compass-dial', 'scale-bar', 'tracking-marker', 'zen
 const RESETTABLE = [
   'map-labels-toggle',
   'train-stations-toggle',
+  'earthquakes-toggle',
   'time-zones-toggle',
   'day-night-toggle',
   'address-lookup-toggle',
@@ -350,6 +352,99 @@ const checks = [
       await until(page, (n) => window.__zt.billboards() > n, 8000, 'no station markers appeared', before);
       await press(page, 'train-stations-toggle');
       await until(page, (n) => window.__zt.billboards() <= n, 5000, 'the station markers stayed', before);
+    },
+  ],
+  [
+    'earthquakes',
+    async (page) => {
+      // A made-up feed, so the check does not depend on today's earthquakes:
+      // one strong quake in the middle of the view, one weak one on the far
+      // side of the Earth, and a quarry blast that must be ignored.
+      const centre = await page.evaluate(() => {
+        const viewer = window.__zt.viewer();
+        const spot = viewer.camera.pickEllipsoid({ x: viewer.canvas.clientWidth / 2, y: viewer.canvas.clientHeight / 2 });
+        const where = viewer.scene.globe.ellipsoid.cartesianToCartographic(spot);
+        return [(where.longitude * 180) / Math.PI, (where.latitude * 180) / Math.PI];
+      });
+      const quake = (id, mag, lon, lat, type = 'earthquake') => ({
+        type: 'Feature',
+        id,
+        properties: { mag, place: `Test place ${id}`, time: Date.now() - 3 * 3_600_000, type, url: null },
+        geometry: { type: 'Point', coordinates: [lon, lat, 12] },
+      });
+      const feed = {
+        type: 'FeatureCollection',
+        features: [
+          quake('near', 5.6, centre[0], centre[1]),
+          quake('far', 3.1, centre[0] > 0 ? centre[0] - 180 : centre[0] + 180, -centre[1]),
+          quake('blast', 2.9, centre[0] + 0.01, centre[1], 'quarry blast'),
+        ],
+      };
+      const answer = (request) => {
+        if (request.url().startsWith('https://earthquake.usgs.gov/')) {
+          request.respond({
+            status: 200,
+            contentType: 'application/json',
+            headers: { 'access-control-allow-origin': '*' },
+            body: JSON.stringify(feed),
+          });
+        } else {
+          request.continue();
+        }
+      };
+      await page.setRequestInterception(true);
+      page.on('request', answer);
+      try {
+        await press(page, 'earthquakes-toggle');
+        await until(page, () => document.getElementById('earthquakes-toggle').dataset.count === '2', 8000, 'the two earthquakes in the feed were not loaded');
+        const drawn = await page.evaluate(() => {
+          const viewer = window.__zt.viewer();
+          const primitives = viewer.scene.primitives;
+          for (let i = 0; i < primitives.length; i++) {
+            const one = primitives.get(i);
+            if (one && typeof one.get === 'function' && one.length > 0 && typeof one.get(0)?.id?.mag === 'number') {
+              const list = [];
+              for (let j = 0; j < one.length; j++) {
+                const point = one.get(j);
+                const at = viewer.scene.cartesianToCanvasCoordinates(point.position);
+                list.push({ id: point.id.id, size: point.pixelSize, show: point.show, at: at ? [at.x, at.y] : null });
+              }
+              return list;
+            }
+          }
+          return [];
+        });
+        await sleep(400);
+        const near = drawn.find((point) => point.id === 'near');
+        const far = drawn.find((point) => point.id === 'far');
+        expect(drawn.length === 2, `drew ${drawn.length} circles, expected 2 (the blast must be left out)`);
+        expect(near.size > far.size, 'the stronger earthquake is not the bigger circle');
+        const hidden = await page.evaluate(() => {
+          const primitives = window.__zt.viewer().scene.primitives;
+          for (let i = 0; i < primitives.length; i++) {
+            const one = primitives.get(i);
+            if (one && typeof one.get === 'function' && one.length > 0 && typeof one.get(0)?.id?.mag === 'number') {
+              for (let j = 0; j < one.length; j++) if (one.get(j).id.id === 'far') return one.get(j).show === false;
+            }
+          }
+          return null;
+        });
+        expect(hidden === true, 'the earthquake on the far side of the Earth shows through it');
+        expect(/U\.S\. Geological Survey/.test(await page.evaluate(() => document.getElementById('cesium-credits').textContent)), 'the survey is not credited on screen');
+        await page.mouse.click(near.at[0], near.at[1]);
+        await until(page, () => window.__zt.labels('alon-earthquakes') === 1 && window.__zt.painted('alon-earthquakes') >= 1, 5000, 'clicking an earthquake did not show its card');
+        await clickMap(page, 0.3, 0.75);
+        await until(page, () => window.__zt.labels('alon-earthquakes') === 0, 4000, 'clicking away did not put the card away');
+        await press(page, 'earthquakes-toggle');
+        const after = await page.evaluate(() => ({
+          count: document.getElementById('earthquakes-toggle').dataset.count,
+          credit: /U\.S\. Geological Survey/.test(document.getElementById('cesium-credits').textContent),
+        }));
+        expect(after.count === '' && !after.credit, 'switching off left the earthquakes or their credit behind');
+      } finally {
+        page.off('request', answer);
+        await page.setRequestInterception(false);
+      }
     },
   ],
   [

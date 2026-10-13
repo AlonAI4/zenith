@@ -18,6 +18,11 @@ export const ZENITH_SWITCHES = Object.freeze([
     what: 'Train, metro and tram stops. Click one for its name.',
   },
   {
+    id: 'earthquakes-toggle',
+    name: 'Earthquakes',
+    what: 'The last day of earthquakes, magnitude 2.5 and up, as circles sized by strength. Click one for details.',
+  },
+  {
     id: 'time-zones-toggle',
     name: 'Time zones',
     what: 'Time zone borders with their offsets from UTC.',
