@@ -4,6 +4,7 @@ import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
+import { installPanelGuard } from './app/panelGuard.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { installScaleBar } from './app/scaleBar.js';
 import { installTimeZones } from './app/timeZones.js';
@@ -37,7 +38,8 @@ initPanelFullscreen();
 application
   .start()
   .then(() => {
-    const { scene } = application.getComponents();
+    const { scene, controls } = application.getComponents();
+    installPanelGuard(controls?.styleManager);
     installRotateGestures(scene.viewer);
     installCompassDial(scene.viewer);
     installGlobeCentring(scene.viewer);
