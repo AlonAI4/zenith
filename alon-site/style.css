@@ -60,6 +60,8 @@ h3 { margin: 10px 0 4px; font-size: 16px; }
 .steps li, .plain li { margin: 8px 0; }
 .plain { margin: 0; padding-left: 20px; }
 .note { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid #ffbe5a; background: rgba(255, 190, 90, 0.08); border-radius: 0 8px 8px 0; }
+.notice { margin: 0 0 14px; font: 700 12px/1.5 var(--mono); letter-spacing: 0.08em; color: var(--text); }
+.center { text-align: center; }
 footer { max-width: 980px; margin: 0 auto; padding: 8px 20px 48px; color: var(--dim); font-size: 12px; text-align: center; }
 .hash { word-break: break-all; }
 @media (max-width: 560px) { .hero { padding-top: 34px; } section { padding: 20px 18px; } .lead { font-size: 17px; } }
