@@ -24,9 +24,11 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 FILE="zenith-backup-$(date +%Y-%m-%d-%H%M%S).tar"
 # A few of my own files are kept out of git on purpose (the updater must stay
-# put while it switches branches). They go in the backup beside git's storage.
+# put while it switches branches, and Code Armour's notes stay out of the
+# public GitHub copy). They go in the backup beside git's storage.
 EXTRAS=()
-for extra in alon-update.sh alon-prompt-next.md alon-train-stations-prompt.md .claude/launch.json; do
+for extra in alon-update.sh alon-prompt-next.md alon-train-stations-prompt.md .claude/launch.json \
+  COMPLIANCE.md .code-armour/findings.json .code-armour/coverage.json; do
   [ -f "$extra" ] && EXTRAS+=("$extra")
 done
 tar -cf "$WORK/$FILE" .git "${EXTRAS[@]}"
