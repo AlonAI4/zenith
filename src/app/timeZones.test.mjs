@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { buildZones, simplifyLine, snapRing } from '../../alon-timezones-build.mjs';
+import { fakeDocument } from './fakeDom.mjs';
 import {
   decodeZones,
+  installTimeZones,
   offsetLabel,
   offsetMinutes,
   seaZone,
@@ -180,4 +182,54 @@ test('local time across New Year, half-hour summer time, and odd summer rules', 
 test('offsets just under an hour, and the sea zone at the Greenwich line', () => {
   assert.equal(offsetLabel(-30), 'UTC-0:30');
   assert.equal(seaZone(-7.5), 'Etc/GMT');
+});
+
+test('time zones turned on, off and on again: one layer, one download, nothing left behind', async () => {
+  const doc = fakeDocument();
+  const bar = doc.createElement('div');
+  bar.id = 'top-center-actions';
+  doc.body.appendChild(bar);
+  const onMap = new Set();
+  const viewer = {
+    isDestroyed: () => false,
+    dataSources: { add: async (layer) => onMap.add(layer), remove: (layer) => onMap.delete(layer), contains: (layer) => onMap.has(layer) },
+    creditDisplay: { addStaticCredit() {}, removeStaticCredit() {} },
+    scene: { requestRender() {} },
+  };
+  let downloads = 0;
+  const realFetch = globalThis.fetch;
+  const realDocument = globalThis.document;
+  globalThis.fetch = async () => {
+    downloads += 1;
+    return new Response(JSON.stringify(buildZones(SOURCE)));
+  };
+  globalThis.document = doc;
+  const settle = async () => {
+    for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+  };
+  let remove;
+  try {
+    remove = installTimeZones({ viewer }, doc);
+    const toggle = doc.getElementById('time-zones-toggle');
+    toggle.click();
+    await settle();
+    assert.equal(onMap.size, 1, 'on: the layer is on the map');
+    toggle.click();
+    await settle();
+    assert.equal(onMap.size, 0, 'off: taken off the map, not just hidden');
+    toggle.click();
+    await settle();
+    assert.equal(onMap.size, 1, 'on again: the same one layer');
+    assert.equal(downloads, 1, 'the file is downloaded once');
+    toggle.click();
+    toggle.click();
+    toggle.click();
+    await settle();
+    assert.equal(onMap.size, 0, 'quick clicks ending on off leave nothing on the map');
+  } finally {
+    remove?.();
+    globalThis.fetch = realFetch;
+    if (realDocument === undefined) delete globalThis.document;
+    else globalThis.document = realDocument;
+  }
 });
