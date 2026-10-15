@@ -76,10 +76,13 @@ export const PAID_3D = ['*://tile.googleapis.com/*', '*://api.cesium.com/v1/asse
  * through again. Blocked requests fail inside the browser and are never
  * sent, so a run on the satellite map costs nothing. Chrome's own block list
  * is used, so a check's own request handling keeps working alongside it.
- * @returns {Promise<(blocked: boolean) => Promise<unknown>>}
+ * @returns {Promise<(blocked: boolean, extra?: string[]) => Promise<unknown>>}
  */
 export async function paid3dBlocker(page) {
   const client = await page.createCDPSession();
   await client.send('Network.enable');
-  return (blocked) => client.send('Network.setBlockedURLs', { urls: blocked ? PAID_3D : [] });
+  // `extra`: more addresses to block for a while, such as a feed a check
+  // wants to see failing.
+  return (blocked, extra = []) =>
+    client.send('Network.setBlockedURLs', { urls: [...(blocked ? PAID_3D : []), ...extra] });
 }

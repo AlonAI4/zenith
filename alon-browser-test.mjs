@@ -162,6 +162,8 @@ function pageHelpers() {
 
 const results = [];
 let pageErrors = [];
+/** Errors the page wrote to its console. Outside services log some, so they are counted, not failed. */
+const consoleErrors = [];
 
 /**
  * What the 3D map's provider has been doing. When the 3D map is slow to come
@@ -1426,6 +1428,168 @@ const checks = [
     },
   ],
   [
+    'Escape closes the map pin card, the height profile and the measure tool',
+    async (page, setup) => {
+      // On the satellite runs only; the camera goes 500 km up for the pin, so
+      // the card asks for no address (the address service is a courtesy one).
+      if (setup.map !== 'esri-imagery') return;
+      const shown = (id) =>
+        page.evaluate((id) => {
+          const node = document.getElementById(id);
+          return Boolean(node) && node.style.display !== 'none' && !node.hidden && node.getClientRects().length > 0;
+        }, id);
+      const pressed = (id) => page.evaluate((id) => document.getElementById(id)?.getAttribute('aria-pressed'), id);
+      const press = (id) => page.evaluate((id) => document.getElementById(id)?.click(), id);
+      const saved = await page.evaluate(() => {
+        const { camera } = window.__godsEyeView.viewer;
+        const p = camera.positionWC;
+        const k = 1 + 500_000 / 6_371_000;
+        const before = { x: p.x, y: p.y, z: p.z, heading: camera.heading, pitch: camera.pitch, roll: camera.roll };
+        camera.setView({ destination: { x: p.x * k, y: p.y * k, z: p.z * k }, orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 } });
+        return before;
+      });
+      const { width, height } = page.viewport();
+      try {
+        if ((await pressed('address-lookup-toggle')) !== 'true') await press('address-lookup-toggle');
+        await sleep(800);
+        await page.mouse.click(Math.round(width / 2), Math.round(height / 2));
+        await until(page, () => document.getElementById('address-card')?.style.display === 'block', 10_000, 'the map pin card did not open');
+        await page.keyboard.press('Escape');
+        expect(!(await shown('address-card')), 'Escape left the map pin card open');
+        await press('address-lookup-toggle');
+        await press('measure-toggle');
+        await page.mouse.click(Math.round(width / 2 - 80), Math.round(height / 2));
+        await sleep(300);
+        await page.mouse.click(Math.round(width / 2 + 80), Math.round(height / 2 + 40));
+        await sleep(500);
+        await press('measure-profile-open');
+        await until(page, () => document.getElementById('measure-profile')?.hidden === false, 10_000, 'the height profile did not open');
+        await page.keyboard.press('Escape');
+        expect(!(await shown('measure-profile')), 'Escape left the height profile open');
+        expect((await pressed('measure-toggle')) === 'true', 'the first Escape should only close the profile');
+        await page.keyboard.press('Escape');
+        expect((await pressed('measure-toggle')) === 'false', 'the second Escape should stop measuring');
+      } finally {
+        if ((await pressed('measure-toggle')) === 'true') await press('measure-toggle');
+        if ((await pressed('address-lookup-toggle')) === 'true') await press('address-lookup-toggle');
+        await page.evaluate((at) => {
+          window.__godsEyeView.viewer.camera.setView({ destination: { x: at.x, y: at.y, z: at.z }, orientation: { heading: at.heading, pitch: at.pitch, roll: at.roll } });
+        }, saved);
+      }
+    },
+  ],
+  [
+    'menus work with the keyboard',
+    async (page) => {
+      const collapse = '#scene-panel .panel-collapse-btn';
+      await page.click(collapse);
+      await sleep(600);
+      try {
+        await page.click('#scene-panel .gev-menu-btn');
+        await sleep(400);
+        const read = () =>
+          page.evaluate(() => {
+            const panel = document.querySelector('.gev-menu');
+            if (!panel) return null;
+            const list = panel.querySelector('[role=listbox]');
+            const rows = [...panel.querySelectorAll('[role=option]')];
+            const active = panel.querySelector('.gev-menu-row.is-active');
+            const pointsAt = document.activeElement?.getAttribute('aria-activedescendant');
+            return { name: list?.getAttribute('aria-label'), rows: rows.length, at: rows.indexOf(active), pointed: Boolean(pointsAt) && pointsAt === active?.id };
+          });
+        const opened = await read();
+        expect(opened, 'the menu did not open');
+        expect(opened.name, 'the list has no name for a screen reader');
+        expect(opened.pointed, 'the focus does not point at the highlighted row');
+        await page.keyboard.press('End');
+        const end = await read();
+        expect(end.at === end.rows - 1 && end.pointed, 'End did not reach the last row');
+        await page.keyboard.press('Home');
+        expect((await read()).at === 0, 'Home did not reach the first row');
+        await page.keyboard.press('Tab');
+        await sleep(300);
+        expect((await read()) === null, 'Tab left the menu open');
+      } finally {
+        await page.click(collapse).catch(() => {});
+        await sleep(400);
+      }
+    },
+  ],
+  [
+    'a top-bar switch reached with Tab says what it does',
+    async (page) => {
+      await page.evaluate(() => document.activeElement?.blur?.());
+      let inBar = false;
+      for (let i = 0; i < 40 && !inBar; i += 1) {
+        await page.keyboard.press('Tab');
+        inBar = await page.evaluate(() => document.getElementById('top-center-actions')?.contains(document.activeElement));
+      }
+      expect(inBar, 'Tab never reached the top bar');
+      const tip = await page.evaluate(() => {
+        const box = document.getElementById('zenith-focus-tip');
+        const focused = document.activeElement;
+        return { shown: Boolean(box) && !box.hidden, text: box?.textContent, wanted: focused?.title || focused?.getAttribute('aria-label') };
+      });
+      expect(tip.shown && tip.text === tip.wanted, `the focus tip shows "${tip.text}" for a switch that says "${tip.wanted}"`);
+      await page.keyboard.press('Escape');
+      expect(await page.evaluate(() => document.getElementById('zenith-focus-tip')?.hidden), 'Escape left the focus tip showing');
+      await page.evaluate(() => document.activeElement?.blur?.());
+    },
+  ],
+  [
+    "the credit under the title is shown, word for word, and nothing covers it",
+    async (page) => {
+      const found = await page.evaluate(() => {
+        const credit = document.querySelector('#title-bar .subtitle');
+        if (!credit || credit.getClientRects().length === 0) return null;
+        const box = credit.getBoundingClientRect();
+        const dial = document.getElementById('compass-dial')?.getBoundingClientRect();
+        const overlaps = Boolean(dial) && dial.left < box.right && dial.right > box.left && dial.top < box.bottom && dial.bottom > box.top;
+        return { text: credit.textContent, overlaps };
+      });
+      expect(found, 'the credit under the title is not shown');
+      expect(found.text === "BUILT ON GOD'S EYE VIEW", `the credit says "${found.text}"`);
+      expect(!found.overlaps, 'the compass dial covers the credit');
+    },
+  ],
+  [
+    'on a narrow window the tray closes after turning on Map pin',
+    async (page, setup) => {
+      if (!setup.narrow) return;
+      const trayOpen = () => page.evaluate(() => document.getElementById('zenith-tray')?.dataset.open === 'true');
+      await page.click('#zenith-more-toggle');
+      await sleep(400);
+      expect(await trayOpen(), 'the tray did not open');
+      await page.click('#address-lookup-toggle');
+      await sleep(400);
+      const closed = !(await trayOpen());
+      await page.evaluate(() => document.getElementById('address-lookup-toggle')?.click());
+      expect(closed, 'the tray stayed open over the map after turning on Map pin');
+    },
+  ],
+  [
+    'a failed earthquake feed says so on screen',
+    async (page, setup) => {
+      const toggle = () => page.evaluate(() => document.getElementById('earthquakes-toggle')?.click());
+      const on = () => page.evaluate(() => document.getElementById('earthquakes-toggle')?.getAttribute('aria-pressed') === 'true');
+      if (await on()) await toggle();
+      await block3d(setup.map === 'esri-imagery', ['*://earthquake.usgs.gov/*']);
+      try {
+        await toggle();
+        await until(
+          page,
+          () => /earthquake feed did not answer/i.test(document.getElementById('feed-notice')?.textContent ?? ''),
+          20_000,
+          'no message on screen when the earthquake feed did not answer',
+        );
+      } finally {
+        await block3d(setup.map === 'esri-imagery');
+        if (await on()) await toggle();
+        await page.evaluate(() => document.getElementById('feed-notice')?.remove());
+      }
+    },
+  ],
+  [
     'satellite runs send nothing to the paid 3D map',
     async (page, setup) => {
       // Only the satellite runs block it; the 3D runs need it.
@@ -1955,6 +2119,9 @@ async function run(label, list, page, setup) {
     }
     try {
       await check(page, setup);
+      // A check also fails when the page threw while it ran, even if what it
+      // looked at came out right.
+      if (pageErrors.length) throw new Error(`the page threw an error: ${pageErrors[0]}`);
       results.push({ label, name, state: 'pass' });
       console.log(`  ✓ ${name}`);
     } catch (error) {
@@ -1988,6 +2155,9 @@ async function main() {
   }
   const page = await browser.newPage();
   page.on('pageerror', (error) => pageErrors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
   watchProvider(page);
   block3d = await paid3dBlocker(page);
   await page.evaluateOnNewDocument(pageHelpers);
@@ -2046,6 +2216,9 @@ async function main() {
   await browser.close();
   const count = (state) => results.filter((result) => result.state === state).length;
   console.log(`\n${count('pass')} passed, ${count('fail')} failed, ${count('skip')} skipped`);
+  if (consoleErrors.length) {
+    console.log(`${consoleErrors.length} console error${consoleErrors.length === 1 ? '' : 's'} (not failures; the first: ${consoleErrors[0].slice(0, 160)})`);
+  }
   for (const result of results.filter((entry) => entry.state === 'fail')) {
     console.log(`FAILED  ${result.label} · ${result.name}: ${result.why}`);
   }
