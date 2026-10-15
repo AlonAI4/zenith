@@ -33,11 +33,15 @@ if unzip -l "$OUT/Zenith.zip" | grep -qi '\.jar$'; then
   echo "The Zenith zip must not contain a jar." >&2
   exit 1
 fi
+# Sizes from the real byte count: du counts whole disk blocks, so a 253 KB jar showed as 256KB.
+size_of() {
+  stat -f %z "$1" | awk '{ s = $1 / 1024; u = "KB"; if (s >= 1024) { s /= 1024; u = "MB" } printf(s < 10 ? "%.1f%s" : "%.0f%s", s, u) }'
+}
 MC_NAME=$(basename "$MC_JAR")
 cp "$MC_JAR" "$OUT/$MC_NAME"
-MC_SIZE="$(du -h "$OUT/$MC_NAME" | cut -f1 | tr -d ' ')B"
+MC_SIZE=$(size_of "$OUT/$MC_NAME")
 MC_SHA=$(shasum -a 256 "$OUT/$MC_NAME" | cut -d' ' -f1)
-SIZE="$(du -h "$OUT/Zenith.zip" | cut -f1 | tr -d ' ')B"
+SIZE=$(size_of "$OUT/Zenith.zip")
 SHA=$(shasum -a 256 "$OUT/Zenith.zip" | cut -d' ' -f1)
 DAY=${ZENITH_DATE:-$(date "+%-d %B %Y")}
 sed -i '' -e "s/__SIZE__/$SIZE/" -e "s/__SHA__/$SHA/" -e "s/__DATE__/$DAY/" \
