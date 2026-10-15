@@ -5,6 +5,8 @@
  * switches on a narrow window, and the help card that explains them. A new
  * switch gets one line here. `panel: true` marks a switch that opens a panel
  * of its own: the tray closes when one is pressed, so the two do not stack.
+ * `closesTray: true` marks a switch whose next step is a click on the map
+ * (Map pin, Measure): the tray closes for it too, so it is not in the way.
  */
 export const ZENITH_SWITCHES = Object.freeze([
   {
@@ -35,6 +37,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'address-lookup-toggle',
     name: 'Map pin',
+    closesTray: true,
     what: 'Click the map for the local time, sunrise and sunset, the coordinates and the address there.',
   },
   {
@@ -45,6 +48,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'measure-toggle',
     name: 'Measure',
+    closesTray: true,
     what: 'Click two or more spots for the distance between them. Close the shape for its area, or press Profile for the heights along the path.',
   },
   {

@@ -34,3 +34,12 @@ test('the narrow-window tray is a plain show-and-hide panel, not a menu', () => 
   assert.doesNotMatch(fit, /aria-haspopup/, 'a popup is announced as a menu, which needs arrow keys');
   assert.match(fit, /more\.setAttribute\('aria-controls', 'zenith-tray'\)/);
 });
+
+test('on a narrow window the tray closes for switches that need a click on the map next', () => {
+  const closes = ZENITH_SWITCHES.filter((entry) => entry.panel || entry.closesTray).map((entry) => entry.id);
+  for (const id of ['address-lookup-toggle', 'measure-toggle']) assert.ok(closes.includes(id), `${id} closes the tray`);
+  // Layer switches keep it open, so several can be switched in a row.
+  for (const id of ['train-stations-toggle', 'earthquakes-toggle']) assert.ok(!closes.includes(id), `${id} keeps the tray open`);
+  const fit = readFileSync(new URL('toolbarFit.js', folder), 'utf8');
+  assert.match(fit, /entry\.panel \|\| entry\.closesTray/, 'the tray reads both marks');
+});
