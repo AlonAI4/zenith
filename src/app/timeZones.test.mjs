@@ -141,3 +141,43 @@ test('offsets and city names read the way people write them', () => {
   assert.equal(zoneCity('America/Argentina/Buenos_Aires'), 'Buenos Aires');
   assert.equal(zoneCity('Etc/GMT+12'), '');
 });
+
+test('a hole is respected whichever shape is listed first', () => {
+  // Paris listed before London, so the point in Paris's hole meets the hole first.
+  const swapped = { features: [...SOURCE.features].reverse() };
+  assert.equal(zoneAt(decodeZones(buildZones(swapped)), 45, 5), 'Europe/London');
+});
+
+test('the 180 degree line belongs to the zone on both sides', () => {
+  const fiji = {
+    features: [
+      { properties: { tzid: 'Pacific/Fiji' }, geometry: { type: 'MultiPolygon', coordinates: [[square(176, -20, 180, -12)], [square(-180, -20, -178, -12)]] } },
+    ],
+  };
+  const zones = decodeZones(buildZones(fiji));
+  assert.equal(zoneAt(zones, -16, 180), 'Pacific/Fiji');
+  assert.equal(zoneAt(zones, -16, -180), 'Pacific/Fiji');
+});
+
+test('the clocks change at the right moment, both ways', () => {
+  assert.equal(offsetMinutes('Europe/London', new Date('2026-03-29T00:59:59Z')), 0);
+  assert.equal(offsetMinutes('Europe/London', new Date('2026-03-29T01:00:00Z')), 60);
+  assert.equal(offsetMinutes('Europe/London', new Date('2026-10-25T00:59:59Z')), 60);
+  assert.equal(offsetMinutes('Europe/London', new Date('2026-10-25T01:00:00Z')), 0);
+});
+
+test('local time across New Year, half-hour summer time, and odd summer rules', () => {
+  const newYork = zoneClock('America/New_York', new Date('2026-01-01T03:30:00Z'));
+  assert.deepEqual([newYork.day, newYork.time, newYork.offset], ['Wed 31 Dec', '22:30:00', 'UTC-5']);
+  const howeSummer = zoneClock('Australia/Lord_Howe', new Date('2026-01-15T00:00:00Z'));
+  assert.deepEqual([howeSummer.offset, howeSummer.summer], ['UTC+11', true]);
+  assert.equal(zoneClock('Australia/Lord_Howe', new Date('2026-07-15T00:00:00Z')).offset, 'UTC+10:30');
+  assert.equal(zoneClock('Europe/Dublin', new Date('2026-07-15T12:00:00Z')).summer, true);
+  const casablanca = zoneClock('Africa/Casablanca', new Date('2026-03-01T12:00:00Z'));
+  assert.deepEqual([casablanca.offset, casablanca.summer], ['UTC', false]);
+});
+
+test('offsets just under an hour, and the sea zone at the Greenwich line', () => {
+  assert.equal(offsetLabel(-30), 'UTC-0:30');
+  assert.equal(seaZone(-7.5), 'Etc/GMT');
+});
