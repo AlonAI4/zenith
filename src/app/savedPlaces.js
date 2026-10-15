@@ -527,7 +527,10 @@ export function installSavedPlaces(
   button.setAttribute('aria-label', 'Saved places');
   const setOpen = (open) => {
     if (open) {
-      places = read();
+      // Pick up places stored by something else (a loaded settings file), but
+      // not when this browser refused the last save: storage would then give
+      // back an old list and lose the places that live only on this page.
+      if (stored) places = read();
       render();
     }
     panel.hidden = !open;

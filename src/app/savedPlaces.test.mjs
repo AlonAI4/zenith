@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { fakeDocument } from './fakeDom.mjs';
 import {
   addPlace,
   cleanName,
   describePlace,
   flySeconds,
+  installSavedPlaces,
   isLook,
   isPlace,
   lookChanges,
@@ -15,6 +17,32 @@ import {
   removePlace,
   routeOf,
 } from './savedPlaces.js';
+
+/** The saved-places panel in a fake page, with the camera over London. */
+function panelInFakePage(storage) {
+  const doc = fakeDocument();
+  const bar = doc.createElement('div');
+  bar.id = 'top-center-actions';
+  doc.body.appendChild(bar);
+  const camera = {
+    positionCartographic: { longitude: -0.0022, latitude: 0.8988, height: 900 },
+    heading: 0.35,
+    pitch: -0.6,
+  };
+  installSavedPlaces({ viewer: { camera } }, doc, { storage, win: doc.defaultView });
+  const panel = doc.getElementById('saved-places');
+  const form = panel.querySelector('form');
+  return {
+    toggle: doc.getElementById('saved-places-toggle'),
+    close: panel.querySelector('.sp-close'),
+    save(name) {
+      form.querySelector('input').value = name;
+      form.dispatchEvent(new Event('submit', { cancelable: true }));
+    },
+    names: () => panel.querySelectorAll('.sp-name').map((node) => node.textContent),
+    note: () => panel.querySelector('.sp-note').textContent,
+  };
+}
 
 const place = (name, extra = {}) => ({
   name,
@@ -128,4 +156,35 @@ test('a fly-through visits the ticked places in the order they are listed', () =
   assert.deepEqual(routeOf(list, ['One', 'Three']).map((entry) => entry.name), ['Three', 'One']);
   assert.deepEqual(routeOf(list, new Set(['Two', 'Gone'])).map((entry) => entry.name), ['Two']);
   assert.deepEqual(routeOf(list, []), []);
+});
+
+test('a place saved while the browser refuses storage survives closing and reopening', () => {
+  const refusing = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error('QuotaExceededError');
+    },
+  };
+  const page = panelInFakePage(refusing);
+  page.toggle.click();
+  page.save('Home');
+  assert.deepEqual(page.names(), ['Home']);
+  assert.match(page.note(), /would not save the list/);
+  page.close.click();
+  page.toggle.click();
+  // Reading storage again would bring back its empty list and lose Home.
+  assert.deepEqual(page.names(), ['Home']);
+});
+
+test('reopening the panel picks up places stored by something else', () => {
+  const saved = new Map();
+  const storage = { getItem: (key) => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  const page = panelInFakePage(storage);
+  page.toggle.click();
+  page.save('Home');
+  page.close.click();
+  // A settings file loaded while the panel was closed.
+  saved.set('gev.savedPlaces', JSON.stringify([{ ...JSON.parse(saved.get('gev.savedPlaces'))[0], name: 'Work' }]));
+  page.toggle.click();
+  assert.deepEqual(page.names(), ['Work']);
 });
