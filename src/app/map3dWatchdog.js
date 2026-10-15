@@ -152,7 +152,9 @@ export function install3dMapWatchdog(
     try {
       return storage?.getItem(CHOICE_KEY) === '1';
     } catch {
-      return false;
+      // The choice cannot be read (a private window): it may have been made,
+      // so the map is left alone rather than switched to the metered 3D map.
+      return true;
     }
   };
   const rememberChoice = (chosen) => {
@@ -212,7 +214,10 @@ export function install3dMapWatchdog(
       schedule(tryAgain, retryDelayMs(attempt));
       return;
     }
-    if (!(await tryRenew()) || stopped) {
+    const renewed = await tryRenew();
+    // Stopped while waiting for the session: nothing more is planned.
+    if (stopped) return;
+    if (!renewed) {
       attempt += 1;
       schedule(tryAgain, retryDelayMs(attempt));
       return;
@@ -221,6 +226,7 @@ export function install3dMapWatchdog(
       // Not silent: the app's own map menu and saved address follow it back.
       await switchTo(PHOTOREAL_STACK);
     } catch {
+      if (stopped) return;
       attempt += 1;
       schedule(tryAgain, retryDelayMs(attempt));
       return;

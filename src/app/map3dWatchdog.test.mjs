@@ -29,6 +29,10 @@ function harness({
   renewAnswers = [true],
   startOn = 'photoreal',
   stored = {},
+  storage: storageOverride,
+  renew: renewOverride,
+  available = () => true,
+  failSwitchTo = [],
 } = {}) {
   const tileset = { show: true, tileFailed: event(), tileLoad: event() };
   const switches = [];
@@ -42,13 +46,13 @@ function harness({
   let origin = 'manual';
   let pressMapMenu = () => {};
   const subscribers = new Set();
-  const storage = {
+  const storage = storageOverride ?? {
     getItem: (key) => stored[key] ?? null,
     setItem: (key, value) => (stored[key] = String(value)),
     removeItem: (key) => delete stored[key],
   };
   const controller = {
-    isStackAvailable: () => true,
+    isStackAvailable: available,
     getActiveId: () => active,
     getSwitchGeneration: () => generation,
     getSwitchOrigin: () => origin,
@@ -58,6 +62,7 @@ function harness({
     },
     setStack: async (id, options) => {
       switches.push([id, options]);
+      if (failSwitchTo.includes(id)) throw new Error('the map would not switch');
       active = id;
       generation += 1;
       origin = 'manual';
@@ -72,11 +77,11 @@ function harness({
     },
     {
       notify: (text) => notices.push(text),
-      renew: async () => {
+      renew: renewOverride ?? (async () => {
         const answer = renewAnswers[Math.min(renews, renewAnswers.length - 1)];
         renews += 1;
         return answer;
-      },
+      }),
       schedule: (fn, ms) => timers.push({ fn, ms }),
       now: () => clock,
       isHidden: () => hidden,
@@ -326,4 +331,72 @@ test('a press on the map menu only counts for the change that follows it', async
   h.restoreFromAddress('esri-imagery');
   assert.equal(h.stored['gev.satelliteByChoice'], undefined);
   assert.equal(h.timers.length, 1);
+});
+
+const refusing = {
+  getItem: () => {
+    throw new Error('SecurityError');
+  },
+  setItem: () => {
+    throw new Error('SecurityError');
+  },
+  removeItem: () => {
+    throw new Error('SecurityError');
+  },
+};
+
+test('when storage refuses, a start on satellite is left alone: the choice cannot be read', async () => {
+  const h = harness({ startOn: 'esri-imagery', storage: refusing });
+  await settle();
+  assert.equal(h.timers.length, 0, 'no rescue is planned');
+  assert.deepEqual(h.switches, []);
+});
+
+test('stopping during a rescue never switches to 3D and leaves no timer behind', async () => {
+  let answer;
+  const h = harness({ startOn: 'esri-imagery', renew: () => new Promise((resolve) => (answer = resolve)) });
+  await settle();
+  h.timers.shift().fn(); // the rescue starts asking for a session
+  await settle();
+  h.stop();
+  answer(true);
+  await settle();
+  assert.deepEqual(h.switches, []);
+  assert.equal(h.timers.length, 0, 'nothing is left to run after stop');
+});
+
+test('a session request that throws counts as no session', async () => {
+  const h = harness({
+    renew: async () => {
+      throw new Error('network');
+    },
+  });
+  h.fail(12);
+  await settle();
+  assert.deepEqual(h.switches, [['esri-imagery', { silent: true }]]);
+});
+
+test('with no satellite map to fall back to there is no notice, and watching goes on', async () => {
+  const h = harness({ renewAnswers: [false], available: (id) => id !== 'esri-imagery' });
+  h.fail(12);
+  await settle();
+  assert.deepEqual(h.notices, []);
+  assert.deepEqual(h.switches, []);
+  h.fail(12);
+  await settle();
+  assert.equal(h.renews(), 2, 'a later run of failures is handled again');
+});
+
+test('when switching back to 3D fails there is no "back" notice, and it waits longer', async () => {
+  const h = harness({ renewAnswers: [false, true], failSwitchTo: ['photoreal'] });
+  h.fail(12);
+  await settle();
+  assert.equal(await h.tick(), 5_000);
+  assert.equal(h.notices.length, 1, 'only the fallback notice');
+  assert.equal(h.timers[0]?.ms, 10_000);
+});
+
+test('a press on the map menu with storage refusing does not throw', () => {
+  const h = harness({ storage: refusing, startOn: 'photoreal' });
+  assert.doesNotThrow(() => h.pickByHand('esri-imagery'));
 });
