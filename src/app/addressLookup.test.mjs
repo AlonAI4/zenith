@@ -10,6 +10,7 @@ import {
   formatCoordinates,
   HOUSE_WITHIN_M,
   pickFamousPlace,
+  requestGate,
   STREET_WITHIN_M,
 } from './addressLookup.js';
 
@@ -147,4 +148,44 @@ test('with no street nearby the nearest name is used, and nothing gives nothing'
   assert.equal(chooseAddress([], ...HERE), null);
   assert.equal(chooseAddress(null, ...HERE), null);
   assert.equal(chooseAddress([{ properties: { name: 'No position' } }], ...HERE), null);
+});
+
+/** A clock the test moves by hand, so waits take no real time. */
+function handClock() {
+  let time = 10_000;
+  const sleepers = [];
+  return {
+    now: () => time,
+    sleep: (ms) => new Promise((resolve) => sleepers.push({ at: time + ms, resolve })),
+    async advance(ms) {
+      time += ms;
+      for (const sleeper of sleepers.filter((one) => one.at <= time)) {
+        sleepers.splice(sleepers.indexOf(sleeper), 1);
+        sleeper.resolve();
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+  };
+}
+
+test('quick clicks send one address request a second, for the newest click only', async () => {
+  const clock = handClock();
+  const mayAsk = requestGate(1000, clock.now, clock.sleep);
+  let latest = 0;
+  const sent = [];
+  const click = (n) => {
+    latest = n;
+    return mayAsk(() => latest === n).then((go) => {
+      if (go) sent.push([n, clock.now()]);
+    });
+  };
+  const clicks = [];
+  for (let n = 1; n <= 5; n += 1) {
+    clicks.push(click(n));
+    await clock.advance(150);
+  }
+  await clock.advance(1000);
+  await Promise.all(clicks);
+  assert.deepEqual(sent.map(([n]) => n), [1, 5]);
+  assert.ok(sent[1][1] - sent[0][1] >= 1000, JSON.stringify(sent));
 });

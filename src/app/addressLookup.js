@@ -29,6 +29,29 @@ const FAMOUS_RADIUS_M = 150;
 const TIMEOUT_MS = 6000;
 const MIN_GAP_MS = 1000;
 const CACHE_MAX = 64;
+
+/**
+ * Keeps address requests at least `gapMs` apart. Each call waits its turn,
+ * then resolves true when it may send its request now, or false when a newer
+ * click replaced it while it waited: clicks that all waited for the same
+ * moment would otherwise go out together.
+ * @param {number} gapMs
+ * @returns {(isCurrent: () => boolean) => Promise<boolean>}
+ */
+export function requestGate(
+  gapMs,
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+) {
+  let last = -Infinity;
+  return async (isCurrent) => {
+    const wait = last + gapMs - now();
+    if (wait > 0) await sleep(wait);
+    if (!isCurrent()) return false;
+    last = now();
+    return true;
+  };
+}
 const ICON =
   '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
 
@@ -239,7 +262,7 @@ export function installAddressLookup({ viewer }, doc = document) {
   let on = readSaved();
   let pins = null;
   let request = 0;
-  let lastAskedAt = 0;
+  const mayAsk = requestGate(MIN_GAP_MS);
   const cache = new Map();
 
   const card = doc.createElement('div');
@@ -375,12 +398,10 @@ export function installAddressLookup({ viewer }, doc = document) {
     }
   };
 
-  const ask = async (lat, lon) => {
+  const ask = async (lat, lon, mine) => {
     const key = formatCoordinates(lat, lon);
     if (cache.has(key)) return cache.get(key);
-    const wait = lastAskedAt + MIN_GAP_MS - Date.now();
-    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    lastAskedAt = Date.now();
+    if (!(await mayAsk(() => mine === request))) return null;
     const [features, famous] = await Promise.all([
       askAddress(lat, lon),
       askFamous(lat, lon),
@@ -437,8 +458,9 @@ export function installAddressLookup({ viewer }, doc = document) {
     }
     show([['Looking up the address…', STRONG], coordinates]);
     try {
-      const { features, famous } = await ask(lat, lon);
-      if (mine !== request) return;
+      const found = await ask(lat, lon, mine);
+      if (mine !== request || !found) return;
+      const { features, famous } = found;
       const famousRows = famous
         ? [
             [famous.title, STRONG],
