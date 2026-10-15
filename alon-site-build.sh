@@ -10,7 +10,13 @@ mkdir -p "$OUT"
 cp alon-site/index.html alon-site/404.html alon-site/style.css alon-site/_headers alon-site/robots.txt "$OUT"/
 cp public/alon/zenith-wordmark.webp public/alon/zenith-favicon.png "$OUT"/
 cp -R alon-site/shots "$OUT"/
-./alon-share.sh "$OUT/Zenith.zip" > /dev/null
+# ZENITH_ZIP=<file> reuses a share zip that was already published, so a page-only
+# update leaves the app download exactly as it was. It still gets the key check.
+if [ -n "${ZENITH_ZIP:-}" ]; then
+  cp "$ZENITH_ZIP" "$OUT/Zenith.zip"
+else
+  ./alon-share.sh "$OUT/Zenith.zip" > /dev/null
+fi
 # Refuse to build a site around a zip that fails the key check.
 node security-tests/share-zip.mjs --zip "$OUT/Zenith.zip"
 # Zenith MC (the Minecraft mod) is a separate download: its jar goes next to
