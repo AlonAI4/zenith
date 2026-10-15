@@ -5,6 +5,9 @@
  */
 
 const TIP = 'Fill the screen with this picture (Esc returns)';
+/** Four corner brackets, drawn: the icons in this build are never characters. */
+const ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>';
 const HOST_IDS = ['cctv-frame-wrap', 'sl-viewer-wrap'];
 
 const STYLE = `
@@ -51,11 +54,12 @@ const STYLE = `
 }
 `;
 
-function addButton(host, parent, className, text) {
+function addButton(host, parent, className, words = '') {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = className;
-  button.textContent = text;
+  button.innerHTML = ICON;
+  if (words) button.append(` ${words}`);
   button.title = TIP;
   button.setAttribute('aria-label', 'Full screen');
   button.addEventListener('click', () => {
@@ -93,12 +97,12 @@ export function initPanelFullscreen(root = document) {
   );
 
   const pending = new Map([
-    ['cctv-frame-wrap', (host) => addButton(host, host, 'gev-fs-btn', '⛶')],
+    ['cctv-frame-wrap', (host) => addButton(host, host, 'gev-fs-btn')],
     [
       'sl-viewer-wrap',
       (host) => {
         const tools = host.querySelector('.sl-viewer-tools');
-        if (tools) addButton(host, tools, 'scene-btn', '⛶ FULL SCREEN');
+        if (tools) addButton(host, tools, 'scene-btn', 'FULL SCREEN');
       },
     ],
   ]);
