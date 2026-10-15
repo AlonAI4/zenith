@@ -99,13 +99,17 @@ function pageHelpers() {
       const host = viewer.scene.globe.show ? viewer.imageryLayers : tileset?.imageryLayers;
       return host ? host.length : -1;
     },
-    billboards: () => {
+    // Station markers only: a station's billboard carries the station (a name
+    // and a kind) as its id. Other billboards, such as the map pin, do not count.
+    stationMarkers: () => {
       const primitives = app().viewer.scene.primitives;
       let total = 0;
       for (let i = 0; i < primitives.length; i++) {
         const one = primitives.get(i);
-        if (one && typeof one.length === 'number' && typeof one.get === 'function') {
-          total += one.length;
+        if (!one || typeof one.length !== 'number' || typeof one.get !== 'function') continue;
+        for (let j = 0; j < one.length; j++) {
+          const id = one.get(j)?.id;
+          if (id && typeof id.name === 'string' && typeof id.kind === 'string') total += 1;
         }
       }
       return total;
@@ -521,11 +525,11 @@ const checks = [
   [
     'train stations',
     async (page) => {
-      const before = await page.evaluate(() => window.__zt.billboards());
+      const before = await page.evaluate(() => window.__zt.stationMarkers());
       await press(page, 'train-stations-toggle');
-      await until(page, (n) => window.__zt.billboards() > n, 8000, 'no station markers appeared', before);
+      await until(page, (n) => window.__zt.stationMarkers() > n, 8000, 'no station markers appeared', before);
       await press(page, 'train-stations-toggle');
-      await until(page, (n) => window.__zt.billboards() <= n, 5000, 'the station markers stayed', before);
+      await until(page, (n) => window.__zt.stationMarkers() <= n, 5000, 'the station markers stayed', before);
     },
   ],
   [
@@ -584,12 +588,12 @@ const checks = [
           lat,
           height,
         );
-      const before = await page.evaluate(() => window.__zt.billboards());
+      const before = await page.evaluate(() => window.__zt.stationMarkers());
       const home = await jump(13.37, 52.52, 9000);
       await press(page, 'train-stations-toggle');
       let appeared = true;
       try {
-        await until(page, (n) => window.__zt.billboards() > n + 20, 8000, 'no station markers appeared over Berlin', before);
+        await until(page, (n) => window.__zt.stationMarkers() > n + 20, 8000, 'no station markers appeared over Berlin', before);
       } catch {
         appeared = false;
       }
@@ -737,6 +741,17 @@ const checks = [
       await until(page, () => /Local time\s*\d\d:\d\d:\d\d/.test(document.getElementById('address-card')?.textContent ?? ''), 5000, 'no local time in the card');
       const first = await card();
       expect(/Coordinates/.test(first), 'no coordinates in the card');
+      // The right time, not just the right shape: London's clock and offset.
+      const clock = await page.evaluate(async () => {
+        const { offsetLabel, offsetMinutes } = await import('/src/app/timeZones.js');
+        const shown = /Local time\s*(\d\d):(\d\d):(\d\d)/.exec(document.getElementById('address-card').textContent);
+        const real = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date()).split(':').map(Number);
+        const seconds = (h, m, s) => h * 3600 + m * 60 + s;
+        const gap = Math.abs(seconds(...shown.slice(1).map(Number)) - seconds(...real));
+        return { off: Math.min(gap, 86_400 - gap), offset: offsetLabel(offsetMinutes('Europe/London')), text: document.getElementById('address-card').textContent };
+      });
+      expect(clock.off <= 2, `the card's time is ${clock.off} s away from London's`);
+      expect(clock.text.includes(clock.offset), `the card does not show London's offset (${clock.offset})`);
       const sun = await page.evaluate(() => document.getElementById('address-card-sun')?.textContent ?? '');
       expect(/^(Day|Twilight|Night) · (sunrise|sunset) \d\d:\d\d · (sunrise|sunset) \d\d:\d\d$/.test(sun), `the sun line said "${sun}"`);
       // It must agree with the shading: the same sun maths, asked directly.
@@ -1323,9 +1338,9 @@ const checks = [
       expect(result.frames >= 3 && result.loop, 'the map stopped drawing when one add-on failed');
       expect(/Test add-on has a problem and was switched off/.test(result.said), `the notice said "${result.said}"`);
       // And another add-on still does its job.
-      const before = await page.evaluate(() => window.__zt.billboards());
+      const before = await page.evaluate(() => window.__zt.stationMarkers());
       await press(page, 'train-stations-toggle');
-      await until(page, (n) => window.__zt.billboards() > n, 8000, 'train stations stopped working after another add-on failed', before);
+      await until(page, (n) => window.__zt.stationMarkers() > n, 8000, 'train stations stopped working after another add-on failed', before);
       await press(page, 'train-stations-toggle');
     },
   ],
@@ -1731,6 +1746,9 @@ const soloChecks = [
         await press(page, 'measure-toggle');
         await clickMap(page, 0.46, 0.75);
         await clickMap(page, 0.54, 0.3);
+        // Asked before the ground has loaded, the satellite map answers that
+        // there are no height differences: wait for it first.
+        await until(page, () => window.__godsEyeView.viewer.scene.globe.tilesLoaded || !window.__godsEyeView.viewer.scene.globe.show, 20_000, 'the ground never finished loading').catch(() => {});
         await page.click('#measure-profile-open');
         await until(page, () => /highest point is|no height differences/.test(document.querySelector('#measure-profile p').textContent), 30_000, `the ${mapName} gave no answer about heights`);
         const result = await page.evaluate(() => {
