@@ -94,7 +94,12 @@ export function quakeCard(quake, now = Date.now()) {
     details: [
       quake.place,
       `${when} UTC · ${agoLabel(now - quake.time)}`,
-      quake.depthKm === null ? null : `${Math.round(quake.depthKm)} km deep`,
+      quake.depthKm === null
+        ? null
+        : // Shallow ones, and those under a mountain (depth above sea level), would read 0 or -1 km.
+          quake.depthKm < 0.5
+          ? 'less than 1 km deep'
+          : `${Math.round(quake.depthKm)} km deep`,
     ].filter(Boolean),
   };
 }

@@ -134,3 +134,38 @@ test('when the feed does not answer, it says so on screen and tries again soon',
     else globalThis.document = before;
   }
 });
+
+const edgeFeature = (over = {}) => ({
+  id: 'us7000abc',
+  properties: { type: 'earthquake', mag: 4.2, time: 1_760_000_000_000, place: 'Somewhere', ...over.properties },
+  geometry: { coordinates: over.coordinates ?? [10, 20, 12] },
+  ...('id' in over ? { id: over.id } : {}),
+});
+
+test('a quake with no id gets one made from its time and place, and long ids are cut', () => {
+  const [made] = parseQuakes({ features: [{ ...edgeFeature(), id: undefined }] });
+  assert.equal(made.id, '1760000000000:10:20');
+  const [long] = parseQuakes({ features: [edgeFeature({ id: 'x'.repeat(100) })] });
+  assert.equal(long.id.length, 60);
+});
+
+test('a quake with no depth has no depth line on its card', () => {
+  const [quake] = parseQuakes({ features: [edgeFeature({ coordinates: [10, 20] })] });
+  assert.equal(quake.depthKm, null);
+  assert.ok(!quakeCard(quake, quake.time).details.some((line) => /deep/.test(line)));
+});
+
+test('only the 600 strongest are kept, weakest first', () => {
+  const features = Array.from({ length: 700 }, (_, i) => edgeFeature({ id: `q${i}`, properties: { mag: 2.5 + i / 100 } }));
+  const kept = parseQuakes({ features });
+  assert.equal(kept.length, 600);
+  assert.equal(kept[0].mag, 3.5);
+  assert.equal(kept.at(-1).mag, 9.49);
+});
+
+test('depths read sensibly, including quakes at or above sea level', () => {
+  const card = (depthKm) => quakeCard({ mag: 3, place: 'P', time: 0, depthKm }, 0).details.at(-1);
+  assert.equal(card(29.1), '29 km deep');
+  assert.equal(card(0.3), 'less than 1 km deep');
+  assert.equal(card(-0.8), 'less than 1 km deep');
+});
