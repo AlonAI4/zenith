@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   ADDRESS_MAX_HEIGHT_M,
+  answerRows,
   chooseAddress,
   closeEnoughForAddress,
   describeAddress,
@@ -216,4 +217,21 @@ test('the map pin card announces the address once, never its ticking clock', () 
     if (before === undefined) delete globalThis.document;
     else globalThis.document = before;
   }
+});
+
+test('a well-known place with the same name as its address is named once', () => {
+  const rows = answerRows({
+    famous: { title: 'Tower Bridge', metres: 12 },
+    address: { title: 'Tower Bridge', place: 'London, SE1 2UP', exact: false, away: 4 },
+    coordinates: ['Coordinates: 51.50555, -0.07537'],
+  }).filter(Boolean);
+  const named = rows.filter(([text]) => text === 'Tower Bridge');
+  assert.equal(named.length, 1, rows.map(([text]) => text).join(' | '));
+  // A different address name still shows under the well-known place.
+  const other = answerRows({
+    famous: { title: 'Tower of London', metres: 40 },
+    address: { title: 'Tower Hill', place: 'London', exact: false, away: 6 },
+    coordinates: ['Coordinates'],
+  }).filter(Boolean);
+  assert.ok(other.some(([text]) => text === 'Tower Hill'));
 });

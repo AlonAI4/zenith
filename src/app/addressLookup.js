@@ -253,6 +253,59 @@ function save(on) {
   }
 }
 
+/** About how tall the card gets with an answer in it. */
+const CARD_TALL_PX = 250;
+const STRONG = 'font-weight:700;font-size:13px;color:#fff';
+const FAINT = 'opacity:.7;font-size:11px';
+
+/**
+ * The card's rows for an answer: a well-known place first, then the
+ * address, the coordinates and where the data came from.
+ * @returns {Array<[string, string?] | false | undefined>}
+ */
+export function answerRows({ famous, address, coordinates }) {
+  const famousRows = famous
+    ? [
+        [famous.title, STRONG],
+        [
+          `Well-known place (Wikipedia), ${famous.metres} m from your click`,
+          FAINT,
+        ],
+      ]
+    : [];
+  if (!address) {
+    return [
+      ...famousRows,
+      ['No address is mapped near here', famous ? '' : STRONG],
+      coordinates,
+    ];
+  }
+  return [
+    ...famousRows,
+    // The address often has the well-known place's own name: say it once.
+    address.title !== famous?.title && [
+      address.title || 'Unnamed place',
+      famous ? '' : STRONG,
+    ],
+    address.place && [address.place],
+    coordinates,
+    [
+      address.exact
+        ? `House number as mapped, ${address.away} m from your click`
+        : `No house number is mapped here: nearest street or place, ${address.away} m from your click`,
+      FAINT,
+    ],
+    address.guide && [
+      `Nearest mapped house number on this street: ${address.guide.number}, ${address.guide.away} m away`,
+      FAINT,
+    ],
+    [
+      'Addresses © OpenStreetMap contributors, via Photon. Place names from Wikipedia',
+      FAINT,
+    ],
+  ];
+}
+
 /**
  * @param {{ viewer: Cesium.Viewer }} scene
  * @param {Document} [doc]
@@ -273,18 +326,20 @@ export function installAddressLookup({ viewer }, doc = document) {
   card.setAttribute('role', 'region');
   card.setAttribute('aria-label', 'Map pin card');
   card.style.cssText =
-    'position:fixed;top:132px;left:50%;transform:translateX(-50%);z-index:160;display:none;' +
-    'min-width:260px;max-width:min(460px,90vw);padding:10px 34px 10px 14px;border-radius:10px;' +
-    'border:1px solid rgba(120,220,255,.55);background:rgba(4,10,16,.94);color:#e8f8ff;' +
-    'font:500 12px/1.5 var(--font-mono,monospace)';
+    // The same frame as Zenith's other panels, starting where they start.
+    'position:fixed;top:var(--zenith-panel-top,92px);left:50%;transform:translateX(-50%);z-index:160;display:none;' +
+    'min-width:260px;max-width:min(460px,90vw);padding:12px 40px 12px 16px;border-radius:12px;' +
+    'border:1px solid rgba(0,246,255,.35);background:rgba(4,12,20,.95);color:#e8f8ff;' +
+    'box-shadow:0 14px 40px rgba(0,0,0,.6);font:500 12px/1.5 var(--font-mono,monospace)';
   const close = doc.createElement('button');
   close.type = 'button';
   close.textContent = '×';
   close.title = 'Close the address card';
   close.setAttribute('aria-label', 'Close the address card');
   close.style.cssText =
-    'position:absolute;top:4px;right:6px;border:0;background:none;color:inherit;' +
-    'font:600 18px/1 var(--font-mono,monospace);cursor:pointer';
+    'position:absolute;top:10px;right:10px;width:24px;height:24px;padding:0;border-radius:50%;' +
+    'border:1px solid rgba(0,246,255,.35);background:transparent;color:inherit;' +
+    'font:14px/1 var(--font-mono,monospace);cursor:pointer';
   const lines = doc.createElement('div');
   lines.setAttribute('role', 'status');
   const clock = doc.createElement('div');
@@ -358,8 +413,17 @@ export function installAddressLookup({ viewer }, doc = document) {
     );
     card.style.display = 'block';
   };
-  const STRONG = 'font-weight:700;font-size:13px;color:#fff';
-  const FAINT = 'opacity:.7;font-size:11px';
+
+  // A click high on the screen would put the pin under the card: the card
+  // then sits low instead, so the pin stays in view.
+  const placeCard = (y) => {
+    card.style.top = 'var(--zenith-panel-top,92px)';
+    card.style.bottom = 'auto';
+    if (y < card.getBoundingClientRect().top + CARD_TALL_PX + 20) {
+      card.style.top = 'auto';
+      card.style.bottom = '200px';
+    }
+  };
 
   const hide = () => {
     request += 1;
@@ -466,51 +530,17 @@ export function installAddressLookup({ viewer }, doc = document) {
 
     if (!closeEnoughForAddress(camera.positionCartographic?.height)) {
       show([['Zoom in closer to look up an address', STRONG], coordinates]);
+      placeCard(click.position.y);
       return;
     }
     show([['Looking up the address…', STRONG], coordinates]);
+    placeCard(click.position.y);
     try {
       const found = await ask(lat, lon, mine);
       if (mine !== request || !found) return;
       const { features, famous } = found;
-      const famousRows = famous
-        ? [
-            [famous.title, STRONG],
-            [
-              `Well-known place (Wikipedia), ${famous.metres} m from your click`,
-              FAINT,
-            ],
-          ]
-        : [];
       const address = chooseAddress(features, lat, lon);
-      if (!address) {
-        show([
-          ...famousRows,
-          ['No address is mapped near here', famous ? '' : STRONG],
-          coordinates,
-        ]);
-        return;
-      }
-      show([
-        ...famousRows,
-        [address.title || 'Unnamed place', famous ? '' : STRONG],
-        address.place && [address.place],
-        coordinates,
-        [
-          address.exact
-            ? `House number as mapped, ${address.away} m from your click`
-            : `No house number is mapped here: nearest street or place, ${address.away} m from your click`,
-          FAINT,
-        ],
-        address.guide && [
-          `Nearest mapped house number on this street: ${address.guide.number}, ${address.guide.away} m away`,
-          FAINT,
-        ],
-        [
-          'Addresses © OpenStreetMap contributors, via Photon. Place names from Wikipedia',
-          FAINT,
-        ],
-      ]);
+      show(answerRows({ famous, address, coordinates }));
     } catch (error) {
       if (mine !== request) return;
       show([
