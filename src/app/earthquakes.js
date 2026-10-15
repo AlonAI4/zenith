@@ -4,6 +4,7 @@ import {
   setOverlayEntries,
 } from '../overlays/worldOverlay.js';
 import { guard } from './addOns.js';
+import { closeOnEscape } from './escapeKey.js';
 
 /**
  * Live earthquakes: the last day's earthquakes of magnitude 2.5 and up, as
@@ -272,6 +273,16 @@ export function installEarthquakes(
   };
   const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
   handler.setInputAction(onClick, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  // Escape puts the card away, like a click on empty map.
+  const offEscape = closeOnEscape(
+    doc.defaultView ?? window,
+    () => selected !== null,
+    () => {
+      selected = null;
+      showCard();
+      scene.requestRender();
+    },
+  );
   const removeMoved = scene.preRender.addEventListener(
     guard('Earthquakes', hideFarSide),
   );
@@ -288,6 +299,7 @@ export function installEarthquakes(
   return () => {
     on = false;
     clearInterval(timer);
+    offEscape();
     removeMoved();
     handler.destroy();
     clearOverlaySource(LAYER_NAME);

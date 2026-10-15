@@ -3,6 +3,7 @@ import {
   clearOverlaySource,
   setOverlayEntries,
 } from '../overlays/worldOverlay.js';
+import { closeOnEscape } from './escapeKey.js';
 import { formatDistance } from './scaleBar.js';
 import { isTimeZonePick } from './timeZones.js';
 
@@ -754,11 +755,24 @@ export function installMeasureTool({ viewer }, doc = document) {
     hideProfile();
     draw();
   });
+  // Escape closes the height profile first; with that shut, it stops
+  // measuring, the same as pressing the measure button again.
+  const offEscape = closeOnEscape(
+    doc.defaultView ?? window,
+    () => !chartPanel.hidden || measuring,
+    () => {
+      if (!chartPanel.hidden) {
+        hideProfile();
+        draw();
+      } else button.click();
+    },
+  );
   paint();
   wipe();
   doc.getElementById('top-center-actions')?.appendChild(button);
 
   return () => {
+    offEscape();
     measuring = false;
     handler.destroy();
     wipe();

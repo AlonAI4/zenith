@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { sunLine } from './dayNight.js';
+import { closeOnEscape } from './escapeKey.js';
 import { isMeasuring } from './measureTool.js';
 import {
   isTimeZonePick,
@@ -364,6 +365,11 @@ export function installAddressLookup({ viewer }, doc = document) {
     scene.requestRender();
   };
   close.addEventListener('click', hide);
+  const offEscape = closeOnEscape(
+    doc.defaultView ?? window,
+    () => card.style.display === 'block',
+    hide,
+  );
 
   const askAddress = async (lat, lon) => {
     const response = await fetch(
@@ -533,6 +539,7 @@ export function installAddressLookup({ viewer }, doc = document) {
   doc.getElementById('top-center-actions')?.appendChild(button);
 
   return () => {
+    offEscape();
     handler.destroy();
     if (pins && !scene.isDestroyed()) scene.primitives.remove(pins);
     card.remove();

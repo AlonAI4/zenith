@@ -49,3 +49,16 @@ test('it stops listening when asked', () => {
   stop();
   assert.equal(win.listeners.length, 0);
 });
+
+test('every Zenith panel, card and close button closes on Escape too', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const folder = new URL('.', import.meta.url);
+  const opensSomething = /setAttribute\('role', 'dialog'\)|setAttribute\(\s*'aria-label',\s*'Close |variant: 'card'/;
+  const missing = readdirSync(folder)
+    .filter((name) => name.endsWith('.js') && name !== 'escapeKey.js')
+    .filter((name) => {
+      const source = readFileSync(new URL(name, folder), 'utf8');
+      return opensSomething.test(source) && !/import \{[^}]*\bcloseOnEscape\b[^}]*\} from '\.\/escapeKey\.js'/.test(source);
+    });
+  assert.deepEqual(missing, []);
+});
