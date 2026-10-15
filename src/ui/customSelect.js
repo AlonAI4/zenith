@@ -169,12 +169,15 @@ export function initCustomSelects(doc = document) {
 
   const buttons = new Map();
   let openMenu = null;
+  let menusOpened = 0;
 
   const close = () => {
     if (!openMenu) return;
-    openMenu.button.setAttribute('aria-expanded', 'false');
-    openMenu.panel.remove();
+    // Cleared first: removing the panel moves the focus, which calls close.
+    const menu = openMenu;
     openMenu = null;
+    menu.button.setAttribute('aria-expanded', 'false');
+    menu.panel.remove();
   };
 
   const syncOne = (select, button) => {
@@ -184,20 +187,35 @@ export function initCustomSelects(doc = document) {
     if (label.textContent !== current) label.textContent = current;
     if (button.disabled !== select.disabled) button.disabled = select.disabled;
     if (button.title !== name) button.title = name;
+    // Read out as the menu's name and its choice, such as "Style: Normal".
+    const spoken = `${name}: ${current}`;
+    if (button.getAttribute('aria-label') !== spoken)
+      button.setAttribute('aria-label', spoken);
   };
 
   const open = (select, button) => {
     close();
     const options = readOptions(select);
+    const name = select.getAttribute('aria-label') || 'Menu';
+    const menuId = `gev-menu-${(menusOpened += 1)}`;
     const panel = doc.createElement('div');
     panel.className = 'gev-menu';
+    // Focusable, so a click on a row keeps the focus inside the menu.
+    panel.tabIndex = -1;
     const search = doc.createElement('input');
     search.type = 'search';
     search.placeholder = `Search ${options.length} options`;
     search.setAttribute('aria-label', 'Search this menu');
     const list = doc.createElement('div');
     list.className = 'gev-menu-list';
+    list.id = menuId;
     list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', name);
+    list.tabIndex = -1;
+    search.setAttribute('aria-controls', menuId);
+    // Whichever has the keyboard focus says which row is highlighted, so a
+    // screen reader reads each row as the arrow keys reach it.
+    const keys = options.length >= SEARCH_FROM ? search : list;
     const note = doc.createElement('div');
     note.className = 'gev-menu-note';
     if (options.length >= SEARCH_FROM) panel.append(search);
@@ -210,9 +228,13 @@ export function initCustomSelects(doc = document) {
       active = Math.max(0, Math.min(rowEls.length - 1, index));
       rowEls[active]?.classList.add('is-active');
       rowEls[active]?.scrollIntoView({ block: 'nearest' });
+      if (rowEls[active])
+        keys.setAttribute('aria-activedescendant', rowEls[active].id);
+      else keys.removeAttribute('aria-activedescendant');
     };
     const choose = (value) => {
       close();
+      button.focus();
       if (select.value === value) return;
       select.value = value;
       select.dispatchEvent(new Event('input', { bubbles: true }));
@@ -231,6 +253,7 @@ export function initCustomSelects(doc = document) {
             return el;
           }
           el.className = 'gev-menu-row';
+          el.id = `${menuId}-opt-${rowEls.length}`;
           el.setAttribute('role', 'option');
           el.setAttribute('aria-selected', String(row.value === select.value));
           el.textContent = row.label;
@@ -263,10 +286,24 @@ export function initCustomSelects(doc = document) {
       } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         setActive(active + (event.key === 'ArrowDown' ? 1 : -1));
+      } else if (
+        (event.key === 'Home' || event.key === 'End') &&
+        event.target !== search
+      ) {
+        // In the search box these two move the text cursor instead.
+        event.preventDefault();
+        setActive(event.key === 'Home' ? 0 : rowEls.length - 1);
       } else if (event.key === 'Enter') {
         event.preventDefault();
         rowEls[active]?.click();
       }
+    });
+    // Tab, or a click elsewhere, takes the focus out: the menu closes.
+    panel.addEventListener('focusout', (event) => {
+      const to = event.relatedTarget;
+      // Not to its own button: that click closes the menu by itself.
+      if (openMenu?.panel === panel && !panel.contains(to) && to !== button)
+        close();
     });
     search.addEventListener('input', draw);
 
@@ -286,11 +323,7 @@ export function initCustomSelects(doc = document) {
     button.setAttribute('aria-expanded', 'true');
     openMenu = { button, panel };
     draw();
-    if (options.length >= SEARCH_FROM) search.focus();
-    else {
-      panel.tabIndex = -1;
-      panel.focus();
-    }
+    keys.focus();
   };
 
   const wrap = (select) => {
