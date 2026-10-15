@@ -147,7 +147,8 @@ export function installToolbarFit(doc = document, win = window) {
   more.innerHTML = MORE_ICON;
   more.title = 'More switches';
   more.setAttribute('aria-label', 'More switches');
-  more.setAttribute('aria-haspopup', 'true');
+  // A plain panel that shows and hides, which aria-expanded describes.
+  more.setAttribute('aria-controls', 'zenith-tray');
   more.setAttribute('aria-expanded', 'false');
   more.hidden = true;
 

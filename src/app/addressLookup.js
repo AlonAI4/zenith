@@ -528,7 +528,7 @@ export function installAddressLookup({ viewer }, doc = document) {
   button.id = 'address-lookup-toggle';
   button.type = 'button';
   button.innerHTML = ICON;
-  button.setAttribute('aria-label', 'Address lookup');
+  button.setAttribute('aria-label', 'Map pin');
   const paint = () => {
     button.setAttribute('aria-pressed', String(on));
     button.title = on

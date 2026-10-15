@@ -93,7 +93,7 @@ export function installMapLabels({ viewer, tileset }, doc = document) {
   button.id = 'map-labels-toggle';
   button.type = 'button';
   button.textContent = 'Aa';
-  button.setAttribute('aria-label', 'Place and road labels');
+  button.setAttribute('aria-label', 'Place names');
   const paint = () => {
     button.setAttribute('aria-pressed', String(on));
     button.title = on ? TIP_ON : TIP_OFF;
