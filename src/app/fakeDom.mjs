@@ -74,6 +74,32 @@ class FakeElement extends EventTarget {
     this.ownText = String(value ?? '');
   }
 
+  get childNodes() {
+    return this.children;
+  }
+
+  /** A copy, with its attributes, classes, text and (if deep) children. */
+  cloneNode(deep = false) {
+    const copy = new FakeElement(this.ownerDocument, this.tagName);
+    for (const [name, value] of this.attributes) copy.setAttribute(name, value);
+    copy.className = this.className;
+    copy.id = this.id;
+    copy.ownText = this.ownText;
+    copy.innerHTML = this.innerHTML;
+    if (deep) {
+      for (const child of this.children)
+        copy.appendChild(child.cloneNode(true));
+    }
+    return copy;
+  }
+
+  prepend(...nodes) {
+    const kept = this.children;
+    this.children = [];
+    this.append(...nodes);
+    for (const child of kept) this.children.push(child);
+  }
+
   append(...nodes) {
     for (const node of nodes) {
       if (typeof node === 'string') this.ownText += node;

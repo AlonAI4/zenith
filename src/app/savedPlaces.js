@@ -488,9 +488,14 @@ export function installSavedPlaces(
         remove.title = `Delete ${place.name}`;
         remove.setAttribute('aria-label', `Delete ${place.name}`);
         remove.addEventListener('click', () => {
+          const at = places.findIndex((other) => other.name === place.name);
           places = removePlace(places, place.name);
           write();
           render();
+          // The delete button just went with its row: keep the focus in the
+          // list, on the place that took its spot, or in the name box.
+          const rows = list.querySelectorAll('.sp-go');
+          (rows[at] ?? rows[at - 1] ?? input).focus();
         });
         const row = element('li');
         row.append(pick, go, remove);

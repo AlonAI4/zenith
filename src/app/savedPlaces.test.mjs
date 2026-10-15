@@ -41,6 +41,8 @@ function panelInFakePage(storage) {
     },
     names: () => panel.querySelectorAll('.sp-name').map((node) => node.textContent),
     note: () => panel.querySelector('.sp-note').textContent,
+    panel,
+    doc,
   };
 }
 
@@ -187,4 +189,22 @@ test('reopening the panel picks up places stored by something else', () => {
   saved.set('gev.savedPlaces', JSON.stringify([{ ...JSON.parse(saved.get('gev.savedPlaces'))[0], name: 'Work' }]));
   page.toggle.click();
   assert.deepEqual(page.names(), ['Work']);
+});
+
+test('deleting a place with the keyboard moves the focus to the next one, then to the name box', () => {
+  const saved = new Map();
+  const page = panelInFakePage({ getItem: (key) => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) });
+  page.toggle.click();
+  page.save('Alpha');
+  page.save('Bravo');
+  const deleteButton = (name) => page.panel.querySelectorAll('.sp-delete').find((node) => node.getAttribute('aria-label') === `Delete ${name}`);
+  const first = deleteButton(page.names()[0]);
+  first.focus();
+  first.click();
+  assert.equal(page.names().length, 1);
+  assert.ok(page.doc.activeElement.classList.contains('sp-go'), 'focus is on the next place');
+  const last = deleteButton(page.names()[0]);
+  last.focus();
+  last.click();
+  assert.ok(page.doc.activeElement === page.panel.querySelector('input'), 'with none left, focus is in the name box');
 });

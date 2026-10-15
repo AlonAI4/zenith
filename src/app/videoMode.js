@@ -282,7 +282,17 @@ export function installVideoMode(
     frameId = win.requestAnimationFrame(frame);
   }
 
-  button.addEventListener('click', () => setPanel(panel.hidden));
+  button.addEventListener('click', () => {
+    const opening = panel.hidden;
+    setPanel(opening);
+    // Opened with the keyboard in mind: start on the speed that is chosen.
+    if (opening) {
+      (
+        options.slice(0, 3).find(([, isPicked]) => isPicked())?.[0] ??
+        startButton
+      ).focus();
+    }
+  });
   startButton.addEventListener('click', start);
   const offEscape = closeOnEscape(
     win,

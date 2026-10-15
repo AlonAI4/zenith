@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { fakeDocument } from './fakeDom.mjs';
 import {
+  installVideoMode,
   keyEndsVideo,
   orbitStep,
   readChoice,
@@ -58,4 +60,16 @@ test('the saved choice is read back, and anything odd falls back to the usual on
   assert.deepEqual(readChoice('{"speed":"fast","clockwise":false}'), { speed: 'fast', clockwise: false });
   assert.deepEqual(readChoice('{"speed":"slow"}'), { speed: 'slow', clockwise: true });
   assert.deepEqual(readChoice('{"speed":"constructor"}'), usual);
+});
+
+test('opening video mode with its button puts the focus on the chosen speed', () => {
+  const doc = fakeDocument();
+  const bar = doc.createElement('div');
+  bar.id = 'top-center-actions';
+  doc.body.appendChild(bar);
+  const storage = { getItem: () => null, setItem: () => {} };
+  installVideoMode({ isDestroyed: () => false }, { doc, win: doc.defaultView, storage });
+  doc.getElementById('video-mode-toggle').click();
+  const focused = doc.activeElement;
+  assert.ok(focused.dataset?.speed === 'normal' && focused.getAttribute('aria-pressed') === 'true', 'the chosen speed has the focus');
 });

@@ -204,16 +204,44 @@ export function installHelpCard(
     list(ZENITH_VERSION.changes),
   );
 
-  const render = () => {
-    const head = element('div', 'zh-head');
-    const close = element('button', 'zh-close', '×');
-    close.type = 'button';
-    close.title = 'Close this card';
-    close.setAttribute('aria-label', 'Close this card');
-    close.addEventListener('click', () => setOpen(false));
-    head.append(element('h2', '', 'ZENITH CONTROLS'), close);
+  // The parts that never change are built once and kept, so a control in
+  // them that has the keyboard focus is never pulled out from under it.
+  const head = element('div', 'zh-head');
+  const close = element('button', 'zh-close', '×');
+  close.type = 'button';
+  close.title = 'Close this card';
+  close.setAttribute('aria-label', 'Close this card');
+  close.addEventListener('click', () => setOpen(false));
+  head.append(element('h2', '', 'ZENITH CONTROLS'), close);
+  const rows = element('div', 'zh-switches');
+  const clicks = element('ul');
+  card.append(
+    head,
+    element('h3', '', 'YOUR SWITCHES'),
+    rows,
+    element('h3', '', 'CLICKING THE MAP'),
+    clicks,
+    element('h3', '', 'MOVING AROUND'),
+    list(MOVING),
+    element('h3', '', 'YOUR SETTINGS'),
+    settingsFile,
+    whatsNew,
+  );
 
-    const rows = element('div', 'zh-switches');
+  /** Which switches are there and which are on: what the card shows. */
+  const switchStates = () =>
+    ZENITH_SWITCHES.map((entry) => {
+      const source = doc.getElementById(entry.id);
+      return source ? String(isOn(entry.id)) : '-';
+    }).join();
+  let shown = null;
+
+  const render = () => {
+    // Switches write their state again even when it has not changed.
+    const states = switchStates();
+    if (states === shown) return;
+    shown = states;
+    const fresh = [];
     for (const entry of ZENITH_SWITCHES) {
       const source = doc.getElementById(entry.id);
       if (!source || entry.id === HELP_SWITCH_ID) continue;
@@ -228,23 +256,12 @@ export function installHelpCard(
       );
       const row = element('div', 'zh-row');
       row.append(icon, words);
-      rows.appendChild(row);
+      fresh.push(row);
     }
-
-    const clicks = list(MAP_CLICKS);
-    clicks.prepend(element('li', 'zh-pin', pinLine(isOn(PIN_SWITCH_ID))));
-
-    card.replaceChildren(
-      head,
-      element('h3', '', 'YOUR SWITCHES'),
-      rows,
-      element('h3', '', 'CLICKING THE MAP'),
-      clicks,
-      element('h3', '', 'MOVING AROUND'),
-      list(MOVING),
-      element('h3', '', 'YOUR SETTINGS'),
-      settingsFile,
-      whatsNew,
+    rows.replaceChildren(...fresh);
+    clicks.replaceChildren(
+      element('li', 'zh-pin', pinLine(isOn(PIN_SWITCH_ID))),
+      ...MAP_CLICKS.map((line) => element('li', '', line)),
     );
   };
 
@@ -254,14 +271,19 @@ export function installHelpCard(
   });
   const bar = doc.getElementById('top-center-actions');
 
-  function setOpen(open) {
+  function setOpen(open, { focus = false } = {}) {
     if (open) render();
     else if (!card.hidden) remember();
     card.hidden = !open;
     button.setAttribute('aria-pressed', String(open));
+    // Opened with its button: the keyboard focus goes into the card. Not
+    // when it opens by itself at the start, which must not take the focus.
+    if (open && focus) close.focus();
   }
 
-  button.addEventListener('click', () => setOpen(card.hidden));
+  button.addEventListener('click', () =>
+    setOpen(card.hidden, { focus: card.hidden }),
+  );
   const offEscape = closeOnEscape(
     win,
     () => !card.hidden,
