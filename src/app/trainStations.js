@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { guard } from './addOns.js';
+import { showNotice } from './notice.js';
 
 /**
  * Train, metro and tram stops, with one toolbar switch.
@@ -182,7 +183,15 @@ export function installTrainStations({ viewer }, doc = document) {
       .catch((error) => {
         loading = null;
         console.warn('[train-stations]', error?.message || error);
-        paint('Station file missing: run alon-stations-download.sh');
+        // Off again for this visit, and said on screen; the saved choice is
+        // kept, so the next start tries again.
+        on = false;
+        clearMarkers();
+        viewer.creditDisplay.removeStaticCredit(credit);
+        const words =
+          'The train station list could not be loaded, so the switch is off again. Try it later.';
+        paint(words);
+        showNotice(doc, words, { id: 'feed-notice', ms: 15_000 });
       });
     return loading;
   };
@@ -205,7 +214,7 @@ export function installTrainStations({ viewer }, doc = document) {
     }
     viewer.creditDisplay.addStaticCredit(credit);
     await load();
-    redraw();
+    if (on) redraw();
   };
 
   button.addEventListener('click', () => {

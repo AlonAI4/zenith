@@ -74,6 +74,18 @@ class FakeElement extends EventTarget {
     this.ownText = String(value ?? '');
   }
 
+  /** A canvas that accepts every drawing command and draws nothing. */
+  getContext() {
+    const drawn = {};
+    return new Proxy(drawn, {
+      get: (target, key) => (key in target ? target[key] : () => {}),
+    });
+  }
+
+  toDataURL() {
+    return 'data:,';
+  }
+
   /** Every element sits at the top left with no size: there is no layout. */
   getBoundingClientRect() {
     return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };

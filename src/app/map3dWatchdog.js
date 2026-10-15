@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { guard } from './addOns.js';
+import { showNotice } from './notice.js';
 
 /**
  * Keeps the 3D buildings map alive.
@@ -108,23 +109,6 @@ function watchMapMenu(doc, mark) {
   return () => doc.removeEventListener('click', onClick, true);
 }
 
-function showNotice(doc, text, ms) {
-  doc.getElementById(NOTICE_ID)?.remove();
-  const notice = doc.createElement('div');
-  notice.id = NOTICE_ID;
-  notice.setAttribute('role', 'status');
-  notice.textContent = text;
-  notice.title = 'Click to dismiss';
-  notice.style.cssText =
-    'position:fixed;top:132px;left:50%;transform:translateX(-50%);z-index:200;' +
-    'max-width:min(560px,90vw);padding:10px 14px;border-radius:10px;cursor:pointer;' +
-    'border:1px solid rgba(255,190,90,.6);background:rgba(20,14,4,.92);color:#ffd9a0;' +
-    'font:600 13px/1.4 var(--font-mono,monospace);text-align:center';
-  notice.addEventListener('click', () => notice.remove());
-  doc.body.appendChild(notice);
-  setTimeout(() => notice.remove(), ms);
-}
-
 /**
  * @param {{ viewer: object, tileset?: object, mapStackController?: object }} scene
  * @param {object} [options] Replaceable parts, for tests.
@@ -141,7 +125,7 @@ function showNotice(doc, text, ms) {
 export function install3dMapWatchdog(
   { viewer, tileset, mapStackController },
   {
-    notify = (text, ms) => showNotice(document, text, ms),
+    notify = (text, ms) => showNotice(document, text, { id: NOTICE_ID, ms }),
     renew = () => renewSession(tileset),
     schedule = (fn, ms) => setTimeout(fn, ms),
     now = () => Date.now(),

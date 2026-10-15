@@ -5,6 +5,7 @@ import {
 } from '../overlays/worldOverlay.js';
 import { guard } from './addOns.js';
 import { closeOnEscape } from './escapeKey.js';
+import { showNotice } from './notice.js';
 
 /**
  * Live earthquakes: the last day's earthquakes of magnitude 2.5 and up, as
@@ -24,6 +25,9 @@ export const FEED_URL =
 const EVENT_PAGE = 'https://earthquake.usgs.gov/earthquakes/eventpage/';
 const CREDIT = 'Earthquakes: U.S. Geological Survey';
 const REFRESH_MS = 5 * 60_000;
+/** After a failed ask, the next tries come sooner, then back to every five minutes. */
+const RETRY_MS = [30_000, 60_000, 120_000];
+const NOTICE_ID = 'feed-notice';
 const TIMEOUT_MS = 12_000;
 const MAX_QUAKES = 600;
 
@@ -141,6 +145,8 @@ export function installEarthquakes(
   let quakes = [];
   let selected = null;
   let timer = null;
+  let retry = null;
+  let failures = 0;
   let asking = 0;
   const credit = new Cesium.Credit(CREDIT, true);
 
@@ -231,14 +237,28 @@ export function installEarthquakes(
       const found = parseQuakes(await fetchFeed());
       if (mine !== asking || !on) return;
       quakes = found;
+      failures = 0;
+      clearTimeout(retry);
+      retry = null;
+      doc.getElementById(NOTICE_ID)?.remove();
       draw();
       paint();
     } catch (error) {
       if (mine !== asking || !on) return;
       console.warn('[earthquakes]', error?.message || error);
-      paint(
-        'The earthquake feed did not answer. It will be tried again in five minutes',
-      );
+      const wait = RETRY_MS[failures] ?? null;
+      failures += 1;
+      const when = !wait
+        ? 'in five minutes'
+        : wait < 60_000
+          ? `in ${wait / 1000} seconds`
+          : `in ${wait / 60_000} minute${wait === 60_000 ? '' : 's'}`;
+      const words = `The earthquake feed did not answer. Trying again ${when}.`;
+      // On screen, not only in the switch's hover title.
+      paint(words);
+      showNotice(doc, words, { id: NOTICE_ID, ms: 60_000 });
+      clearTimeout(retry);
+      retry = wait ? setTimeout(refresh, wait) : null;
     }
   };
 
@@ -251,6 +271,10 @@ export function installEarthquakes(
       timer = setInterval(refresh, REFRESH_MS);
     } else {
       asking += 1;
+      clearTimeout(retry);
+      retry = null;
+      failures = 0;
+      doc.getElementById(NOTICE_ID)?.remove();
       quakes = [];
       selected = null;
       points?.removeAll();
@@ -299,6 +323,7 @@ export function installEarthquakes(
   return () => {
     on = false;
     clearInterval(timer);
+    clearTimeout(retry);
     offEscape();
     removeMoved();
     handler.destroy();

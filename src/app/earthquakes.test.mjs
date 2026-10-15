@@ -4,11 +4,13 @@ import test from 'node:test';
 import {
   agoLabel,
   FEED_URL,
+  installEarthquakes,
   parseQuakes,
   quakeCard,
   quakeColor,
   quakeSize,
 } from './earthquakes.js';
+import { fakeDocument } from './fakeDom.mjs';
 
 const feature = (mag, extra = {}, coordinates = [142.4, 38.3, 29.1]) => ({
   type: 'Feature',
@@ -93,4 +95,42 @@ test('the card gives the strength, the place, the time and the depth', () => {
   assert.deepEqual(card.details, ['70 km E of Sendai, Japan', '10:00 UTC · 3 h 20 min ago', '29 km deep']);
   const noDepth = quakeCard({ ...quake, depthKm: null }, Date.parse('2026-10-13T10:01:00Z'));
   assert.deepEqual(noDepth.details, ['70 km E of Sendai, Japan', '10:00 UTC · just now']);
+});
+
+test('when the feed does not answer, it says so on screen and tries again soon', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const doc = fakeDocument();
+  const bar = doc.createElement('div');
+  bar.id = 'top-center-actions';
+  doc.body.appendChild(bar);
+  let asked = 0;
+  const fetchFeed = async () => {
+    asked += 1;
+    if (asked === 1) throw new Error('timeout');
+    return { features: [{ id: 'q1', properties: { mag: 4.2, place: 'Somewhere', time: 0 }, geometry: { coordinates: [10, 20, 5] } }] };
+  };
+  const never = { addEventListener: () => () => {} };
+  const viewer = {
+    scene: { canvas: doc.createElement('canvas'), primitives: { add: (p) => p, remove() {} }, requestRender() {}, preRender: never },
+    camera: {},
+    creditDisplay: { addStaticCredit() {}, removeStaticCredit() {} },
+  };
+  const before = globalThis.document;
+  globalThis.document = doc;
+  let remove;
+  try {
+    remove = installEarthquakes({ viewer }, doc, { fetchFeed });
+    doc.getElementById('earthquakes-toggle').click();
+    await new Promise((resolve) => setImmediate(resolve));
+    const notice = doc.getElementById('feed-notice');
+    assert.ok(notice && /earthquake feed did not answer/i.test(notice.textContent), 'the failure is on screen, not only in a hover title');
+    t.mock.timers.tick(30_000);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(asked, 2, 'it tries again after 30 seconds, not five minutes');
+    assert.equal(doc.getElementById('feed-notice'), null, 'the message goes once the feed answers');
+  } finally {
+    remove?.();
+    if (before === undefined) delete globalThis.document;
+    else globalThis.document = before;
+  }
 });
