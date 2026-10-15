@@ -24,7 +24,17 @@ export function initBranding(doc = document) {
   doc.title = NAME;
   const jobs = new Map([
     ['#title-bar h1 > span:not(.title-logo)', (el) => paintTitle(el, doc)],
-    ['#title-bar .subtitle', (el) => (el.textContent = CREDIT)],
+    [
+      '#title-bar .subtitle',
+      (el) => {
+        el.textContent = CREDIT;
+        // Brighter than the faint default, with a dark shadow, so the credit
+        // stays readable over a bright satellite picture. Set here rather than
+        // in the original's shared colours, which many other parts use.
+        el.style.color = 'rgba(232, 234, 237, 0.62)';
+        el.style.textShadow = '0 1px 2px #000, 0 0 8px rgba(0, 0, 0, 0.9)';
+      },
+    ],
     ['#loading-screen h2', (el) => paintTitle(el, doc)],
   ]);
   const apply = () => {

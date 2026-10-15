@@ -135,7 +135,7 @@ body.ui-clean-view #compass-dial {
 .cd-letter { fill: #8fdcec; font-size: 9px; font-weight: 600; }
 .cd-letter-n { fill: #fff; font-size: 12px; font-weight: 700; }
 .cd-lubber { fill: #ff9d2e; }
-.cd-cap { fill: #5fd6ee; font-size: 6.5px; letter-spacing: 0.22em; }
+.cd-cap { fill: #5fd6ee; font-size: 8px; letter-spacing: 0.22em; }
 .cd-read { fill: #fff; font-size: 15px; font-weight: 600; }
 .cd-grab { fill: none; stroke: transparent; stroke-width: 26; pointer-events: stroke; cursor: grab; }
 .cd-north-hit { fill: transparent; cursor: pointer; }

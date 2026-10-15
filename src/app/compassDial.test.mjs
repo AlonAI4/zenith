@@ -58,3 +58,10 @@ test('the tilt arc runs from straight down to nearly level and stops there', () 
   assert.equal(fractionForTilt(-90), 0);
   assert.equal(fractionForTilt(0), 1);
 });
+
+test('the small HDG label on the dial is big enough to read', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('compassDial.js', import.meta.url), 'utf8');
+  const size = Number(/\.cd-cap \{[^}]*font-size: ([\d.]+)px/.exec(source)?.[1]);
+  assert.ok(size >= 8, `HDG is ${size}px`);
+});
