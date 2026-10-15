@@ -198,8 +198,14 @@ export function installTrackingMarker(viewer, doc = document) {
     if (!start) return;
     const home = homeOf(start.entity);
     const began = performance.now();
+    // With "reduce motion" on, the first step lands at the end: a jump.
+    const still = (doc.defaultView ?? window).matchMedia?.(
+      '(prefers-reduced-motion: reduce)',
+    ).matches;
     const flyStep = () => {
-      const progress = Math.min(1, (performance.now() - began) / FLY_MS);
+      const progress = still
+        ? 1
+        : Math.min(1, (performance.now() - began) / FLY_MS);
       const now = tracked();
       const moved =
         now?.entity === start.entity &&

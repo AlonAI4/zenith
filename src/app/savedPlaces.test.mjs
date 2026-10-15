@@ -19,8 +19,9 @@ import {
 } from './savedPlaces.js';
 
 /** The saved-places panel in a fake page, with the camera over London. */
-function panelInFakePage(storage) {
+function panelInFakePage(storage, { reduceMotion = false } = {}) {
   const doc = fakeDocument();
+  doc.defaultView.matchMedia = (query) => ({ matches: reduceMotion && query.includes('prefers-reduced-motion: reduce') });
   const bar = doc.createElement('div');
   bar.id = 'top-center-actions';
   doc.body.appendChild(bar);
@@ -28,6 +29,12 @@ function panelInFakePage(storage) {
     positionCartographic: { longitude: -0.0022, latitude: 0.8988, height: 900 },
     heading: 0.35,
     pitch: -0.6,
+    flights: [],
+    flyTo(options) {
+      this.flights.push(options);
+    },
+    cancelFlight() {},
+    lookAtTransform() {},
   };
   installSavedPlaces({ viewer: { camera } }, doc, { storage, win: doc.defaultView });
   const panel = doc.getElementById('saved-places');
@@ -43,6 +50,7 @@ function panelInFakePage(storage) {
     note: () => panel.querySelector('.sp-note').textContent,
     panel,
     doc,
+    camera,
   };
 }
 
@@ -207,4 +215,20 @@ test('deleting a place with the keyboard moves the focus to the next one, then t
   last.focus();
   last.click();
   assert.ok(page.doc.activeElement === page.panel.querySelector('input'), 'with none left, focus is in the name box');
+});
+
+test('with "reduce motion" on, going to a saved place jumps there instead of flying', () => {
+  const memory = () => {
+    const saved = new Map();
+    return { getItem: (key) => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value) };
+  };
+  for (const reduceMotion of [false, true]) {
+    const page = panelInFakePage(memory(), { reduceMotion });
+    page.toggle.click();
+    page.save('Home');
+    page.panel.querySelector('.sp-go').click();
+    const { duration } = page.camera.flights.at(-1);
+    if (reduceMotion) assert.equal(duration, 0);
+    else assert.ok(duration > 0);
+  }
 });

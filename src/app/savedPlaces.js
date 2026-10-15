@@ -434,10 +434,12 @@ export function installSavedPlaces(
   const flyTo = (place) => {
     applyLook(place.look);
     letGo();
+    // With "reduce motion" on, a duration of 0 jumps straight there.
+    const still = win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     camera.flyTo({
       destination: spot(place),
       orientation: facing(place),
-      duration: FLY_SECONDS,
+      duration: still ? 0 : FLY_SECONDS,
     });
   };
 
