@@ -296,7 +296,7 @@ body.ui-clean-view #measure-readout { display: none; }
 #measure-readout button[hidden] { display: none; }
 #measure-profile {
   position: fixed;
-  top: 92px;
+  top: var(--zenith-panel-top, 92px);
   left: 50%;
   z-index: 181;
   width: min(380px, calc(100vw - 32px));

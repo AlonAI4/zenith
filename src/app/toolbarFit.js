@@ -22,6 +22,9 @@ const BELOW_ROW_SCALE = 0.75;
 const BELOW_ROW_TOP = 190;
 /** The dial hangs a little above the bar's own top edge. */
 const DIAL_RISE = 14;
+/** Where the centred panels start, and how far the widest (the help card) reaches each side of the middle. */
+export const PANEL_TOP = 92;
+const PANEL_HALF_WIDTH = 330;
 
 /**
  * Does the full row fit: title, bar, dial, then the style label or the edge?
@@ -42,7 +45,9 @@ export function fitsInline({
 }
 
 /**
- * Where the compass dial goes, and how big.
+ * Where the compass dial goes, and how big. It must also end above any side
+ * panel under it (`panels`, their boxes): at phone width the panels start
+ * just under the bar, and a full-size dial would sit on them.
  * @returns {{ left: number, top: number, scale: number }}
  */
 export function placeDial({
@@ -52,28 +57,56 @@ export function placeDial({
   limitRight,
   dial = DIAL,
   gap = GAP,
+  panels = [],
 }) {
   const top = Math.max(4, bar.top - DIAL_RISE);
   const smallest = dial.width * MIN_DIAL_SCALE;
+  /** The scale, made smaller if needed to end above the panels under it. */
+  const aboveThePanels = (left, scale) => {
+    const right = left + dial.width * scale;
+    const under = panels.filter(
+      (panel) => panel.left < right && panel.right > left,
+    );
+    const floor = Math.min(Infinity, ...under.map((panel) => panel.top));
+    return Math.min(scale, (floor - gap - top) / dial.height);
+  };
 
   const roomRight = limitRight - gap - (bar.right + gap);
   if (roomRight >= smallest) {
-    return {
-      left: bar.right + gap,
-      top,
-      scale: Math.min(1, roomRight / dial.width),
-    };
+    const left = bar.right + gap;
+    const scale = aboveThePanels(left, Math.min(1, roomRight / dial.width));
+    if (scale >= MIN_DIAL_SCALE) return { left, top, scale };
   }
   const roomLeft = bar.left - gap - (titleRight + gap);
   if (roomLeft >= smallest) {
-    const scale = Math.min(1, roomLeft / dial.width);
-    return { left: bar.left - gap - dial.width * scale, top, scale };
+    const wanted = Math.min(1, roomLeft / dial.width);
+    const scale = aboveThePanels(bar.left - gap - dial.width * wanted, wanted);
+    if (scale >= MIN_DIAL_SCALE) {
+      return { left: bar.left - gap - dial.width * scale, top, scale };
+    }
   }
   return {
     left: viewportWidth - gap - dial.width * BELOW_ROW_SCALE,
     top: BELOW_ROW_TOP,
     scale: BELOW_ROW_SCALE,
   };
+}
+
+/**
+ * Where the centred panels (help, saved places, video mode, the height
+ * profile) start: under the dial when it hangs over the middle of the window,
+ * where they would otherwise cover it.
+ */
+export function panelTop({ viewportWidth, dial: spot, size = DIAL }) {
+  const right = spot.left + size.width * spot.scale;
+  const middle = viewportWidth / 2;
+  const over =
+    spot.left < middle + PANEL_HALF_WIDTH && right > middle - PANEL_HALF_WIDTH;
+  if (!over) return PANEL_TOP;
+  return Math.max(
+    PANEL_TOP,
+    Math.ceil(spot.top + size.height * spot.scale + 10),
+  );
 }
 
 const MORE_ICON =
@@ -211,11 +244,17 @@ export function installToolbarFit(doc = document, win = window) {
       box(doc.querySelector('#title-bar h1'));
     const label = box(doc.getElementById('style-indicator'));
     const viewportWidth = doc.documentElement.clientWidth;
+    const barBox = bar.getBoundingClientRect();
+    // The side panels that start below the bar (at phone width, just below).
+    const panels = [...doc.querySelectorAll('.panel-collapsible')]
+      .map((panel) => panel.getBoundingClientRect())
+      .filter((panel) => panel.width > 0 && panel.top >= barBox.bottom);
     return {
       viewportWidth,
-      bar: bar.getBoundingClientRect(),
+      bar: barBox,
       titleRight: title ? title.right : 0,
       limitRight: label ? label.left : viewportWidth,
+      panels,
     };
   };
 
@@ -240,6 +279,10 @@ export function installToolbarFit(doc = document, win = window) {
       dial.style.transformOrigin = 'top left';
       dial.style.transform =
         spot.scale < 1 ? `scale(${spot.scale.toFixed(3)})` : '';
+      doc.documentElement.style.setProperty(
+        '--zenith-panel-top',
+        `${panelTop({ viewportWidth: row.viewportWidth, dial: spot })}px`,
+      );
     }
     showCount();
     watching?.observe(bar, {

@@ -57,7 +57,7 @@ const ICON =
 const STYLE = `
 #video-mode-panel {
   position: fixed;
-  top: 92px;
+  top: var(--zenith-panel-top, 92px);
   left: 50%;
   z-index: 181;
   width: min(300px, calc(100vw - 32px));

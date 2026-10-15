@@ -159,11 +159,11 @@ const ICON =
 const STYLE = `
 #saved-places {
   position: fixed;
-  top: 92px;
+  top: var(--zenith-panel-top, 92px);
   left: 50%;
   z-index: 181;
   width: min(320px, calc(100vw - 32px));
-  max-height: calc(100vh - 130px);
+  max-height: calc(100vh - var(--zenith-panel-top, 92px) - 38px);
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 246, 255, 0.35) transparent;

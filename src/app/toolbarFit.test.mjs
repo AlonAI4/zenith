@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DIAL, fitsInline, GAP, MIN_DIAL_SCALE, placeDial } from './toolbarFit.js';
+import { DIAL, fitsInline, GAP, MIN_DIAL_SCALE, panelTop, placeDial } from './toolbarFit.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 
 // Numbers measured in the running app: the title text ends near 238 px, the
@@ -72,4 +72,35 @@ test('every switch in the list has an id, a name and an explanation', () => {
     assert.ok(!ids.has(entry.id), `listed twice: ${entry.id}`);
     ids.add(entry.id);
   }
+});
+
+test('at phone width the dial never sits on a side panel', () => {
+  // Measured at 480 px: the bar on the right of the logo, Data Layers 70 px down.
+  const bar = { left: 200, right: 470, top: 12, bottom: 48 };
+  const panels = [{ left: 16, right: 464, top: 70 }];
+  const spot = placeDial({ viewportWidth: 480, bar, titleRight: 52, limitRight: 480, panels });
+  const bottom = spot.top + DIAL.height * spot.scale;
+  const right = spot.left + DIAL.width * spot.scale;
+  const overlaps = panels.some((panel) => spot.left < panel.right && right > panel.left && spot.top < panel.top + 200 && bottom > panel.top);
+  assert.ok(!overlaps || spot.top >= 190, `the dial at ${JSON.stringify(spot)} covers a panel`);
+});
+
+test('a side panel far below or to the side leaves the dial where it was', () => {
+  const bar = { ...centred(1440, 690), top: 30, bottom: 70 };
+  const alone = placeDial({ viewportWidth: 1440, bar, titleRight: TITLE_RIGHT, limitRight: 1296 });
+  const withPanels = placeDial({
+    viewportWidth: 1440,
+    bar,
+    titleRight: TITLE_RIGHT,
+    limitRight: 1296,
+    panels: [{ left: 52, right: 228, top: 235 }, { left: 1212, right: 1388, top: 235 }],
+  });
+  assert.deepEqual(withPanels, alone);
+});
+
+test('the centred panels start below the dial when it hangs over the middle', () => {
+  // A 900 px window: the dial sits right of the bar, over the middle column.
+  assert.equal(panelTop({ viewportWidth: 900, dial: { left: 595, top: 16, scale: 1 } }), Math.ceil(16 + DIAL.height + 10));
+  // On a wide window it is far to the right: the panels stay at 92 px.
+  assert.equal(panelTop({ viewportWidth: 1440, dial: { left: 1085, top: 16, scale: 1 } }), 92);
 });
