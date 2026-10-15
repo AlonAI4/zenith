@@ -12,6 +12,8 @@ cp public/alon/zenith-wordmark.webp public/alon/zenith-favicon.png "$OUT"/
 cp -R alon-site/shots "$OUT"/
 # ZENITH_ZIP=<file> reuses a share zip that was already published, so a page-only
 # update leaves the app download exactly as it was. It still gets the key check.
+# Give an absolute path outside .gev-cache (that folder is emptied first), and
+# ZENITH_DATE="14 October 2026" to keep that zip's release date on the page.
 if [ -n "${ZENITH_ZIP:-}" ]; then
   cp "$ZENITH_ZIP" "$OUT/Zenith.zip"
 else
@@ -37,7 +39,7 @@ MC_SIZE="$(du -h "$OUT/$MC_NAME" | cut -f1 | tr -d ' ')B"
 MC_SHA=$(shasum -a 256 "$OUT/$MC_NAME" | cut -d' ' -f1)
 SIZE="$(du -h "$OUT/Zenith.zip" | cut -f1 | tr -d ' ')B"
 SHA=$(shasum -a 256 "$OUT/Zenith.zip" | cut -d' ' -f1)
-DAY=$(date "+%-d %B %Y")
+DAY=${ZENITH_DATE:-$(date "+%-d %B %Y")}
 sed -i '' -e "s/__SIZE__/$SIZE/" -e "s/__SHA__/$SHA/" -e "s/__DATE__/$DAY/" \
   -e "s/__MC_JAR__/$MC_NAME/g" -e "s/__MC_SIZE__/$MC_SIZE/" -e "s/__MC_SHA__/$MC_SHA/" "$OUT/index.html"
 # The version number and the list of what is new come from the one file the
