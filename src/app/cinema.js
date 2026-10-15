@@ -93,6 +93,8 @@ export function startCinema({
   if (!line) {
     line = doc.createElement('div');
     line.id = 'cinema-hint';
+    // Read out, so a screen reader hears how to stop the recording view.
+    line.setAttribute('role', 'status');
     doc.body.appendChild(line);
   }
   line.textContent = hint;

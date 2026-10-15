@@ -357,6 +357,7 @@ export function installMeasureTool({ viewer }, doc = document) {
   readout.id = 'measure-readout';
   readout.hidden = true;
   const words = doc.createElement('span');
+  words.setAttribute('aria-live', 'polite');
   const make = (id, text, title) => {
     const control = doc.createElement('button');
     control.type = 'button';
@@ -407,6 +408,7 @@ export function installMeasureTool({ viewer }, doc = document) {
   const chartEnd = doc.createElement('span');
   chartEnds.append(chartStart, chartEnd);
   const chartWords = doc.createElement('p');
+  chartWords.setAttribute('role', 'status');
   const chartNote = doc.createElement('p');
   chartNote.className = 'mp-note';
   chartPanel.append(chartHead, chart, chartEnds, chartWords, chartNote);

@@ -21,3 +21,10 @@ test('when it ends, focus that fell to the page goes back to the button that sta
   again.end();
   assert.ok(doc.activeElement === elsewhere, 'focus moved on purpose stays put');
 });
+
+test('the "press any key to stop" hint is read out', () => {
+  const doc = fakeDocument();
+  const session = startCinema({ hint: 'Video mode. Press any key or click to stop.', doc, win: doc.defaultView });
+  assert.equal(doc.getElementById('cinema-hint').getAttribute('role'), 'status');
+  session.end();
+});

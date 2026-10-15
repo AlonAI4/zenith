@@ -189,6 +189,7 @@ export function settingsFileControls(
   picker.hidden = true;
   const message = make('p');
   message.id = 'zenith-settings-message';
+  message.setAttribute('role', 'status');
   row.append(saveButton, loadButton, reloadButton, picker);
   box.append(row, message);
 

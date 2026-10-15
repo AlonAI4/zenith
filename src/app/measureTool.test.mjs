@@ -8,6 +8,7 @@ import {
   CLOSE_WITHIN_PX,
   closesShape,
   distanceLabel,
+  installMeasureTool,
   isMeasuring,
   metresBetween,
   pathMetres,
@@ -19,6 +20,7 @@ import {
   shapeMiddle,
   whereAlong,
 } from './measureTool.js';
+import { fakeDocument } from './fakeDom.mjs';
 
 const LONDON = { lon: -0.1276, lat: 51.5072 };
 const PARIS = { lon: 2.3522, lat: 48.8566 };
@@ -203,4 +205,27 @@ test('where a point is along the path is said in words', () => {
   assert.equal(whereAlong(12_000, 12_000), 'at the end');
   assert.equal(whereAlong(11_400, 12_000), '11.4 km along');
   assert.equal(whereAlong(350, 12_000), '350 m along');
+});
+
+test('the distance readout and the height profile are read out as they change', () => {
+  const doc = fakeDocument();
+  const canvas = doc.createElement('canvas');
+  const viewer = {
+    scene: { canvas, requestRender() {}, isDestroyed: () => false },
+    camera: {},
+    dataSources: { add: async () => {}, remove() {} },
+  };
+  const before = globalThis.document;
+  globalThis.document = doc; // Cesium's click handler looks for the page's document
+  try {
+    const remove = installMeasureTool({ viewer }, doc);
+    const readout = doc.getElementById('measure-readout');
+    assert.ok(readout.querySelectorAll('[aria-live=polite]').length === 1, 'the distance words are a polite live region');
+    const profile = doc.getElementById('measure-profile');
+    assert.ok(profile.querySelectorAll('[role=status]').length === 1, 'the profile words are read out');
+    remove();
+  } finally {
+    if (before === undefined) delete globalThis.document;
+    else globalThis.document = before;
+  }
 });

@@ -190,6 +190,7 @@ export function fakeDocument() {
   doc.body = doc.documentElement.appendChild(new FakeElement(doc, 'body'));
   doc.activeElement = doc.body;
   doc.createElement = (tag) => new FakeElement(doc, tag);
+  doc.createElementNS = (namespace, tag) => new FakeElement(doc, tag);
   doc.getElementById = (id) =>
     [...doc.documentElement.descendants()].find((node) => node.id === id) ??
     null;

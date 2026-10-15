@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildSettingsFile, readSettingsFile, SETTINGS } from './settingsFile.js';
+import { fakeDocument } from './fakeDom.mjs';
+import { buildSettingsFile, readSettingsFile, SETTINGS, settingsFileControls } from './settingsFile.js';
 
 const place = { name: 'Tower Bridge', lon: -0.0754, lat: 51.5055, height: 900, heading: 20, pitch: -35 };
 const store = (entries) => (key) => (Object.hasOwn(entries, key) ? entries[key] : null);
@@ -101,4 +102,10 @@ test('a file that is accepted has every value checked and tidied', () => {
   assert.equal(result.settings['gev.videoMode'], '{"speed":"normal","clockwise":true}');
   assert.deepEqual(JSON.parse(result.settings['gev.savedPlaces']).map((entry) => entry.name), ['Tower Bridge']);
   assert.ok(result.ignored >= 5);
+});
+
+test('what happened to a save or a load is read out', () => {
+  const doc = fakeDocument();
+  doc.body.appendChild(settingsFileControls(doc, { storage: { getItem: () => null, setItem() {} }, win: doc.defaultView }));
+  assert.equal(doc.getElementById('zenith-settings-message').getAttribute('role'), 'status');
 });
