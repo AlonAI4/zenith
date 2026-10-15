@@ -175,6 +175,8 @@ const STYLE = `
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
   color: rgba(222, 246, 255, 0.92);
   font: 12px/1.4 var(--font-mono, ui-monospace, monospace);
+  /* Dark checkboxes and scrollbars, not the browser's white ones. */
+  color-scheme: dark;
 }
 #saved-places[hidden],
 body.ui-clean-view #saved-places { display: none; }
@@ -208,6 +210,11 @@ body.ui-clean-view #saved-places { display: none; }
   line-height: 1;
 }
 #saved-places form { display: flex; gap: 8px; }
+#saved-places input:focus-visible {
+  outline: 2px solid rgba(0, 212, 255, 0.6);
+  outline-offset: 1px;
+  border-color: #00d4ff;
+}
 #saved-places input {
   flex: 1;
   min-width: 0;
