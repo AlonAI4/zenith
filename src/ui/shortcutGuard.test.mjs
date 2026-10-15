@@ -56,3 +56,17 @@ test('in the page: only a modified shortcut key is kept from the app', () => {
   stop();
   assert.equal(listeners.length, 0);
 });
+
+test('every one-key shortcut in the original app is guarded, even after its updates', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('applicationShortcuts.js', import.meta.url), 'utf8');
+  const styles = /const STYLE_KEYS = Object\.freeze\(\{([\s\S]*?)\}\)/.exec(source)?.[1] ?? '';
+  const keys = new Set([
+    ...[...styles.matchAll(/['"]?(\w)['"]?\s*:/g)].map((match) => match[1]),
+    ...[...source.matchAll(/\bkey === '(\w)'/g)].map((match) => match[1]),
+  ]);
+  assert.ok(keys.size >= 13, `only ${keys.size} shortcut keys were found: the test has lost track of the file`);
+  for (const key of keys) {
+    assert.ok(isModifiedShortcut({ key, metaKey: true }), `the original app's shortcut "${key}" is not in the guard's list (src/ui/shortcutGuard.js)`);
+  }
+});
