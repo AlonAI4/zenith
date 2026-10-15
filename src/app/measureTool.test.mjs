@@ -229,3 +229,9 @@ test('the distance readout and the height profile are read out as they change', 
     else globalThis.document = before;
   }
 });
+
+test('lengths at the rounding edges read cleanly', () => {
+  assert.equal(distanceLabel(0.996), '1 m');
+  assert.equal(distanceLabel(0.004), '4 mm');
+  assert.equal(distanceLabel(0.25), '25 cm');
+});

@@ -232,3 +232,18 @@ test('with "reduce motion" on, going to a saved place jumps there instead of fly
     else assert.ok(duration > 0);
   }
 });
+
+test('heights and coordinates at the rounding edges read cleanly', () => {
+  const at = (over) => describePlace(place('X', over));
+  assert.match(at({ height: 999.6 }), / · 1\.0 km up$/);
+  assert.match(at({ height: 9960 }), / · 10 km up$/);
+  assert.match(at({ height: 9940 }), / · 9\.9 km up$/);
+  assert.match(at({ lon: -0.001, lat: -0.002 }), /^0\.00° 0\.00° · /, 'a value that rounds to zero has no N, S, E or W');
+});
+
+test('a name cut at the length limit never splits a character in two', () => {
+  const cut = cleanName(`${'a'.repeat(MAX_NAME - 1)}😀b`);
+  assert.ok(cut.isWellFormed(), 'no broken half of an emoji');
+  assert.ok([...cut].length <= MAX_NAME);
+  assert.ok(cut.endsWith('😀'));
+});

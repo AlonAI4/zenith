@@ -25,7 +25,12 @@ export function metresPerPixel(range, fovy, heightPx) {
 
 /** "200 m", "5 km", "2,000 km". */
 export function formatDistance(metres) {
-  if (metres < 1) return `${Math.round(metres * 100)} cm`;
+  if (metres < 1) {
+    const cm = Math.round(metres * 100);
+    // Rounding can reach a whole metre; under a centimetre, millimetres.
+    if (cm >= 100) return '1 m';
+    return metres >= 0.01 ? `${cm} cm` : `${Math.round(metres * 1000)} mm`;
+  }
   if (metres < 1000) return `${metres} m`;
   return `${(metres / 1000).toLocaleString('en-GB')} km`;
 }

@@ -44,11 +44,11 @@ export function routeOf(places, picked) {
 
 /** A name as it will be stored: trimmed, single spaces, not too long. */
 export function cleanName(raw) {
-  return String(raw ?? '')
+  const tidy = String(raw ?? '')
     .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, MAX_NAME)
     .trim();
+  // Cut by whole characters: a cut by code units can split an emoji in two.
+  return Array.from(tidy).slice(0, MAX_NAME).join('').trim();
 }
 
 const finite = (value, low, high) =>
@@ -141,16 +141,23 @@ export function removePlace(list, name) {
 
 /** A short line under the name: where it is and how high the view is. */
 export function describePlace(place) {
-  const ns = place.lat >= 0 ? 'N' : 'S';
-  const ew = place.lon >= 0 ? 'E' : 'W';
+  // A value that rounds to 0.00 is on the line: it gets no N, S, E or W.
+  const degrees = (value, plus, minus) => {
+    const shown = Math.abs(value).toFixed(2);
+    return shown === '0.00'
+      ? `${shown}°`
+      : `${shown}°${value >= 0 ? plus : minus}`;
+  };
+  // Chosen after rounding, so 999.6 m reads 1.0 km and 9,960 m reads 10 km.
+  const metres = Math.round(place.height);
   const km = place.height / 1000;
   const high =
-    km >= 10
-      ? `${Math.round(km).toLocaleString('en-GB')} km up`
-      : km >= 1
+    metres < 1000
+      ? `${metres} m up`
+      : km < 9.95
         ? `${km.toFixed(1)} km up`
-        : `${Math.round(place.height)} m up`;
-  return `${Math.abs(place.lat).toFixed(2)}°${ns} ${Math.abs(place.lon).toFixed(2)}°${ew} · ${high}`;
+        : `${Math.round(km).toLocaleString('en-GB')} km up`;
+  return `${degrees(place.lat, 'N', 'S')} ${degrees(place.lon, 'E', 'W')} · ${high}`;
 }
 
 const ICON =
