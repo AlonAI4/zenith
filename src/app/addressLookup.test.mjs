@@ -9,10 +9,12 @@ import {
   distanceMetres,
   formatCoordinates,
   HOUSE_WITHIN_M,
+  installAddressLookup,
   pickFamousPlace,
   requestGate,
   STREET_WITHIN_M,
 } from './addressLookup.js';
+import { fakeDocument } from './fakeDom.mjs';
 
 test('addresses are looked up from close in, not from far out', () => {
   assert.equal(closeEnoughForAddress(900), true);
@@ -188,4 +190,30 @@ test('quick clicks send one address request a second, for the newest click only'
   await Promise.all(clicks);
   assert.deepEqual(sent.map(([n]) => n), [1, 5]);
   assert.ok(sent[1][1] - sent[0][1] >= 1000, JSON.stringify(sent));
+});
+
+test('the map pin card announces the address once, never its ticking clock', () => {
+  const doc = fakeDocument();
+  const viewer = {
+    scene: { canvas: doc.createElement('canvas'), primitives: { add: (p) => p, remove() {} }, requestRender() {}, isDestroyed: () => false },
+    camera: {},
+  };
+  // Cesium's click handler looks for the page's document.
+  const before = globalThis.document;
+  globalThis.document = doc;
+  try {
+    const remove = installAddressLookup({ viewer }, doc);
+    const card = doc.getElementById('address-card');
+    assert.notEqual(card.getAttribute('role'), 'status', 'a live card reads its clock out every second');
+    assert.equal(card.getAttribute('role'), 'region');
+    assert.ok(card.getAttribute('aria-label'));
+    const live = card.querySelectorAll('[role=status]');
+    assert.equal(live.length, 1, 'one live part: the address lines');
+    const clock = doc.getElementById('address-card-sun').parentNode;
+    assert.ok(!live[0].contains(clock), 'the clock is outside the live part');
+    remove();
+  } finally {
+    if (before === undefined) delete globalThis.document;
+    else globalThis.document = before;
+  }
 });

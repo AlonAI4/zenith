@@ -268,7 +268,10 @@ export function installAddressLookup({ viewer }, doc = document) {
 
   const card = doc.createElement('div');
   card.id = 'address-card';
-  card.setAttribute('role', 'status');
+  // A named region, not a live one: only the address lines are read out when
+  // they arrive, never the clock below them that ticks every second.
+  card.setAttribute('role', 'region');
+  card.setAttribute('aria-label', 'Map pin card');
   card.style.cssText =
     'position:fixed;top:132px;left:50%;transform:translateX(-50%);z-index:160;display:none;' +
     'min-width:260px;max-width:min(460px,90vw);padding:10px 34px 10px 14px;border-radius:10px;' +
@@ -283,6 +286,7 @@ export function installAddressLookup({ viewer }, doc = document) {
     'position:absolute;top:4px;right:6px;border:0;background:none;color:inherit;' +
     'font:600 18px/1 var(--font-mono,monospace);cursor:pointer';
   const lines = doc.createElement('div');
+  lines.setAttribute('role', 'status');
   const clock = doc.createElement('div');
   clock.style.cssText =
     'display:none;margin-top:6px;padding-top:6px;border-top:1px solid rgba(120,220,255,.25)';
