@@ -15,6 +15,23 @@ import { readChoice } from './videoMode.js';
 const ON_OFF = (value) => (value === '1' || value === '0' ? value : null);
 
 /**
+ * The saved places, or null when the list is damaged. Loading writes the
+ * value over the browser's own list, so a damaged list must be left out, not
+ * turned into an empty one. An empty list saved on purpose ('[]') still loads.
+ */
+function tidyPlaces(value) {
+  let list;
+  try {
+    list = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(list)) return null;
+  const places = parsePlaces(value);
+  return list.length > 0 && places.length === 0 ? null : JSON.stringify(places);
+}
+
+/**
  * The settings that can be saved, each with a check that returns the value
  * to store, or null to leave it out.
  */
@@ -28,7 +45,7 @@ export const SETTINGS = Object.freeze({
   'gev.hdDetail': ON_OFF,
   'gev.helpCard': (value) => (value === 'closed' ? value : null),
   'gev.videoMode': (value) => JSON.stringify(readChoice(value)),
-  'gev.savedPlaces': (value) => JSON.stringify(parsePlaces(value)),
+  'gev.savedPlaces': tidyPlaces,
 });
 
 export const FILE_NAME = 'zenith-settings.json';

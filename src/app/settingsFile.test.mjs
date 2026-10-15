@@ -61,6 +61,20 @@ test('a damaged or foreign file is refused with a plain message', () => {
   assert.match(refused(undefined), /empty/);
 });
 
+test('a damaged saved-places list is ignored, never loaded as an empty list', () => {
+  const file = (settings) => JSON.stringify({ app: 'Zenith', kind: 'settings', version: 1, settings });
+  // Loading writes every accepted value over the browser's own, so a damaged
+  // list that came back as '[]' would wipe the saved places already there.
+  assert.match(readSettingsFile(file({ 'gev.savedPlaces': '{oops' })).why, /no Zenith settings/);
+  for (const damaged of ['{oops', '{"a":1}', '"text"', JSON.stringify([{ name: 'Broken', lat: 999 }])]) {
+    const result = readSettingsFile(file({ 'gev.dayNight': '1', 'gev.savedPlaces': damaged }));
+    assert.deepEqual(result.settings, { 'gev.dayNight': '1' }, damaged);
+    assert.equal(result.ignored, 1, damaged);
+  }
+  // An empty list saved on purpose still loads.
+  assert.equal(readSettingsFile(file({ 'gev.savedPlaces': '[]' })).settings['gev.savedPlaces'], '[]');
+});
+
 test('a file that is accepted has every value checked and tidied', () => {
   const result = readSettingsFile(
     JSON.stringify({
