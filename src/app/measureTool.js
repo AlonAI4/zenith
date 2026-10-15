@@ -78,6 +78,9 @@ export function pathMetres(points, closed = false) {
  * The area inside a closed shape, in square metres, on the curved Earth.
  * It treats the Earth as a ball of the same surface area, which is right to
  * about half a percent, and it does not matter which way round the points go.
+ * The sum measures the side of the shape away from the North Pole, so a shape
+ * round that pole first comes out as the rest of the Earth; the smaller of the
+ * two sides is the one that was drawn.
  */
 export function ringArea(points) {
   if (points.length < 3) return 0;
@@ -92,7 +95,9 @@ export function ringArea(points) {
     if (turn < -Math.PI) turn += 2 * Math.PI;
     sum += turn * (2 + Math.sin(rad(a.lat)) + Math.sin(rad(b.lat)));
   }
-  return Math.abs((sum * EQUAL_AREA_RADIUS_M * EQUAL_AREA_RADIUS_M) / 2);
+  const area = Math.abs((sum * EQUAL_AREA_RADIUS_M * EQUAL_AREA_RADIUS_M) / 2);
+  const earth = 4 * Math.PI * EQUAL_AREA_RADIUS_M * EQUAL_AREA_RADIUS_M;
+  return Math.min(area, earth - area);
 }
 
 /**

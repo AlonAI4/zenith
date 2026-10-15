@@ -86,6 +86,18 @@ test('area is worked out on the curved Earth', () => {
   assert.ok(Math.abs(cap / 2.55032e14 - 1) < 0.001, String(cap));
 });
 
+test('a shape round either pole gets the small area inside it', () => {
+  // The cap above 80 degrees: 2 pi R squared times (1 - sin 80).
+  const R = 6_371_007.2;
+  const cap80 = 2 * Math.PI * R * R * (1 - Math.sin((80 * Math.PI) / 180));
+  for (const lat of [80, -80]) {
+    const area = ringArea([0, 90, 180, -90].map((lon) => ({ lon, lat })));
+    assert.ok(Math.abs(area / cap80 - 1) < 0.005, `${lat}: ${area}`);
+  }
+  const nearPole = ringArea([0, 60, 120, 180, -120, -60].map((lon) => ({ lon, lat: 89 })));
+  assert.ok(nearPole < 1e11, String(nearPole));
+});
+
 test('area does not depend on direction, start point or the 180 degree line', () => {
   const ring = square(10, 20, 2);
   const area = ringArea(ring);
