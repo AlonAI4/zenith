@@ -456,6 +456,8 @@ export function installDayNight({ viewer, tileset }, doc = document) {
     sub = subsolarPoint(shownTime());
     sunAt = Date.now();
     timeLabel.textContent = sliderLabel(offsetMin);
+    // Read out as the time it shows, not as a number of minutes.
+    slider.setAttribute('aria-valuetext', timeLabel.textContent);
     nowButton.disabled = offsetMin === 0;
     shader?.setUniform('u_sun', sunVector());
     if (globeMaterial) globeMaterial.uniforms.sunDir = sunVector();

@@ -6,6 +6,7 @@ import * as Cesium from 'cesium';
 import {
   directionTo,
   HORIZON,
+  installDayNight,
   nextSunTimes,
   nightLook,
   partOfDay,
@@ -15,6 +16,7 @@ import {
   sunHeight,
   sunLine,
 } from './dayNight.js';
+import { fakeDocument } from './fakeDom.mjs';
 
 const at = (iso) => Date.parse(iso);
 
@@ -145,4 +147,31 @@ test('moving the time by six hours moves the sun a quarter of the way round', ()
   const later = subsolarPoint(now + 6 * 3_600_000).lon;
   const moved = ((here - later + 540) % 360) - 180;
   assert.ok(Math.abs(moved - 90) < 0.5, String(moved));
+});
+
+test('the time slider is read out as the time it shows, not as minutes', () => {
+  const doc = fakeDocument();
+  const never = { addEventListener: () => () => {} };
+  const viewer = {
+    isDestroyed: () => false,
+    scene: { canvas: doc.createElement('canvas'), globe: {}, requestRender() {}, preRender: never, postRender: never, primitives: { add: (p) => p, remove() {} } },
+    clock: { onTick: never },
+    creditDisplay: { addStaticCredit() {}, removeStaticCredit() {} },
+  };
+  const before = globalThis.document;
+  globalThis.document = doc;
+  let remove;
+  try {
+    remove = installDayNight({ viewer, tileset: null }, doc);
+    const slider = doc.querySelector('input');
+    slider.value = '-120';
+    slider.dispatchEvent(new Event('input'));
+    const shown = slider.parentNode.querySelector('span').textContent;
+    assert.ok(shown, 'the label shows a time');
+    assert.equal(slider.getAttribute('aria-valuetext'), shown);
+  } finally {
+    remove?.(); // its timer would keep the test running
+    if (before === undefined) delete globalThis.document;
+    else globalThis.document = before;
+  }
 });
