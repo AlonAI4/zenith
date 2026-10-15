@@ -73,3 +73,19 @@ test('opening video mode with its button puts the focus on the chosen speed', ()
   const focused = doc.activeElement;
   assert.ok(focused.dataset?.speed === 'normal' && focused.getAttribute('aria-pressed') === 'true', 'the chosen speed has the focus');
 });
+
+test('video mode has a close button that puts the focus back on its switch', () => {
+  const doc = fakeDocument();
+  const bar = doc.createElement('div');
+  bar.id = 'top-center-actions';
+  doc.body.appendChild(bar);
+  installVideoMode({ isDestroyed: () => false }, { doc, win: doc.defaultView, storage: { getItem: () => null, setItem: () => {} } });
+  const toggle = doc.getElementById('video-mode-toggle');
+  toggle.click();
+  const panel = doc.getElementById('video-mode-panel');
+  const close = panel.querySelector('[aria-label="Close video mode"]');
+  assert.ok(close, 'the panel has a close button');
+  close.click();
+  assert.equal(panel.hidden, true);
+  assert.ok(doc.activeElement === toggle, 'the focus is back on the video mode switch');
+});

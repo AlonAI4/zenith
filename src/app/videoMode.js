@@ -72,8 +72,14 @@ const STYLE = `
 }
 #video-mode-panel[hidden],
 body.ui-clean-view #video-mode-panel { display: none; }
+#video-mode-panel .vm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
 #video-mode-panel h2 {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 12px;
   letter-spacing: 0.22em;
   color: #00f6ff;
@@ -88,6 +94,15 @@ body.ui-clean-view #video-mode-panel { display: none; }
   color: inherit;
   font: inherit;
   cursor: pointer;
+}
+#video-mode-panel .vm-close {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 14px;
+  line-height: 1;
 }
 #video-mode-panel button[aria-pressed='true'] {
   border-color: #00d4ff;
@@ -216,8 +231,21 @@ export function installVideoMode(
   const startRow = element('div');
   startRow.className = 'vm-row';
   startRow.append(startButton);
+  const head = element('div');
+  head.className = 'vm-head';
+  const closeButton = element('button', '×');
+  closeButton.type = 'button';
+  closeButton.className = 'vm-close';
+  closeButton.title = 'Close';
+  closeButton.setAttribute('aria-label', 'Close video mode');
+  // setPanel and the switch are made further down; they exist by the click.
+  closeButton.addEventListener('click', () => {
+    setPanel(false);
+    button.focus();
+  });
+  head.append(element('h2', 'VIDEO MODE'), closeButton);
   panel.append(
-    element('h2', 'VIDEO MODE'),
+    head,
     speedRow,
     wayRow,
     startRow,
