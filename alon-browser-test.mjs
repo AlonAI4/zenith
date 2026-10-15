@@ -1199,7 +1199,7 @@ const checks = [
     },
   ],
   [
-    'Cmd+C and friends do not set off shortcuts',
+    'Cmd+C, Cmd+V and Cmd+F do not set off shortcuts',
     async (page) => {
       const state = () =>
         page.evaluate(() => ({
