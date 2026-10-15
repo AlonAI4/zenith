@@ -62,3 +62,21 @@ test('every Zenith panel, card and close button closes on Escape too', async () 
     });
   assert.deepEqual(missing, []);
 });
+
+test('Escape gives focus back to the button that opened the panel', () => {
+  const win = fakeWindow();
+  win.document = { activeElement: 'a control inside the panel' };
+  let focused = 0;
+  const opener = { focus: () => (focused += 1) };
+  const panel = { contains: (node) => node === 'a control inside the panel' };
+  let open = true;
+  closeOnEscape(win, () => open, () => (open = false), { panel, opener });
+  win.press('Escape');
+  assert.equal(open, false);
+  assert.equal(focused, 1, 'focus inside the panel would be lost when it hides');
+  // Focus that was somewhere else stays where it is.
+  open = true;
+  win.document.activeElement = 'the map';
+  win.press('Escape');
+  assert.equal(focused, 1);
+});

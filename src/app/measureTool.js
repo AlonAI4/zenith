@@ -766,6 +766,7 @@ export function installMeasureTool({ viewer }, doc = document) {
         draw();
       } else button.click();
     },
+    { panel: chartPanel, opener: profile },
   );
   paint();
   wipe();

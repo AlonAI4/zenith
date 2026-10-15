@@ -399,6 +399,7 @@ export function installSavedPlaces(
       setCleanView,
       doc,
       win,
+      returnFocusTo: button,
       onEnd: () => {
         over = true;
         win.clearTimeout(rest);
@@ -543,6 +544,7 @@ export function installSavedPlaces(
     win,
     () => !panel.hidden,
     () => setOpen(false),
+    { panel, opener: button },
   );
   button.setAttribute('aria-pressed', 'false');
   doc.getElementById('top-center-actions')?.appendChild(button);

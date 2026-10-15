@@ -266,6 +266,7 @@ export function installHelpCard(
     win,
     () => !card.hidden,
     () => setOpen(false),
+    { panel: card, opener: button },
   );
   bar?.appendChild(button);
   if (bar) {

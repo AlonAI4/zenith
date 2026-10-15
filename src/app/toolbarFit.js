@@ -278,6 +278,7 @@ export function installToolbarFit(doc = document, win = window) {
     win,
     () => tray.dataset.open === 'true',
     () => setOpen(false),
+    { panel: tray, opener: more },
   );
   win.addEventListener('resize', fitSoon);
   fit();

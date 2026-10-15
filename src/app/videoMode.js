@@ -270,6 +270,7 @@ export function installVideoMode(
       setCleanView,
       doc,
       win,
+      returnFocusTo: button,
       onEnd: () => {
         active = false;
         session = null;
@@ -287,6 +288,7 @@ export function installVideoMode(
     win,
     () => !panel.hidden,
     () => setPanel(false),
+    { panel, opener: button },
   );
   doc.getElementById('top-center-actions')?.appendChild(button);
 

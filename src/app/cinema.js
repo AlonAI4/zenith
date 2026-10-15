@@ -64,6 +64,9 @@ export function cinemaRunning() {
  * @param {(on: boolean) => void} [options.setCleanView] The app's own clean view.
  * @param {Document} [options.doc]
  * @param {Window} [options.win]
+ * @param {{ focus: () => void }} [options.returnFocusTo] Gets the keyboard
+ *   focus back when it ends, if the focus fell to the page while the controls
+ *   were hidden.
  * @returns {{ end: () => void }}
  */
 export function startCinema({
@@ -72,6 +75,7 @@ export function startCinema({
   setCleanView,
   doc = document,
   win = window,
+  returnFocusTo,
 }) {
   running?.end();
   const cleanView = (on) => {
@@ -129,6 +133,9 @@ export function startCinema({
     doc.body.classList.remove('zenith-video-mode');
     if (!wasClean) cleanView(false);
     onEnd?.();
+    if (!doc.activeElement || doc.activeElement === doc.body) {
+      returnFocusTo?.focus();
+    }
   }
 
   return session;

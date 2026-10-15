@@ -369,6 +369,8 @@ export function installAddressLookup({ viewer }, doc = document) {
     doc.defaultView ?? window,
     () => card.style.display === 'block',
     hide,
+    // The switch is made further down; it exists by the time a key is pressed.
+    { panel: card, opener: { focus: () => button.focus() } },
   );
 
   const askAddress = async (lat, lon) => {
