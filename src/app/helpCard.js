@@ -69,10 +69,16 @@ const STYLE = `
 #zenith-help[hidden],
 body.ui-clean-view #zenith-help { display: none; }
 #zenith-help .zh-head {
+  /* Stays at the top while the card scrolls, so the close button does too. */
+  position: sticky;
+  top: -14px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin: -14px -16px 8px;
+  padding: 14px 16px 8px;
+  background: rgba(4, 12, 20, 0.98);
 }
 #zenith-help h2 {
   margin: 0;
