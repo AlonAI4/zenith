@@ -17,7 +17,7 @@
  */
 import { mkdirSync } from 'node:fs';
 
-import { launchBrowser, sleep } from './alon-browser.mjs';
+import { launchBrowser, paid3dBlocker, sleep } from './alon-browser.mjs';
 
 const BASE = process.env.ZENITH_URL || 'http://localhost:4173';
 const OUT = new URL('./alon-site/shots/', import.meta.url).pathname;
@@ -199,7 +199,12 @@ async function main() {
   mkdirSync(OUT, { recursive: true });
   const page = await browser.newPage();
   await page.setViewport(SIZE);
-  await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+  // The app asks for the metered 3D map on every load, even with the
+  // satellite map chosen. These pictures never use it, so it is blocked.
+  await (await paid3dBlocker(page))(true);
+  // A plain file from the same site is enough to set the first-run settings,
+  // without loading the whole app once more.
+  await page.goto(`${BASE}/alon/zenith-favicon.png`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.setItem('gev:first-run-mission:v1', 'suppressed');
     localStorage.setItem('gev.helpCard', 'closed');

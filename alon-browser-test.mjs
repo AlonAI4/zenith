@@ -24,7 +24,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { launchBrowser, sleep } from './alon-browser.mjs';
+import { launchBrowser, paid3dBlocker, sleep } from './alon-browser.mjs';
 
 const BASE = process.env.ZENITH_URL || 'http://localhost:4173';
 const LONDON = 'lat=51.5055&lon=-0.0754&alt=900&heading=20&pitch=-35';
@@ -171,6 +171,11 @@ let pageErrors = [];
  */
 const SLOW_MS = 8000;
 const provider = { pending: new Map(), events: [] };
+/** Blocks the metered 3D map (true) or lets it through (false); set up in main(). */
+let block3d = async () => {};
+/** Answers that came back from the metered 3D map, so far, and when the page was last opened. */
+const paid3d = { answers: 0, atOpen: 0 };
+const isPaid3d = (url) => /^https?:\/\/(tile\.googleapis\.com\/|api\.cesium\.com\/v1\/assets\/2275207\/)/.test(url);
 function watchProvider(page) {
   const isProvider = (url) => {
     try {
@@ -191,11 +196,15 @@ function watchProvider(page) {
   page.on('request', (request) => {
     if (isProvider(request.url())) provider.pending.set(request, Date.now());
   });
-  page.on('response', (response) => finished(response.request(), response.status() >= 400 ? `refused with ${response.status()}` : ''));
+  page.on('response', (response) => {
+    if (isPaid3d(response.url())) paid3d.answers += 1;
+    finished(response.request(), response.status() >= 400 ? `refused with ${response.status()}` : '');
+  });
   page.on('requestfailed', (request) => {
     const why = request.failure()?.errorText ?? 'unknown';
-    // Leaving a page cancels what it was loading; that is not trouble.
-    if (/ERR_ABORTED/.test(why)) provider.pending.delete(request);
+    // Leaving a page cancels what it was loading, and the satellite runs
+    // block the metered 3D map on purpose: neither is trouble.
+    if (/ERR_ABORTED|ERR_BLOCKED_BY_CLIENT/.test(why)) provider.pending.delete(request);
     else finished(request, `a request failed (${why})`);
   });
 }
@@ -1416,6 +1425,16 @@ const checks = [
       void setup;
     },
   ],
+  [
+    'satellite runs send nothing to the paid 3D map',
+    async (page, setup) => {
+      // Only the satellite runs block it; the 3D runs need it.
+      if (setup.map !== 'esri-imagery') return;
+      expect((await page.evaluate(() => window.__zt.map())) === 'esri-imagery', 'the satellite run is not on the satellite map');
+      const answers = paid3d.answers - paid3d.atOpen;
+      expect(answers === 0, `${answers} answer${answers === 1 ? '' : 's'} came back from the metered 3D map during a satellite run`);
+    },
+  ],
 ];
 
 /** Checks that need their own page load. They run once, at the end. */
@@ -1805,6 +1824,7 @@ const soloChecks = [
       // On the satellite map: the rule is the same on both, and this keeps
       // one more load off the metered 3D map.
       await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      await block3d(true);
       try {
         await open(page, WIDE, 'lat=51.5055&lon=-0.0754&alt=2500&heading=0&pitch=-89&l=c&map=esri-imagery');
         const REACH_KM = 1;
@@ -1911,6 +1931,7 @@ const soloChecks = [
         if (!quiet) throw new Skip('picture cards show near cameras, but no spot without a nearby camera was found to test the opposite');
       } finally {
         await page.evaluate(() => localStorage.removeItem('gev.satelliteByChoice'));
+        await block3d(false);
       }
     },
   ],
@@ -1968,12 +1989,15 @@ async function main() {
   const page = await browser.newPage();
   page.on('pageerror', (error) => pageErrors.push(error.message));
   watchProvider(page);
+  block3d = await paid3dBlocker(page);
   await page.evaluateOnNewDocument(pageHelpers);
 
   // A new browser has no saved settings. Keep the two first-run panels out of
-  // the way: the original's welcome launcher, and this build's help card.
+  // the way: the original's welcome launcher, and this build's help card. A
+  // plain file from the same site is enough to set them, without loading the
+  // whole app (and the metered 3D map) once more.
   await page.setViewport(WIDE);
-  await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${BASE}/alon/zenith-favicon.png`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.setItem('gev:first-run-mission:v1', 'suppressed');
     localStorage.setItem('gev.helpCard', 'closed');
@@ -1996,7 +2020,13 @@ async function main() {
     if (!wanted(checks)) break;
     console.log(`\n${setup.label}`);
     try {
-      await open(page, setup.narrow ? NARROW : WIDE, LONDON);
+      // The satellite runs start on the satellite map, chosen as a person
+      // would, with the metered 3D map blocked: they cost nothing.
+      const free = setup.map === 'esri-imagery';
+      await block3d(free);
+      if (free) await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      paid3d.atOpen = paid3d.answers;
+      await open(page, setup.narrow ? NARROW : WIDE, free ? `${LONDON}&map=esri-imagery` : LONDON);
       await pickMap(page, setup.map);
     } catch (error) {
       const skipped = error instanceof Skip;
@@ -2008,6 +2038,7 @@ async function main() {
   }
   if (!quick && onlySetup === null && wanted(soloChecks)) {
     console.log('\nown page loads');
+    await block3d(false);
     await pickMap(page, 'photoreal').catch(() => {});
     await run('own page loads', soloChecks, page, { map: 'photoreal', narrow: false });
   }

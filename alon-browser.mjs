@@ -63,3 +63,23 @@ export async function launchBrowser() {
   return null;
 }
 
+
+/**
+ * The requests that start or use a session of the metered 3D map: Cesium
+ * ion's asset for Google's 3D tiles, and Google's tile server. The app asks
+ * for them on every page load, even with the satellite map chosen.
+ */
+export const PAID_3D = ['*://tile.googleapis.com/*', '*://api.cesium.com/v1/assets/2275207/*'];
+
+/**
+ * Returns a switch that blocks the metered 3D map for this page, or lets it
+ * through again. Blocked requests fail inside the browser and are never
+ * sent, so a run on the satellite map costs nothing. Chrome's own block list
+ * is used, so a check's own request handling keeps working alongside it.
+ * @returns {Promise<(blocked: boolean) => Promise<unknown>>}
+ */
+export async function paid3dBlocker(page) {
+  const client = await page.createCDPSession();
+  await client.send('Network.enable');
+  return (blocked) => client.send('Network.setBlockedURLs', { urls: blocked ? PAID_3D : [] });
+}
