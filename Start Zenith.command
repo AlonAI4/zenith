@@ -6,7 +6,8 @@
 # Closing its window stops Zenith. The full guide is ZENITH-GUIDE.md.
 
 cd "$(dirname "$0")" || exit 1
-PORT=4173
+# ZENITH_PORT is only for the tests of this script; leave it unset.
+PORT="${ZENITH_PORT:-4173}"
 URL="http://localhost:$PORT"
 
 stop() {
@@ -20,10 +21,15 @@ stop() {
 
 print "ZENITH"
 print
-if curl -s -o /dev/null --max-time 2 "$URL"; then
-  print "Zenith is already running. Opening $URL"
-  [ -z "$ZENITH_NO_BROWSER" ] && open "$URL"
-  exit 0
+# Something already answering on the port is Zenith only if its page says so.
+if ANSWER="$(curl -s --max-time 2 "$URL")"; then
+  if [[ "$ANSWER" == *"<title>Zenith</title>"* ]]; then
+    print "Zenith is already running. Opening $URL"
+    [ -z "$ZENITH_NO_BROWSER" ] && open "$URL"
+    exit 0
+  fi
+  stop "Another program is already using port $PORT, so Zenith cannot start there.
+Close that program, then double-click this file again."
 fi
 
 print "This will:"
@@ -46,12 +52,12 @@ if ! command -v node > /dev/null; then
 fi
 if ! command -v node > /dev/null || ! command -v npm > /dev/null; then
   stop "Zenith needs Node.js, and it is not installed on this Mac.
-Get version 24 or 26 from https://nodejs.org, install it, then double-click this file again."
+Get version 26, or 24.14 or newer, from https://nodejs.org, install it, then double-click this file again."
 fi
-MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "$MAJOR" != "24" ] && [ "$MAJOR" != "26" ]; then
-  stop "Zenith needs Node.js version 24 or 26. This Mac has version $(node -v).
-Get 24 or 26 from https://nodejs.org, install it, then double-click this file again."
+# The same versions as "engines" in package.json (a test keeps the two in step).
+if [ "$(node -p '((v) => v[0] === 26 || (v[0] === 24 && v[1] >= 14))(process.versions.node.split(".").map(Number))')" != "true" ]; then
+  stop "Zenith needs Node.js 26, or version 24 at 24.14 or newer. This Mac has version $(node -v).
+Get it from https://nodejs.org, install it, then double-click this file again."
 fi
 
 if [ ! -d node_modules ]; then
