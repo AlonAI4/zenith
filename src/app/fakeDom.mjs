@@ -74,6 +74,11 @@ class FakeElement extends EventTarget {
     this.ownText = String(value ?? '');
   }
 
+  /** Every element sits at the top left with no size: there is no layout. */
+  getBoundingClientRect() {
+    return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 };
+  }
+
   get childNodes() {
     return this.children;
   }
