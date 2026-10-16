@@ -12,39 +12,44 @@ cost money for every use.
 
 ## Requirements
 
-- A Mac.
-- Node.js 26, or version 24 at 24.14 or newer, from https://nodejs.org. Type
-  `node -v` in Terminal to see yours.
+- A Mac with Apple silicon (M1 or newer), on macOS 13 or later.
 
 ## Install and start
 
-**The quick way.** Unzip the download, open the `Zenith` folder and
-double-click `Start Zenith.command`. A Terminal window opens, lists what it is
-about to do and waits for you to press Return. The first run downloads the
-packages Zenith needs (about 350 MB, a few minutes). After that it starts in
-seconds and opens Zenith in your browser. Closing that window stops Zenith.
+1. Download `Zenith-mac.zip` from the Zenith page and double-click it. You get
+   `Zenith.dmg`.
+2. Open `Zenith.dmg` and drag Zenith into the Applications folder next to it.
+3. Open Zenith from Applications. It starts and opens in your browser at
+   http://localhost:4173, and a small window says it is running. Press Stop
+   there, or quit the app, to stop it.
 
-The first time, macOS will ask you to confirm the file, or block it until you
-allow it, because it was downloaded from the internet and does not come from
-the App Store. To allow it, open System Settings, choose Privacy & Security,
-scroll down and click **Open Anyway** next to its name. On older versions of
-macOS, right-click the file and choose Open instead. If you are not sure, ask
-a parent or guardian before you allow it.
+Nothing else needs installing: the app carries everything it runs on.
 
-**By hand**, if you would rather type the commands yourself:
+**The first time**, macOS stops Zenith, because it does not come from the App
+Store and its maker has not paid for Apple's checks. Open it once and press
+Done. Then open System Settings, choose Privacy & Security, scroll down and
+press **Open Anyway** next to the line about Zenith, press Open Anyway again
+and type your Mac password. From then on it opens like any other app. If you
+are not sure, ask a parent or guardian before you allow it.
 
-1. Unzip the download. You get a folder called `Zenith`.
-2. Open the Terminal app, type `cd ` (with a space), drag the `Zenith` folder
-   onto the window, and press Return.
-3. Run this once. It downloads the parts the app needs and takes a few minutes:
+Zenith keeps everything it writes in `~/Library/Application Support/Zenith`:
+its code, your keys, camera photos and logs. Deleting that folder and the app
+removes it completely.
+
+**For developers**, from the code on GitHub:
+
+1. Install Node.js 26, or version 24 at 24.14 or newer, from
+   https://nodejs.org. Type `node -v` in Terminal to see yours.
+2. In Terminal, in the code's folder, run this once. It downloads the parts
+   the app needs and takes a few minutes:
 
        npm install
 
-4. Run this every time you want to use Zenith:
+3. Run this every time you want to use Zenith:
 
        npm run dev
 
-5. Open http://localhost:4173 in your browser. Leave the Terminal window open
+4. Open http://localhost:4173 in your browser. Leave the Terminal window open
    while you use it. Press Ctrl+C in the Terminal to stop it.
 
 ## What this build adds
@@ -117,5 +122,10 @@ Camera photos you take stay on this computer and are never sent anywhere.
 
 ## Updates
 
-This copy does not update itself. Download the newest version from the page
-you got it from.
+The app updates itself. When it opens, and every six hours while it runs, it
+asks GitHub whether there is a newer version. If there is, it downloads it in
+the background, checks that it really comes from Zenith's author (each update
+is signed, and anything else is refused) and starts it the next time you open
+Zenith, or straight away if you press Restart now. Your keys, settings and
+photos stay. If a new version does not start, Zenith goes back to the one
+before by itself.

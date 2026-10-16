@@ -5,7 +5,8 @@ import test from 'node:test';
 import { changesAsHtml, versionLine, ZENITH_VERSION } from './zenithVersion.js';
 
 test('the build has a number, a date and a short list written for people', () => {
-  assert.match(ZENITH_VERSION.number, /^\d+\.\d+$/);
+  // Updates to the Mac app may add a third number, such as 1.2.1.
+  assert.match(ZENITH_VERSION.number, /^\d+\.\d+(\.\d+)?$/);
   assert.match(ZENITH_VERSION.date, /^\d{1,2} [A-Z][a-z]+ 20\d\d$/);
   assert.ok(ZENITH_VERSION.changes.length >= 1 && ZENITH_VERSION.changes.length <= 10);
   for (const line of ZENITH_VERSION.changes) {

@@ -41,6 +41,11 @@ What each one does is in
 
 ## Run it
 
+The easiest way is the Mac app (Apple silicon): download `Zenith-mac.zip`
+from the newest [release](https://github.com/AlonAI4/zenith/releases/latest),
+open the `Zenith.dmg` inside and drag Zenith into Applications. It updates
+itself. To run it from the code instead:
+
 You need [Node.js](https://nodejs.org) 26, or version 24 at 24.14 or newer. Zenith is built and tested on
 macOS.
 

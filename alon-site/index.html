@@ -14,11 +14,12 @@
     <p class="tag">macOS · version __VERSION__ · release of __DATE__</p>
     <img class="wordmark" src="zenith-wordmark.webp" width="1400" height="700" alt="Zenith" />
     <p class="lead">A live 3D globe for your Mac. Aircraft, ships, satellites, public traffic cameras and train stations, all on one map.</p>
-    <a class="download" href="Zenith.zip" download>
+    <a class="download" href="https://github.com/AlonAI4/zenith/releases/latest/download/Zenith-mac.zip">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16" /></svg>
       Download Zenith for Mac
     </a>
-    <p class="meta">Zip file · __SIZE__ · no keys or accounts inside</p>
+    <p class="meta">The Mac app · __SIZE__ · for Mac with Apple silicon (M1 or newer) · no keys or accounts inside</p>
+    <p class="meta">Downloads from GitHub, where Zenith's code lives. No GitHub account needed.</p>
     <p class="meta">Playing Minecraft? <a href="mc.html">Zenith MC</a> is a separate download.</p>
   </header>
 
@@ -95,27 +96,38 @@
       <h2>Get it running</h2>
       <p class="note">If you are under 18, ask a parent or guardian before installing. Zenith runs programs on your Mac.</p>
       <ol class="steps">
-        <li><strong>Install Node.js.</strong> Version 26, or version 24 at 24.14 or newer, from <a href="https://nodejs.org" rel="noopener noreferrer">nodejs.org</a>.</li>
-        <li><strong>Unzip the download.</strong> You get a folder called <code>Zenith</code>.</li>
-        <li><strong>Double-click <code>Start Zenith.command</code>.</strong> It lists what it is about to do and waits for you. Then it installs what Zenith needs, starts it and opens it in your browser.</li>
+        <li><strong>Double-click <code>Zenith-mac.zip</code></strong> in your Downloads. You get <code>Zenith.dmg</code>.</li>
+        <li><strong>Open <code>Zenith.dmg</code> and drag Zenith into Applications.</strong> Nothing else needs installing.</li>
+        <li><strong>Open Zenith from Applications.</strong> It starts and opens in your browser, and a small window lets you stop it.</li>
       </ol>
-      <p>macOS asks you to allow the file the first time: System Settings, Privacy &amp; Security, Open Anyway. To type the commands yourself instead, follow <code>ZENITH-GUIDE.md</code> inside the zip.</p>
+      <p>It updates itself: when a new version is out, Zenith gets it in the background and starts it the next time you open it. Your keys, settings and photos stay.</p>
+    </section>
+
+    <section id="first-open">
+      <h2>The first time you open it</h2>
+      <p class="note">Zenith is not from the App Store, so macOS stops it the first time. Apple only lets apps through without asking when their maker pays for Apple's checks. This is how you allow it, once.</p>
+      <ol class="steps">
+        <li><strong>Open Zenith.</strong> macOS says it could not check it. Press <strong>Done</strong>.</li>
+        <li><strong>Open System Settings, then Privacy &amp; Security.</strong> Scroll down to Security: next to the line about Zenith, press <strong>Open Anyway</strong>.</li>
+        <li><strong>Press Open Anyway again</strong> and type your Mac password. Zenith opens, and from then on it opens like any other app.</li>
+      </ol>
+      <p>If you are not sure, ask a parent or guardian before you allow it.</p>
     </section>
 
     <section>
       <h2>Good to know</h2>
       <ul class="plain">
-        <li><strong>It is distributed outside the App Store.</strong> macOS may ask whether you trust it. That is expected for software downloaded from a website.</li>
+        <li><strong>It is distributed outside the App Store.</strong> macOS asks whether you trust it the first time. That is expected for software downloaded from a website. To check your download, compare its SHA-256 at the bottom of this page.</li>
         <li><strong>You need your own keys</strong> for some layers, such as 3D buildings and live ships. Most are free; the Google Maps key that Street View uses and the OpenAI key for voice control are charged for every use. The app tells you where to get them. Some key services have age rules, so a parent may need to own the account.</li>
         <li><strong>Other services see your internet address</strong> and roughly where you look on the map: the map, camera and font providers; the U.S. Geological Survey while earthquakes are on; Photon and Wikipedia when you click with the map pin; and Google if you switch on Street View. Zenith itself has no accounts and sends nothing to its author or to whoever shared this link with you.</li>
-        <li><strong>This page</strong> uses no cookies, no trackers and no sign-up.</li>
+        <li><strong>This page</strong> uses no cookies, no trackers and no sign-up. The download itself, and the app's check for updates, come from GitHub, which sees your internet address like any website.</li>
       </ul>
     </section>
 
     <section>
       <h2>Credit</h2>
       <p>Zenith is built on <a href="https://github.com/bilawalsidhu/gods-eye-view" rel="noopener noreferrer">God's Eye View</a> by Bilawal Sidhu, an open-source project under the MIT licence. Zenith is an independent build with additional features. It is not the original project and is not affiliated with its author.</p>
-      <p>Map data © OpenStreetMap contributors. Every source and licence is listed in <code>ALON-NOTICES.md</code>, <code>THIRD_PARTY_NOTICES.md</code> and <code>DATA_SOURCES.md</code> inside the zip.</p>
+      <p>Map data © OpenStreetMap contributors. Every source and licence is listed in <code>ALON-NOTICES.md</code>, <code>THIRD_PARTY_NOTICES.md</code> and <code>DATA_SOURCES.md</code> in <a href="https://github.com/AlonAI4/zenith" rel="noopener noreferrer">Zenith's code on GitHub</a>.</p>
     </section>
   </main>
 

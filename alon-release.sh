@@ -58,7 +58,12 @@ CODE="$REL/work/stage/Zenith"
 echo "$VERSION" > "$CODE/.zenith-version"
 LOCK_HASH=$(shasum -a 256 "$CODE/package-lock.json" | cut -d' ' -f1)
 # The update pack: the code alone, no packages (the app reuses or installs them).
-ditto -c -k --keepParent "$CODE" "$OUT/Zenith-code-$VERSION.zip"
+# No macOS extra data (._ files): the app's update check refuses anything outside Zenith/.
+ditto -c -k --norsrc --noextattr --noacl --keepParent "$CODE" "$OUT/Zenith-code-$VERSION.zip"
+if zipinfo -1 "$OUT/Zenith-code-$VERSION.zip" | grep -qv '^Zenith/'; then
+  echo "The code pack holds files outside Zenith/." >&2
+  exit 1
+fi
 
 # 3. The packages, installed with the Node that goes inside the app.
 cp -cR "$CODE" "$REL/work/bundle-code"
@@ -101,6 +106,11 @@ plutil -replace LSArchitecturePriority -json '["arm64"]' "$PLIST"
 plutil -replace NSHumanReadableCopyright -string "Zenith, built on God's Eye View by Bilawal Sidhu (MIT)." "$PLIST"
 xattr -cr "$APP"
 
+# The values in .env that are long enough to be keys, one per line.
+key_values() {
+  grep -E '^[A-Z0-9_]+=' "$ROOT/.env" | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//' | awk 'length($0) >= 12'
+}
+
 # No keys may go out: no .env, no value from .env, not the signing key.
 check_no_keys() {
   local target="$1" value
@@ -108,16 +118,9 @@ check_no_keys() {
     echo "A .env file is inside $target." >&2
     return 1
   fi
-  if [ -f "$ROOT/.env" ]; then
-    while IFS='=' read -r _ value; do
-      value="${value%\"}"
-      value="${value#\"}"
-      [ ${#value} -ge 12 ] || continue
-      if grep -rqaF -- "$value" "$target"; then
-        echo "A key value from .env is inside $target." >&2
-        return 1
-      fi
-    done < <(grep -E '^[A-Z0-9_]+=' "$ROOT/.env")
+  if [ -f "$ROOT/.env" ] && grep -rqaF -f <(key_values) -- "$target"; then
+    echo "A key value from .env is inside $target." >&2
+    return 1
   fi
   local private_body
   private_body=$(grep -v -- '-----' "$KEY" | tr -d '\n')
@@ -137,7 +140,7 @@ package() { # package <app> <zip name>
   ln -s /Applications "$dmgsrc/Applications"
   hdiutil create -volname Zenith -srcfolder "$dmgsrc" -format UDZO -ov "$REL/work/Zenith.dmg" > /dev/null 2>&1
   rm -f "$OUT/$name"
-  ditto -c -k --keepParent "$REL/work/Zenith.dmg" "$OUT/$name"
+  (cd "$REL/work" && ditto -c -k --norsrc --noextattr --noacl Zenith.dmg "$OUT/$name")
 }
 
 if [ "$PRIVATE" = 1 ]; then

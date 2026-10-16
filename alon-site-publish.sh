@@ -1,7 +1,8 @@
 #!/bin/zsh
 # Publishes the Zenith download page to Cloudflare Pages (project
 # "zenith-download", https://zenith-download.pages.dev). It rebuilds the site
-# first, and the build stops if the share zip fails the no-keys check.
+# first. The Mac app itself is not on the site: it is on the GitHub Release,
+# and ./alon-release.sh refuses to build it if a key is inside.
 set -e
 cd "$(dirname "$0")"
 ./alon-site-build.sh

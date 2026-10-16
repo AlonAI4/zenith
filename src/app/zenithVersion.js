@@ -7,12 +7,15 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.1',
-  date: '13 October 2026',
+  number: '1.2',
+  date: '16 October 2026',
   changes: Object.freeze([
-    'From the original project: Street Level can now open Google Street View on the 3D map.',
-    'Street View stays off until you switch it on. It needs your own Google Maps key, and Google charges that key for every view.',
-    'Everything from version 1.0 is still here: earthquakes, fly-through, the height profile, addresses worldwide and more stations.',
+    'Zenith now comes as a Mac app: drag it into Applications, and it updates itself when a new version is out.',
+    'Cameras in Finland, British Columbia and parts of California can show their older pictures, up to a day back.',
+    "Take a photo of a camera whenever you want: it stays on your Mac, in My photos and in that camera's times.",
+    'Escape now closes every panel, the keyboard reaches everything, and screen readers hear what changes.',
+    'From the original project: bike-share station names in English, smoother snow, and safer place searches.',
+    'Zenith MC, the Minecraft mod, now has its own download page.',
   ]),
 });
 
