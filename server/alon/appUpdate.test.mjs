@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -24,7 +32,10 @@ import {
 const keys = generateKeyPairSync('ed25519');
 const PUBLIC = keys.publicKey.export({ type: 'spki', format: 'pem' });
 const PRIVATE = keys.privateKey.export({ type: 'pkcs8', format: 'pem' });
-const other = generateKeyPairSync('ed25519').privateKey.export({ type: 'pkcs8', format: 'pem' });
+const other = generateKeyPairSync('ed25519').privateKey.export({
+  type: 'pkcs8',
+  format: 'pem',
+});
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const LOCK = '{"lockfileVersion":3}';
 
@@ -70,7 +81,8 @@ function makePack(root, files) {
   const folder = path.join(root, 'pack-src', 'Zenith');
   rmSync(path.join(root, 'pack-src'), { recursive: true, force: true });
   mkdirSync(folder, { recursive: true });
-  for (const [name, body] of Object.entries(files)) writeFileSync(path.join(folder, name), body);
+  for (const [name, body] of Object.entries(files))
+    writeFileSync(path.join(folder, name), body);
   const zip = path.join(root, 'pack.zip');
   rmSync(zip, { force: true });
   execFileSync('/usr/bin/ditto', ['-c', '-k', '--keepParent', folder, zip]);
@@ -87,7 +99,10 @@ function manifestFor(pack, fields = {}) {
     minAppVersion: '1.2',
     ...fields,
   };
-  return { ...manifest, signature: signManifest(manifest, fields.key ?? PRIVATE) };
+  return {
+    ...manifest,
+    signature: signManifest(manifest, fields.key ?? PRIVATE),
+  };
 }
 
 function serve(manifest, pack) {
@@ -96,7 +111,8 @@ function serve(manifest, pack) {
     asked,
     fetchImpl: async (url) => {
       asked.push(url);
-      if (url.endsWith('update.json')) return new Response(JSON.stringify(manifest));
+      if (url.endsWith('update.json'))
+        return new Response(JSON.stringify(manifest));
       if (url === manifest.url) return new Response(pack);
       return new Response('missing', { status: 404 });
     },
@@ -117,7 +133,8 @@ function installed(root, version = '1.2.0', lock = LOCK) {
   return data;
 }
 
-const MANIFEST_URL = 'https://github.com/AlonAI4/zenith/releases/latest/download/update.json';
+const MANIFEST_URL =
+  'https://github.com/AlonAI4/zenith/releases/latest/download/update.json';
 
 test('versions compare number by number', () => {
   assert.equal(compareVersions('1.2.1', '1.2'), 1);
@@ -144,7 +161,10 @@ test('a description passes only with the right signature and a sane shape', () =
     ['a changed address', { ...good, url: 'https://evil.example/x.zip' }],
     ['a signature from another key', manifestFor(pack, { key: other })],
     ['no signature', { ...good, signature: '' }],
-    ['plain http elsewhere', manifestFor(pack, { url: 'http://evil.example/x.zip' })],
+    [
+      'plain http elsewhere',
+      manifestFor(pack, { url: 'http://evil.example/x.zip' }),
+    ],
     ['a silly size', manifestFor(pack, { size: 10 ** 12 })],
     ['a strange version', manifestFor(pack, { version: '1.2; rm -rf' })],
   ]) {
@@ -153,7 +173,10 @@ test('a description passes only with the right signature and a sane shape', () =
 });
 
 test('zip entries that climb out, sit outside Zenith/ or are links are refused', () => {
-  const fine = makeZip([{ name: 'Zenith/' }, { name: 'Zenith/main.js', body: 'x' }]);
+  const fine = makeZip([
+    { name: 'Zenith/' },
+    { name: 'Zenith/main.js', body: 'x' },
+  ]);
   assert.deepEqual(checkEntries(zipEntries(fine)), { ok: true });
   for (const [what, files] of [
     ['../', [{ name: 'Zenith/../../evil.sh', body: 'x' }]],
@@ -171,26 +194,76 @@ test('an update is checked, got ready in app.new, applied, confirmed; keys and c
   const root = mkdtempSync(path.join(tmpdir(), 'zenith-update-'));
   try {
     const data = installed(root);
-    const pack = makePack(root, { 'main.js': 'new', 'package-lock.json': LOCK });
+    const pack = makePack(root, {
+      'main.js': 'new',
+      'package-lock.json': LOCK,
+    });
     const manifest = manifestFor(pack);
     const { fetchImpl, asked } = serve(manifest, pack);
-    const result = await checkForUpdate({ data, appVersion: '1.2', manifestUrl: MANIFEST_URL, publicKeyPem: PUBLIC, fetchImpl });
+    const result = await checkForUpdate({
+      data,
+      appVersion: '1.2',
+      manifestUrl: MANIFEST_URL,
+      publicKeyPem: PUBLIC,
+      fetchImpl,
+    });
     assert.deepEqual(result, { state: 'ready', version: '1.2.1' });
     assert.deepEqual(asked, [MANIFEST_URL, manifest.url]);
-    assert.equal(readFileSync(path.join(data, 'app.new', 'main.js'), 'utf8'), 'new');
-    assert.equal(readFileSync(path.join(data, 'app.new', 'node_modules', 'vite', 'index.js'), 'utf8'), 'vite', 'the packages are reused');
-    assert.equal(readFileSync(path.join(data, 'app', 'main.js'), 'utf8'), 'old', 'nothing changes before the next start');
+    assert.equal(
+      readFileSync(path.join(data, 'app.new', 'main.js'), 'utf8'),
+      'new',
+    );
+    assert.equal(
+      readFileSync(
+        path.join(data, 'app.new', 'node_modules', 'vite', 'index.js'),
+        'utf8',
+      ),
+      'vite',
+      'the packages are reused',
+    );
+    assert.equal(
+      readFileSync(path.join(data, 'app', 'main.js'), 'utf8'),
+      'old',
+      'nothing changes before the next start',
+    );
 
     // Asked again: already ready, nothing downloaded twice.
     const again = serve(manifest, pack);
-    assert.equal((await checkForUpdate({ data, appVersion: '1.2', manifestUrl: MANIFEST_URL, publicKeyPem: PUBLIC, fetchImpl: again.fetchImpl })).state, 'ready');
+    assert.equal(
+      (
+        await checkForUpdate({
+          data,
+          appVersion: '1.2',
+          manifestUrl: MANIFEST_URL,
+          publicKeyPem: PUBLIC,
+          fetchImpl: again.fetchImpl,
+        })
+      ).state,
+      'ready',
+    );
     assert.deepEqual(again.asked, [MANIFEST_URL]);
 
-    assert.deepEqual(applyUpdate(data), { state: 'applied', from: '1.2.0', to: '1.2.1' });
-    assert.equal(readFileSync(path.join(data, 'app', 'main.js'), 'utf8'), 'new');
-    assert.equal(readFileSync(path.join(data, 'app', '.env'), 'utf8'), 'KEY=secret');
-    assert.equal(readFileSync(path.join(data, 'app', '.gev-cache', 'tiles'), 'utf8'), 'cache');
-    assert.ok(existsSync(path.join(data, 'app.old', 'main.js')), 'the old code stays until the new one starts');
+    assert.deepEqual(applyUpdate(data), {
+      state: 'applied',
+      from: '1.2.0',
+      to: '1.2.1',
+    });
+    assert.equal(
+      readFileSync(path.join(data, 'app', 'main.js'), 'utf8'),
+      'new',
+    );
+    assert.equal(
+      readFileSync(path.join(data, 'app', '.env'), 'utf8'),
+      'KEY=secret',
+    );
+    assert.equal(
+      readFileSync(path.join(data, 'app', '.gev-cache', 'tiles'), 'utf8'),
+      'cache',
+    );
+    assert.ok(
+      existsSync(path.join(data, 'app.old', 'main.js')),
+      'the old code stays until the new one starts',
+    );
     confirmUpdate(data);
     assert.ok(!existsSync(path.join(data, 'app.old')));
   } finally {
@@ -202,14 +275,43 @@ test('if the new code does not start, the old code and the keys go back', async 
   const root = mkdtempSync(path.join(tmpdir(), 'zenith-update-'));
   try {
     const data = installed(root);
-    const pack = makePack(root, { 'main.js': 'broken', 'package-lock.json': LOCK });
+    const pack = makePack(root, {
+      'main.js': 'broken',
+      'package-lock.json': LOCK,
+    });
     const manifest = manifestFor(pack);
-    await checkForUpdate({ data, appVersion: '1.2', manifestUrl: MANIFEST_URL, publicKeyPem: PUBLIC, fetchImpl: serve(manifest, pack).fetchImpl });
+    await checkForUpdate({
+      data,
+      appVersion: '1.2',
+      manifestUrl: MANIFEST_URL,
+      publicKeyPem: PUBLIC,
+      fetchImpl: serve(manifest, pack).fetchImpl,
+    });
     applyUpdate(data);
-    assert.deepEqual(rollBack(data), { state: 'rolled-back', version: '1.2.0' });
-    assert.equal(readFileSync(path.join(data, 'app', 'main.js'), 'utf8'), 'old');
-    assert.equal(readFileSync(path.join(data, 'app', '.env'), 'utf8'), 'KEY=secret');
+    assert.deepEqual(rollBack(data), {
+      state: 'rolled-back',
+      version: '1.2.0',
+    });
+    assert.equal(
+      readFileSync(path.join(data, 'app', 'main.js'), 'utf8'),
+      'old',
+    );
+    assert.equal(
+      readFileSync(path.join(data, 'app', '.env'), 'utf8'),
+      'KEY=secret',
+    );
     assert.ok(!existsSync(path.join(data, 'app.old')));
+    // The version that would not start is not downloaded again.
+    const again = serve(manifest, pack);
+    const skipped = await checkForUpdate({
+      data,
+      appVersion: '1.2',
+      manifestUrl: MANIFEST_URL,
+      publicKeyPem: PUBLIC,
+      fetchImpl: again.fetchImpl,
+    });
+    assert.equal(skipped.state, 'none');
+    assert.deepEqual(again.asked, [MANIFEST_URL]);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -219,21 +321,65 @@ test('a pack with one byte changed, an older version, or a wrong signature chang
   const root = mkdtempSync(path.join(tmpdir(), 'zenith-update-'));
   try {
     const data = installed(root);
-    const pack = makePack(root, { 'main.js': 'new', 'package-lock.json': LOCK });
+    const pack = makePack(root, {
+      'main.js': 'new',
+      'package-lock.json': LOCK,
+    });
     const tampered = Buffer.from(pack);
     tampered[40] ^= 1;
     const manifest = manifestFor(pack);
     const run = (fetchImpl, appVersion = '1.2') =>
-      checkForUpdate({ data, appVersion, manifestUrl: MANIFEST_URL, publicKeyPem: PUBLIC, fetchImpl });
+      checkForUpdate({
+        data,
+        appVersion,
+        manifestUrl: MANIFEST_URL,
+        publicKeyPem: PUBLIC,
+        fetchImpl,
+      });
 
-    assert.equal((await run(serve(manifest, tampered).fetchImpl)).state, 'error');
-    assert.equal((await run(serve(manifestFor(pack, { version: '1.2.0' }), pack).fetchImpl)).state, 'none');
-    assert.equal((await run(serve(manifestFor(pack, { version: '1.1.9' }), pack).fetchImpl)).state, 'none');
-    assert.equal((await run(serve(manifestFor(pack, { key: other }), pack).fetchImpl)).state, 'error');
-    assert.equal((await run(serve(manifestFor(pack, { minAppVersion: '2.0' }), pack).fetchImpl)).state, 'new-app');
+    assert.equal(
+      (await run(serve(manifest, tampered).fetchImpl)).state,
+      'error',
+    );
+    assert.equal(
+      (
+        await run(
+          serve(manifestFor(pack, { version: '1.2.0' }), pack).fetchImpl,
+        )
+      ).state,
+      'none',
+    );
+    assert.equal(
+      (
+        await run(
+          serve(manifestFor(pack, { version: '1.1.9' }), pack).fetchImpl,
+        )
+      ).state,
+      'none',
+    );
+    assert.equal(
+      (await run(serve(manifestFor(pack, { key: other }), pack).fetchImpl))
+        .state,
+      'error',
+    );
+    assert.equal(
+      (
+        await run(
+          serve(manifestFor(pack, { minAppVersion: '2.0' }), pack).fetchImpl,
+        )
+      ).state,
+      'new-app',
+    );
     assert.ok(!existsSync(path.join(data, 'app.new')), 'nothing was got ready');
-    assert.equal(readFileSync(path.join(data, 'app', 'main.js'), 'utf8'), 'old');
-    assert.equal((await run(async () => new Response('nope', { status: 500 }))).state, 'none', 'no answer is not an error');
+    assert.equal(
+      readFileSync(path.join(data, 'app', 'main.js'), 'utf8'),
+      'old',
+    );
+    assert.equal(
+      (await run(async () => new Response('nope', { status: 500 }))).state,
+      'none',
+      'no answer is not an error',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -244,10 +390,20 @@ test('new packages are installed only when package-lock.json changed', async () 
   try {
     const data = installed(root);
     const lock = '{"lockfileVersion":3,"new":true}';
-    const pack = makePack(root, { 'main.js': 'new', 'package-lock.json': lock });
+    const pack = makePack(root, {
+      'main.js': 'new',
+      'package-lock.json': lock,
+    });
     const manifest = manifestFor(pack, { lockHash: sha(lock) });
     const run = (npmCi) =>
-      checkForUpdate({ data, appVersion: '1.2', manifestUrl: MANIFEST_URL, publicKeyPem: PUBLIC, fetchImpl: serve(manifest, pack).fetchImpl, npmCi });
+      checkForUpdate({
+        data,
+        appVersion: '1.2',
+        manifestUrl: MANIFEST_URL,
+        publicKeyPem: PUBLIC,
+        fetchImpl: serve(manifest, pack).fetchImpl,
+        npmCi,
+      });
     assert.equal((await run(null)).state, 'error');
     const installedIn = [];
     assert.equal(
@@ -272,17 +428,35 @@ test('first open puts the code that came inside the app in place; the private ke
     mkdirSync(bundle, { recursive: true });
     writeFileSync(path.join(bundle, 'main.js'), 'bundled');
     const data = path.join(root, 'data');
-    assert.equal(installFromBundle({ data, bundleCode: bundle, bundleVersion: '1.2' }).state, 'applied');
-    assert.equal(readFileSync(path.join(data, 'app', 'main.js'), 'utf8'), 'bundled');
-    assert.equal(installFromBundle({ data, bundleCode: bundle, bundleVersion: '1.2' }).state, 'none');
+    assert.equal(
+      installFromBundle({ data, bundleCode: bundle, bundleVersion: '1.2' })
+        .state,
+      'applied',
+    );
+    assert.equal(
+      readFileSync(path.join(data, 'app', 'main.js'), 'utf8'),
+      'bundled',
+    );
+    assert.equal(
+      installFromBundle({ data, bundleCode: bundle, bundleVersion: '1.2' })
+        .state,
+      'none',
+    );
 
     const keysFile = path.join(root, 'keys.env');
     writeFileSync(keysFile, 'KEY=mine');
     assert.equal(placePrivateKeys({ data, keysFile }).state, 'placed');
     assert.equal(statSync(path.join(data, 'app', '.env')).mode & 0o777, 0o600);
     writeFileSync(keysFile, 'KEY=other');
-    assert.equal(placePrivateKeys({ data, keysFile }).state, 'none', 'keys already there are never replaced');
-    assert.equal(readFileSync(path.join(data, 'app', '.env'), 'utf8'), 'KEY=mine');
+    assert.equal(
+      placePrivateKeys({ data, keysFile }).state,
+      'none',
+      'keys already there are never replaced',
+    );
+    assert.equal(
+      readFileSync(path.join(data, 'app', '.env'), 'utf8'),
+      'KEY=mine',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

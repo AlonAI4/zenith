@@ -213,6 +213,13 @@ export function findLink(folder) {
   return null;
 }
 
+const readText = (file) => {
+  try {
+    return readFileSync(file, 'utf8').trim();
+  } catch {
+    return '';
+  }
+};
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const fileHash = (file) => (existsSync(file) ? sha256(readFileSync(file)) : '');
 const readVersion = (folder) => {
@@ -286,6 +293,13 @@ export async function checkForUpdate({
     const ready = path.join(data, 'app.new');
     if (compareVersions(manifest.version, readVersion(app)) <= 0)
       return { state: 'none' };
+    // A version that would not start here is not tried again.
+    if (readText(path.join(data, 'failed-version')) === manifest.version) {
+      return {
+        state: 'none',
+        message: `Zenith ${manifest.version} did not start on this Mac, so it is skipped.`,
+      };
+    }
     if (compareVersions(manifest.minAppVersion, appVersion) > 0) {
       return {
         state: 'new-app',
@@ -400,6 +414,7 @@ export function rollBack(data) {
   const app = path.join(data, 'app');
   const old = path.join(data, 'app.old');
   if (!existsSync(old)) return { state: 'none' };
+  writeFileSync(path.join(data, 'failed-version'), readVersion(app));
   carryOver(app, old);
   rmSync(app, { recursive: true, force: true });
   renameSync(old, app);
