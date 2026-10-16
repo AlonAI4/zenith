@@ -13,7 +13,7 @@ cp alon-site/index.html alon-site/mc.html alon-site/404.html alon-site/style.css
 cp public/alon/zenith-wordmark.webp public/alon/zenith-favicon.png "$OUT"/
 cp -R alon-site/shots "$OUT"/
 VERSION=$(node --input-type=module -e 'import { ZENITH_VERSION } from "./src/app/zenithVersion.js"; console.log(ZENITH_VERSION.number)')
-APP_ZIP="${ZENITH_RELEASE:-.gev-cache/release/$VERSION/out/Zenith-mac.zip}"
+APP_ZIP="${ZENITH_RELEASE:-$HOME/Library/Caches/Zenith-release/$VERSION/out/Zenith-mac.zip}"
 if [ ! -f "$APP_ZIP" ]; then
   echo "No Mac app for version $VERSION at $APP_ZIP: run ./alon-release.sh first." >&2
   exit 1

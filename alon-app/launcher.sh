@@ -22,7 +22,13 @@ mkdir -p "$DATA" "$LOGS"
 
 is_zenith() { curl -s -m 2 "$URL" 2>/dev/null | grep -q '<title>Zenith</title>'; }
 port_busy() { lsof -ti "tcp:$PORT" -sTCP:LISTEN > /dev/null 2>&1; }
-ours() { local pid; pid=$(cat "$DATA/server.pid" 2>/dev/null) && [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; }
+# Ours only if the process in server.pid is the one serving the port: after a
+# crash or a restart that number can belong to another program.
+ours() {
+  local pid
+  pid=$(cat "$DATA/server.pid" 2> /dev/null)
+  [ -n "$pid" ] && [ "$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2> /dev/null)" = "$pid" ]
+}
 
 # The Node inside the app, copied out once so it runs from Zenith's own folder.
 runtime() {
@@ -52,9 +58,7 @@ serve() {
 }
 
 stop_server() {
-  local pid
-  pid=$(cat "$DATA/server.pid" 2> /dev/null)
-  [ -n "$pid" ] && kill "$pid" 2> /dev/null
+  ours && kill "$(cat "$DATA/server.pid")" 2> /dev/null
   for i in {1..40}; do
     port_busy || break
     sleep 0.25

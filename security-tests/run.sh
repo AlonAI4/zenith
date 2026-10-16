@@ -6,3 +6,5 @@ node security-tests/share-zip.mjs
 node security-tests/packages.mjs
 node security-tests/site-unlisted.mjs
 zsh security-tests/update-preview.sh
+node security-tests/app-update-attacks.mjs
+node security-tests/camera-routes-attacks.mjs

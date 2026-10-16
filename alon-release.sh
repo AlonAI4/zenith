@@ -2,7 +2,8 @@
 # Builds a release of the Zenith Mac app, all on this Mac. It publishes NOTHING.
 #   ./alon-release.sh            the public files (no keys anywhere in them)
 #   ./alon-release.sh --private  also Alon's own copy with his keys inside
-# Out: .gev-cache/release/<version>/out/
+# Out: ~/Library/Caches/Zenith-release/<version>/out/ (outside the project, so
+# the dev server can never hand these files, or Alon's keys, to a web page)
 #   Zenith-mac.zip              a zip holding Zenith.dmg, which holds Zenith.app
 #   Zenith-code-<version>.zip   the code only, for the app's own updates
 #   update.json                 the update description, signed with the key in
@@ -27,7 +28,10 @@ VERSION=$(node --input-type=module -e 'import { ZENITH_VERSION } from "./src/app
 # launcher, the Node inside the app or the update tool changes.
 MIN_APP_VERSION="${MIN_APP_VERSION:-1.2}"
 REPO_URL="https://github.com/AlonAI4/zenith"
-REL="$ROOT/.gev-cache/release/$VERSION"
+RELEASES="$HOME/Library/Caches/Zenith-release"
+mkdir -p "$RELEASES"
+chmod 700 "$RELEASES"
+REL="$RELEASES/$VERSION"
 OUT="$REL/out"
 rm -rf "$REL"
 mkdir -p "$OUT" "$REL/work"
@@ -183,6 +187,8 @@ node --input-type=module -e '
 if [ "$PRIVATE" = 1 ]; then
   package "$REL/work/Zenith-private.app" Zenith-Alon-private.zip
   chmod 600 "$OUT/Zenith-Alon-private.zip"
+  # The working copy with the keys inside is not kept.
+  rm -rf "$REL/work/Zenith-private.app" "$REL/work/dmg-Zenith-Alon-private.zip"
 fi
 
 size_of() { stat -f %z "$1" | awk '{ printf("%.0f MB", $1 / 1048576) }'; }
