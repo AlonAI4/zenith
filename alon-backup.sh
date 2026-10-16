@@ -31,6 +31,10 @@ for extra in alon-update.sh alon-prompt-next.md alon-train-stations-prompt.md .c
   COMPLIANCE.md .code-armour/findings.json .code-armour/coverage.json; do
   [ -f "$extra" ] && EXTRAS+=("$extra")
 done
+# The key that signs the Mac app's updates: without it, no update can be
+# published to people who already have the app. It lives outside the repo.
+SIGNING_KEY="$HOME/.config/zenith/update-signing-key.pem"
+[ -f "$SIGNING_KEY" ] && EXTRAS+=("$SIGNING_KEY")
 tar -cf "$WORK/$FILE" .git "${EXTRAS[@]}"
 
 # Prove it: restore the copy and compare it with the alon branch.
