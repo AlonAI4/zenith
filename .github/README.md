@@ -30,6 +30,8 @@ kept unchanged in
   **tracking marker** for whatever you follow.
 - **Camera look-back**: older pictures from the camera networks that keep
   them (Finland, British Columbia and three parts of California).
+- **Camera photos**: take a photo of a camera's picture whenever you want;
+  it stays on your computer and shows up in that camera's times.
 - **Saved places**, **fly-through** and **video mode** for recording.
 - A **help card** that explains every switch, and a **settings file** to move
   your setup to another computer.

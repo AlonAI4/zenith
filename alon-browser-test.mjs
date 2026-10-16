@@ -1792,24 +1792,39 @@ const soloChecks = [
         );
         const ids = await page.evaluate(async () => {
           const { sources } = await (await fetch('/api/cctv/sources')).json();
-          const pick = (test) => sources.find((one) => test(one.id))?.id ?? null;
+          const pick = (test) => sources.filter((one) => test(one.id)).slice(0, 6).map((one) => one.id);
           return { finland: pick((id) => /^fi-c\d{7}$/.test(id)), california: pick((id) => /^ca-d(3|7|11)-/.test(id)) };
         });
-        for (const [where, id, step] of [
+        for (const [where, candidates, step] of [
           ['Finland', ids.finland, '3 h'],
           ['California', ids.california, '1 h'],
         ]) {
-          expect(id, `no ${where} camera in the list`);
-          const live = await page.evaluate(() => document.getElementById('cctv-frame')?.getAttribute('src') ?? '');
-          await page.evaluate((camera) => window.__godsEyeView.styleManager._cctvControls.cctv.selectCamera(camera, { focus: true }), id);
-          await until(page, () => !document.getElementById('cctv-history')?.hidden, 30_000, `no look-back times for the ${where} camera`);
-          const clicked = await page.evaluate((label) => {
-            const button = [...document.querySelectorAll('#cctv-history button')].find((one) => one.textContent === label);
-            if (!button) return null;
-            const r = button.getBoundingClientRect();
-            return [r.left + r.width / 2, r.top + r.height / 2];
-          }, step);
-          expect(clicked, `the ${where} camera has no ${step} step`);
+          expect(candidates.length, `no ${where} camera in the list`);
+          // A camera can be switched off for a while and have a gap: try a few.
+          let clicked = null;
+          let live = '';
+          for (const id of candidates) {
+            live = await page.evaluate(() => document.getElementById('cctv-frame')?.getAttribute('src') ?? '');
+            await page.evaluate((camera) => window.__godsEyeView.styleManager._cctvControls.cctv.selectCamera(camera, { focus: true }), id);
+            try {
+              await until(
+                page,
+                (label) => [...document.querySelectorAll('#cctv-history .ch-row button')].some((one) => one.textContent === label),
+                20_000,
+                'no step',
+                step,
+              );
+            } catch {
+              continue;
+            }
+            clicked = await page.evaluate((label) => {
+              const button = [...document.querySelectorAll('#cctv-history .ch-row button')].find((one) => one.textContent === label);
+              const r = button.getBoundingClientRect();
+              return [r.left + r.width / 2, r.top + r.height / 2];
+            }, step);
+            break;
+          }
+          expect(clicked, `none of ${candidates.length} ${where} cameras has a ${step} step`);
           await page.mouse.click(clicked[0], clicked[1]);
           await until(page, () => !document.getElementById('cctv-history-view').hidden, 20_000, `the ${where} picture from ${step} ago never showed`);
           const shown = await page.evaluate(() => ({
@@ -1829,6 +1844,72 @@ const soloChecks = [
           expect(await page.evaluate(() => document.getElementById('cctv-history-view').hidden), `Escape did not go back to the live ${where} picture`);
         }
       } finally {
+        await block3d(false);
+      }
+    },
+  ],
+  [
+    'a photo of a London camera is kept: after a reload it is in My photos and in its times',
+    async (page) => {
+      await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      await block3d(true);
+      const center = async (selector) => {
+        const r = await page.evaluate((s) => {
+          const box = document.querySelector(s)?.getBoundingClientRect();
+          return box ? [box.left + box.width / 2, box.top + box.height / 2] : null;
+        }, selector);
+        expect(r, `there is no ${selector}`);
+        return r;
+      };
+      const openCamera = async (id) => {
+        await open(page, WIDE, 'lat=51.5055&lon=-0.0754&alt=2500&heading=0&pitch=-89&l=c&map=esri-imagery');
+        await page.evaluate(() =>
+          window.__godsEyeView.styleManager?.setPanelCollapsed?.('cctv-panel', false, { explicit: true }),
+        );
+        await page.evaluate((camera) => window.__godsEyeView.styleManager._cctvControls.cctv.selectCamera(camera, { focus: true }), id);
+        await until(page, () => !document.getElementById('cctv-history')?.hidden, 30_000, 'the camera tools never showed');
+      };
+      let taken = null;
+      try {
+        const id = await page.evaluate(async () => {
+          const { sources } = await (await fetch('/api/cctv/sources')).json();
+          return sources.find((one) => one.pack === 'tfl' && one.feedType === 'image')?.id ?? null;
+        });
+        expect(id, 'no London camera in the list');
+        await openCamera(id);
+        await until(page, () => !document.getElementById('cctv-photo-take').disabled, 60_000, 'Take photo never came on for a London camera');
+        const before = await page.evaluate(async () => (await (await fetch('/api/alon/cctv/photos')).json()).photos.map((photo) => photo.file));
+        await page.mouse.click(...(await center('#cctv-photo-take')));
+        await until(page, () => /Photo saved/.test(document.getElementById('cctv-history-time').textContent), 30_000, 'the photo was not saved');
+        taken = await page.evaluate(
+          async (old) => (await (await fetch('/api/alon/cctv/photos')).json()).photos.find((photo) => !old.includes(photo.file)) ?? null,
+          before,
+        );
+        expect(taken && taken.cameraId === id, 'the new photo is not in the photo list');
+
+        // A fresh page: the photo is still there.
+        await openCamera(id);
+        await until(
+          page,
+          () => [...document.querySelectorAll('#cctv-history .ch-row button')].some((button) => /^Photo \d\d:\d\d$/.test(button.textContent)),
+          20_000,
+          "after a reload the photo is not in the camera's times",
+        );
+        await page.mouse.click(...(await center('#cctv-photos-open')));
+        await until(page, (file) => Boolean(document.querySelector(`#my-photos [data-file="${file}"]`)), 10_000, 'the photo is not in My photos', taken.file);
+        await page.mouse.click(...(await center(`#my-photos [data-file="${taken.file}"]`)));
+        await until(page, () => document.querySelector('#my-photos .mp-big img')?.naturalWidth > 100, 10_000, 'the photo did not open large');
+
+        // Delete asks first, then the photo is gone.
+        await page.mouse.click(...(await center('#my-photos .mp-big .mp-row .mp-danger')));
+        await page.mouse.click(...(await center('#my-photos .mp-big .mp-row:not([hidden]) .mp-danger')));
+        await until(page, (file) => !document.querySelector(`#my-photos [data-file="${file}"]`), 10_000, 'Delete did not remove the photo', taken.file);
+        taken = null;
+        await page.keyboard.press('Escape');
+        expect(await page.evaluate(() => document.getElementById('my-photos').hidden), 'Escape did not close My photos');
+      } finally {
+        // Never leave a test photo behind.
+        if (taken) await page.evaluate((file) => fetch(`/api/alon/cctv/photos/${file}`, { method: 'DELETE' }), taken.file).catch(() => {});
         await block3d(false);
       }
     },

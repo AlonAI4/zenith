@@ -81,6 +81,7 @@ the help card.
 | 3D map recovery | If the 3D map stops loading, Zenith switches to the satellite map by itself and says so, then tries the 3D map again later. |
 | Full screen | Camera pictures and Street Level have a button that fills the screen with them. Escape goes back. |
 | Camera look-back | In the CCTV panel, cameras in Finland, British Columbia and three parts of California (Los Angeles, San Diego, Sacramento) can show older pictures: pick from 15 minutes up to a day back, as far as each network keeps them (California keeps about 3 hours). The older picture shows its real time. Live or Escape goes back. Other networks keep only the current picture. |
+| Camera photos | Under a camera's picture, Take photo saves the picture on screen right now, and the photo then appears in that camera's times. My photos lists them all, newest first; click one to see it large, and Delete asks first. Photos are kept only on this computer, in Zenith's own files (up to 2,000 photos or 500 MB), and are never uploaded. It works on cameras whose network allows copies (London, Ontario, Calgary, Sydney, Norway, Austin and Finland); on others the button is off and says why. |
 
 ## API keys: bring your own
 
@@ -112,6 +113,7 @@ camera networks, and Google Fonts. With the earthquakes switch on, the
 U.S. Geological Survey's feed is asked every five minutes. If you switch on the map pin and click the
 map, the coordinates of that spot go to Photon and Wikipedia to look up the
 address. If you switch on Street View, Google Maps sees the places you open.
+Camera photos you take stay on this computer and are never sent anywhere.
 
 ## Updates
 

@@ -1,14 +1,18 @@
+import path from 'node:path';
+
 import { createCctvCatalog } from '../providers/cctv/catalog.js';
 import { DIGITRAFFIC_USER } from '../providers/cctv/constants.js';
 import { fetchCctvImageFromUpstream } from '../providers/cctv/media.js';
 import { readResponseJsonCapped } from '../providers/common/http.js';
 import { sameSiteGated } from '../providers/common/same-site.js';
 import { defaultSourceRoot } from '../providers/common/source-root.js';
+import { createPhotoStore } from './cctvPhotos.js';
 
 /**
  * Zenith's camera extras, written for this build: older pictures from the
  * camera networks that keep their own (Finland, British Columbia and three
- * Caltrans districts).
+ * Caltrans districts), and photos people take of a camera's picture
+ * (cctvPhotos.js).
  *
  * Every picture is fetched here from the network's own server, at an address
  * built from a checked camera id and a checked key, and never through the
@@ -125,9 +129,13 @@ export function createCctvExtras({
   cameras = null,
   now = () => Date.now(),
   sourceRoot = defaultSourceRoot,
+  // The Mac app keeps photos next to its other data; otherwise in the cache folder.
+  photosDir = process.env.ZENITH_PHOTOS_DIR ||
+    path.join(process.cwd(), '.gev-cache', 'cctv-photos'),
 } = {}) {
   // The camera list is built a second time, only when a Caltrans camera's
-  // history is first asked for: the app's own list lives inside its camera route.
+  // history or a photo is first asked for: the app's own list lives inside its
+  // camera route.
   let getCameras = null;
   const listCameras =
     cameras ??
@@ -225,7 +233,33 @@ export function createCctvExtras({
     return picture?.ok ? picture : null;
   }
 
-  return { history, historyFrame };
+  const photos = createPhotoStore({
+    dir: photosDir,
+    listCameras,
+    fetchImpl,
+    now,
+  });
+  return { history, historyFrame, photos };
+}
+
+const MAX_BODY_BYTES = 2048;
+
+/** A small JSON request body, or null. */
+async function readJsonBody(req) {
+  if (
+    !/^application\/json\b/i.test(String(req.headers?.['content-type'] ?? ''))
+  )
+    return null;
+  let text = '';
+  for await (const chunk of req) {
+    text += chunk;
+    if (text.length > MAX_BODY_BYTES) return null;
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 const send = (res, status, body, type = 'application/json') => {
@@ -270,6 +304,47 @@ export function cctvExtrasHandler(extras) {
         if (picture) send(res, 200, picture.body, picture.contentType);
         else send(res, 404, { error: 'No picture from then' });
         return;
+      }
+      if (
+        req.method === 'GET' &&
+        parts[0] === 'photo-check' &&
+        parts.length === 2
+      ) {
+        send(res, 200, await extras.photos.permission(parts[1]));
+        return;
+      }
+      if (parts[0] === 'photos' && parts.length === 1) {
+        if (req.method === 'GET') {
+          send(res, 200, await extras.photos.list());
+          return;
+        }
+        if (req.method === 'POST') {
+          const body = await readJsonBody(req);
+          if (typeof body?.cameraId !== 'string') {
+            send(res, 400, { error: 'Send a camera id' });
+            return;
+          }
+          const { status, ...answer } = await extras.photos.take(body.cameraId);
+          send(res, status, answer);
+          return;
+        }
+      }
+      if (parts[0] === 'photos' && parts.length === 2) {
+        if (req.method === 'GET') {
+          const photo = await extras.photos.read(parts[1]);
+          if (photo) send(res, 200, photo.body, photo.contentType);
+          else send(res, 404, { error: 'No such photo' });
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const gone = await extras.photos.remove(parts[1]);
+          send(
+            res,
+            gone ? 200 : 404,
+            gone ? { deleted: parts[1] } : { error: 'No such photo' },
+          );
+          return;
+        }
       }
       send(res, 404, { error: 'Not found' });
     } catch {
