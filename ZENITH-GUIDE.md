@@ -7,13 +7,14 @@ licence (see `LICENSE`). The data and code this build adds are credited in
 `ALON-NOTICES.md`.
 
 **If you are under 18, ask a parent or guardian before installing.** Zenith
-runs programs on your Mac, and each of the free keys below needs an account.
+runs programs on your Mac, and each key below needs an account. Two of them
+cost money for every use.
 
 ## Requirements
 
 - A Mac.
-- Node.js version 24 or 26, from https://nodejs.org (the "LTS" download is fine
-  if it says 24).
+- Node.js 26, or version 24 at 24.14 or newer, from https://nodejs.org. Type
+  `node -v` in Terminal to see yours.
 
 ## Install and start
 
@@ -48,21 +49,26 @@ a parent or guardian before you allow it.
 
 ## What this build adds
 
-These sit on top of everything God's Eye View already does. Each one has a
-switch in the top bar; on a narrow window the switches fold into a "more" tray.
+These sit on top of everything God's Eye View already does. Most have a
+switch in the top bar (on a narrow window the switches fold into a "more"
+tray, and the help card lists them all). The compass dial, distance scale,
+tracking marker, Earth centring, 3D map recovery and full-screen buttons are
+always there; the height profile is inside the measure tool, fly-through is
+inside saved places, and the settings file and version are at the bottom of
+the help card.
 
 | Feature | What it does |
 |---|---|
 | Compass dial | Drag the ring to turn the view, click N for north up, drag the side arc to tilt. |
 | Distance scale | A ruler on the left edge with a round number, such as 500 m. |
-| Time zones | Zone borders with their offsets from UTC, and a ticking local time for any spot you click. |
+| Time zones | Zone borders with their offsets from UTC. |
 | Tracking marker | A pulsing ring on whatever you are following when you zoom far out. Click it to fly back. |
-| HD buildings | A switch for sharper 3D buildings. It uses more data and graphics power. |
+| HD buildings | Sharper 3D buildings. On from the start; switch it off to use less data and graphics power. |
 | Train stations | Train, metro and tram stops across the UK, Germany, Italy, the Netherlands, Spain, Portugal and Israel, and in eleven big city areas of the USA. |
-| Earthquakes | The last day's earthquakes of magnitude 2.5 and up, from the U.S. Geological Survey, as circles sized by strength. Click one for its strength, place, time and depth. |
+| Earthquakes | The last day's earthquakes of magnitude 2.5 and up, from the U.S. Geological Survey, as circles sized by strength. Colours show strength: yellow under 4, orange 4 to 5.5, red 5.5 and up. Click one for its strength, place, time and depth. This is separate from the original project's Earthquakes (24h) layer in Data layers > Events, which shows every size, refreshes every minute, labels each one and colours by depth (red shallow, yellow deep). |
 | Place names | Place and road names over the map. |
-| Map pin | Click the map for the local time there, whether it is day or night, the next sunrise and sunset, the coordinates and the address. From very high up it gives everything but the address. |
-| Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. |
+| Map pin | Switch it on, then click the map for the local time there (ticking, with its UTC offset), whether it is day or night, the next sunrise and sunset, the coordinates and the address. From very high up it gives everything but the address. |
+| Day and night | Shades the night side of the Earth, shows city lights there, and draws the line where night begins. Its slider moves the shading up to half a day either way; Now puts it back on the real time. |
 | Measure tool | Click two or more spots on the map to get the distance between them. Undo removes the last point. Close the shape, or click the first point again, to get its area. |
 | Height profile | In the measure tool, Profile draws a chart of the height along the path, with its highest and lowest points. The 3D map measures the scanned surface (roofs and treetops count); the satellite map measures bare ground and needs the Cesium key. Heights are shown above the lowest point on the path, not above sea level. |
 | Saved places | Star the view on screen, name it, and fly back with one click. A place also remembers which map, visual preset and data layers were on. The list stays on your computer. |
@@ -71,6 +77,9 @@ switch in the top bar; on a narrow window the switches fold into a "more" tray.
 | Help card | The "?" switch explains every switch and what clicking the map does. |
 | Settings file | At the bottom of the help card: save your switches and saved places to a file, and load that file in another browser or on another Mac. The file never holds a key. |
 | Version | The bottom of the help card says which build this is and lists what is new in it. |
+| Earth stays centred | Zooming far out slowly turns the view to look straight down at the Earth, and the tilt comes back as you zoom in. You can still tilt by hand at any height, and there is no zoom limit. |
+| 3D map recovery | If the 3D map stops loading, Zenith switches to the satellite map by itself and says so, then tries the 3D map again later. |
+| Full screen | Camera pictures and Street Level have a button that fills the screen with them. Escape goes back. |
 
 ## API keys: bring your own
 
@@ -80,7 +89,9 @@ on more, click **POWER UP** in the app and paste your own keys there:
 
 | Key | What it adds | Where |
 |---|---|---|
-| Cesium ion | 3D buildings | https://cesium.com/ion |
+| Google Maps (paid) | Street View, place search, and 3D buildings straight from Google. Google bills this key for every use, so it needs a payment card: a parent must own it and set a spending limit first | https://developers.google.com/maps/documentation/tile/get-api-key |
+| OpenAI (paid) | Voice control. OpenAI bills this key for every use: a parent must own it | https://platform.openai.com/api-keys |
+| Cesium ion | 3D buildings through Cesium, world terrain (the satellite map's height profile) and more satellite maps | https://ion.cesium.com/tokens |
 | NASA FIRMS | Live fires | https://firms.modaps.eosdis.nasa.gov/api/map_key/ |
 | AISStream | Live ships | https://aisstream.io |
 | TomTom | Real traffic | https://my.tomtom.com/keys |
@@ -99,7 +110,7 @@ and 3D building providers (Google through Cesium, Esri, OpenStreetMap), the
 camera networks, and Google Fonts. With the earthquakes switch on, the
 U.S. Geological Survey's feed is asked every five minutes. If you switch on the map pin and click the
 map, the coordinates of that spot go to Photon and Wikipedia to look up the
-address.
+address. If you switch on Street View, Google Maps sees the places you open.
 
 ## Updates
 

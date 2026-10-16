@@ -15,15 +15,16 @@ kept unchanged in
 
 ## What Zenith adds
 
-- **Map pin**: click anywhere for the local time, day or night, sunrise and
+- **Map pin**: switch it on, then click anywhere for the local time, day or night, sunrise and
   sunset, the coordinates and the address.
 - **Train stations**: train, metro and tram stops across the UK, Germany,
   Italy, the Netherlands, Spain, Portugal and Israel, and eleven big US city
   areas.
-- **Earthquakes**: the last day's earthquakes from the U.S. Geological Survey,
-  sized by strength.
-- **Time zones** and **day and night**: zone borders with a ticking local time,
-  and the night side of the Earth with its city lights.
+- **Earthquakes switch**: the last day's earthquakes of magnitude 2.5 and up
+  from the U.S. Geological Survey, sized and coloured by strength (the
+  original project's own Earthquakes (24h) layer colours by depth).
+- **Time zones** and **day and night**: zone borders with their UTC offsets,
+  and the night side of the Earth with its city lights, at any time of day.
 - **Measure tool** with a **height profile** along the path.
 - **Compass dial**, **distance scale**, **place names**, **HD buildings** and a
   **tracking marker** for whatever you follow.
@@ -36,7 +37,7 @@ What each one does is in
 
 ## Run it
 
-You need [Node.js](https://nodejs.org) 24 or 26. Zenith is built and tested on
+You need [Node.js](https://nodejs.org) 26, or 24.14 or newer. Zenith is built and tested on
 macOS.
 
 ```bash
@@ -49,8 +50,8 @@ npm run dev
 Then open http://localhost:4173.
 
 Most of the globe works without any keys. For 3D buildings and the extra live
-layers, click **POWER UP** in the app and paste your own free keys; the guide
-lists where to get each one. Never commit a `.env` file or post a screenshot
+layers, click **POWER UP** in the app and paste your own keys (most are free; the Google Maps and
+OpenAI keys are charged for every use); the guide lists where to get each one. Never commit a `.env` file or post a screenshot
 that shows a key.
 
 ## Credits

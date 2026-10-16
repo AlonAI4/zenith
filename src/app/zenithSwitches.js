@@ -22,7 +22,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'earthquakes-toggle',
     name: 'Earthquakes',
-    what: 'The last day of earthquakes, magnitude 2.5 and up, as circles sized by strength. Click one for details.',
+    what: 'Magnitude 2.5 and up from the last day, sized and coloured by strength (yellow, orange, red). Click one for details. Not the same as Earthquakes (24h) in Data layers.',
   },
   {
     id: 'time-zones-toggle',
@@ -32,7 +32,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'day-night-toggle',
     name: 'Day and night',
-    what: 'Shades the night side of the Earth, with city lights and the line where night begins.',
+    what: 'Shades the night side of the Earth, with city lights and the line where night begins. Drag its slider to see another time of day.',
   },
   {
     id: 'address-lookup-toggle',
@@ -43,7 +43,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   {
     id: 'hd-detail-toggle',
     name: 'HD buildings',
-    what: 'Sharper 3D buildings. Heavier on data and graphics.',
+    what: 'Sharper 3D buildings, on from the start. Switch off to save data and graphics.',
   },
   {
     id: 'measure-toggle',

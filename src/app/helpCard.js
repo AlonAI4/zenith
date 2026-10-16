@@ -41,6 +41,7 @@ export const MOVING = Object.freeze([
   'Compass: drag the ring to turn, click N for north, drag the arc to tilt.',
   'Q and E, or Option + scroll, also turn the view.',
   'The ruler on the left is the scale at the centre of the view.',
+  'Far out, the view slowly turns to look straight down; the tilt comes back as you zoom in.',
 ]);
 
 const ICON =
