@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex, nofollow" />
   <title>Zenith MC: download</title>
-  <meta name="description" content="Zenith MC is a Fabric mod for Minecraft Java Edition 26.2: a minimap, a world map, waypoints, a radar and eye modes in the Zenith look." />
+  <meta name="description" content="Zenith MC is a Fabric mod for Minecraft Java Edition 26.2: a minimap, a world map that shows any height, waypoints, a radar with mob health and armour, and eye modes in the Zenith look." />
   <link rel="icon" type="image/png" href="zenith-favicon.png" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -32,11 +32,13 @@
     <section>
       <h2>What it does</h2>
       <ul class="grid">
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /><path d="M12 8l2 4h-4z" /></svg><h3>Minimap and world map</h3><p>A round minimap with a compass dial and a scale bar, and a full map with soft relief that you drag and zoom. Explored land is remembered, and caves show the layer you are on.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /><path d="M12 8l2 4h-4z" /></svg><h3>Minimap and world map</h3><p>A round minimap with a compass dial and a scale bar, and a full map you drag and zoom. Relief lit from one side makes trees and cliffs stand out, and zoomed in close each block shows its own texture. Explored land is remembered.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /><path d="M19 3l2 2-2 2M19 21l2-2-2-2" /></svg><h3>Any height</h3><p>Underground, the maps show the cave layer you are on. On the world map, <code>Page Up</code> and <code>Page Down</code> show any height, 16 blocks at a time, and caves you walk through are remembered.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" /><circle cx="12" cy="10" r="2.5" /></svg><h3>Waypoints</h3><p>Name and colour your places, see them in the world with their distance, and find where you last died.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><path d="M12 12l6-6" /><circle cx="16" cy="9" r="1" /><circle cx="8" cy="14" r="1" /></svg><h3>Radar</h3><p>Mobs as coloured dots that merge into one when crowded, other players as their face, and a search that points you to a player.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-9.5A3.8 3.8 0 0 1 12 8a3.8 3.8 0 0 1 7 2.5C19 15.6 12 20 12 20z" /></svg><h3>Mob health and armour</h3><p>Each mob's type, with one heart for its health and one icon for its armour. Look at it in spy mode, or click it on the world map, for its full rows of hearts and armour.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="8.5" cy="11" r="2" /><path d="M5.5 16h6M14 10h4M14 13.5h4" /></svg><h3>Player cards</h3><p>On the world map, players near you get a card with their face, name, hearts and armour. Click it for the spy panel: what they wear and hold, their game mode and ping.</p></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg><h3>Eye modes</h3><p>Night vision, full bright, spy with target boxes and a sonar sweep, X-ray, FLIR heat vision and an old CRT screen. Each has its own key.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg><h3>Eye modes</h3><p>Night vision, full bright, spy with target boxes that show each mob's health and armour and a sonar sweep, X-ray, FLIR heat vision and an old CRT screen. Each has its own key.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l6-6M14 4l6 6-8 8-6-6z" /></svg><h3>Teleport in creative</h3><p>Double-click a spot on the map to go there, landing on the highest safe block. Only in creative mode, where you may use the <code>/tp</code> command.</p></li>
       </ul>
       <div class="shots">
@@ -45,8 +47,8 @@
           <figcaption><strong>Minimap and waypoints.</strong> The minimap with its dial and scale, and a waypoint marker with its distance.</figcaption>
         </figure>
         <figure>
-          <a href="shots/zenith-mc-world-map.webp"><img src="shots/zenith-mc-world-map.webp" width="1280" height="720" loading="lazy" alt="The full world map of a Minecraft jungle with a river and a lake, soft relief shading, and a key to the radar colours" /></a>
-          <figcaption><strong>World map.</strong> Explored land with soft relief, and the key to the radar colours.</figcaption>
+          <a href="shots/zenith-mc-world-map.webp"><img src="shots/zenith-mc-world-map.webp" width="1280" height="720" loading="lazy" alt="The full world map of a Minecraft jungle with a river and a lake: trees standing out in relief, leaves and water drawn with their own textures, the height control set to Auto at the top right, and a key to the radar colours" /></a>
+          <figcaption><strong>World map.</strong> Explored land in relief with each block's own texture, the height control, and the key to the radar colours.</figcaption>
         </figure>
         <figure>
           <a href="shots/zenith-mc-player-card.webp"><img src="shots/zenith-mc-player-card.webp" width="1280" height="720" loading="lazy" alt="The world map with another player, Scout, shown as a face with a card above: name, red hearts with gold absorption hearts, and a row of armour" /></a>
@@ -62,7 +64,7 @@
         </figure>
       </div>
       <p class="credit">Pictures taken in Minecraft with Zenith MC.</p>
-      <p class="note"><strong>Read this before you use it online.</strong> X-ray, the mob and player radar, the cave map, player health and armour cards, target boxes and FLIR outlines through walls break the rules of many servers, and using them there can get you banned. Many servers also hide their ores from mods like this: there, X-ray can show fake ores that are not really there, or miss real ones. Use these in your own worlds, or on servers that say they are allowed. Servers can switch the radar off, which also hides the cards, target boxes and FLIR outlines, and can switch the cave map off on its own; X-ray has no switch.</p>
+      <p class="note"><strong>Read this before you use it online.</strong> X-ray, the mob and player radar, the cave map and the world map's caves at any height, the health and armour of players and mobs, target boxes and FLIR outlines through walls break the rules of many servers, and using them there can get you banned. Many servers also hide their ores from mods like this: there, X-ray can show fake ores that are not really there, or miss real ones. Use these in your own worlds, or on servers that say they are allowed. Servers can switch the radar off, which also hides the cards, mob health and armour, target boxes and FLIR outlines, and can switch the cave map off on its own, which leaves the world map on the surface; X-ray has no switch.</p>
     </section>
 
     <section>
@@ -72,7 +74,7 @@
         <li><strong>Install Fabric Loader for Minecraft 26.2.</strong> Download the installer from <a href="https://fabricmc.net/use/installer/" rel="noopener noreferrer">fabricmc.net</a>, run it, choose Minecraft 26.2 and press Install. The Minecraft launcher then has a <code>fabric-loader</code> profile.</li>
         <li><strong>Download Fabric API for 26.2</strong> from <a href="https://modrinth.com/mod/fabric-api" rel="noopener noreferrer">Modrinth</a>. Pick a file marked for 26.2.</li>
         <li><strong>Put both files in your mods folder.</strong> The Fabric API file and the Zenith MC file go in the <code>mods</code> folder of your Minecraft folder: on a Mac <code>~/Library/Application Support/minecraft/mods</code>, on Windows <code>%appdata%\.minecraft\mods</code>. Make the <code>mods</code> folder if it is not there.</li>
-        <li><strong>Start Minecraft with the Fabric profile.</strong> Then press <code>M</code> for the world map, <code>B</code> to add a waypoint and <code>N</code> for the settings. <code>G</code> cycles the eye modes, or press one key for each: <code>V</code> night vision, <code>J</code> full bright, <code>K</code> spy, <code>R</code> X-ray, <code>;</code> FLIR, <code>H</code> CRT. Every key can be changed in Controls. The keys are where they are on a US keyboard; on other keyboards, Controls shows their names on yours.</li>
+        <li><strong>Start Minecraft with the Fabric profile.</strong> Then press <code>M</code> for the world map, <code>B</code> to add a waypoint and <code>N</code> for the settings. <code>G</code> cycles the eye modes, or press one key for each: <code>V</code> night vision, <code>J</code> full bright, <code>K</code> spy, <code>R</code> X-ray, <code>;</code> FLIR, <code>H</code> CRT. Every one of these keys can be changed in Controls. On the world map, <code>Page Up</code> and <code>Page Down</code>, or the arrows at the top right, change the height it shows. The keys are where they are on a US keyboard; on other keyboards, Controls shows their names on yours.</li>
       </ol>
       <ul class="plain">
         <li><strong>Minecraft 26.2 only, for now.</strong> Other versions come later.</li>
