@@ -28,6 +28,8 @@ kept unchanged in
 - **Measure tool** with a **height profile** along the path.
 - **Compass dial**, **distance scale**, **place names**, **HD buildings** and a
   **tracking marker** for whatever you follow.
+- **Camera look-back**: older pictures from the camera networks that keep
+  them (Finland, British Columbia and three parts of California).
 - **Saved places**, **fly-through** and **video mode** for recording.
 - A **help card** that explains every switch, and a **settings file** to move
   your setup to another computer.

@@ -80,6 +80,7 @@ the help card.
 | Earth stays centred | Zooming far out slowly turns the view to look straight down at the Earth, and the tilt comes back as you zoom in. You can still tilt by hand at any height, and there is no zoom limit. |
 | 3D map recovery | If the 3D map stops loading, Zenith switches to the satellite map by itself and says so, then tries the 3D map again later. |
 | Full screen | Camera pictures and Street Level have a button that fills the screen with them. Escape goes back. |
+| Camera look-back | In the CCTV panel, cameras in Finland, British Columbia and three parts of California (Los Angeles, San Diego, Sacramento) can show older pictures: pick from 15 minutes up to a day back, as far as each network keeps them (California keeps about 3 hours). The older picture shows its real time. Live or Escape goes back. Other networks keep only the current picture. |
 
 ## API keys: bring your own
 

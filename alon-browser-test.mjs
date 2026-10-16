@@ -1780,6 +1780,60 @@ const checks = [
 /** Checks that need their own page load. They run once, at the end. */
 const soloChecks = [
   [
+    'looking back on a camera shows an older picture with its real time',
+    async (page) => {
+      // On the satellite map: free, and the camera panel works the same.
+      await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      await block3d(true);
+      try {
+        await open(page, WIDE, 'lat=60.2&lon=24.9&alt=60000&heading=0&pitch=-89&l=c&map=esri-imagery');
+        await page.evaluate(() =>
+          window.__godsEyeView.styleManager?.setPanelCollapsed?.('cctv-panel', false, { explicit: true }),
+        );
+        const ids = await page.evaluate(async () => {
+          const { sources } = await (await fetch('/api/cctv/sources')).json();
+          const pick = (test) => sources.find((one) => test(one.id))?.id ?? null;
+          return { finland: pick((id) => /^fi-c\d{7}$/.test(id)), california: pick((id) => /^ca-d(3|7|11)-/.test(id)) };
+        });
+        for (const [where, id, step] of [
+          ['Finland', ids.finland, '3 h'],
+          ['California', ids.california, '1 h'],
+        ]) {
+          expect(id, `no ${where} camera in the list`);
+          const live = await page.evaluate(() => document.getElementById('cctv-frame')?.getAttribute('src') ?? '');
+          await page.evaluate((camera) => window.__godsEyeView.styleManager._cctvControls.cctv.selectCamera(camera, { focus: true }), id);
+          await until(page, () => !document.getElementById('cctv-history')?.hidden, 30_000, `no look-back times for the ${where} camera`);
+          const clicked = await page.evaluate((label) => {
+            const button = [...document.querySelectorAll('#cctv-history button')].find((one) => one.textContent === label);
+            if (!button) return null;
+            const r = button.getBoundingClientRect();
+            return [r.left + r.width / 2, r.top + r.height / 2];
+          }, step);
+          expect(clicked, `the ${where} camera has no ${step} step`);
+          await page.mouse.click(clicked[0], clicked[1]);
+          await until(page, () => !document.getElementById('cctv-history-view').hidden, 20_000, `the ${where} picture from ${step} ago never showed`);
+          const shown = await page.evaluate(() => ({
+            said: document.getElementById('cctv-history-time').textContent,
+            size: document.querySelector('#cctv-history-view img').naturalWidth,
+            live: document.getElementById('cctv-frame')?.getAttribute('src') ?? '',
+          }));
+          expect(shown.size > 100, `the ${where} older picture is empty`);
+          const ago = /^Picture from \d\d:\d\d, (?:(\d+) h)? ?(?:(\d+) min)? ago$/.exec(shown.said);
+          expect(ago && (ago[1] || ago[2]), `the ${where} picture says "${shown.said}"`);
+          const hours = Number(ago[1] ?? 0) + Number(ago[2] ?? 0) / 60;
+          const wanted = parseFloat(step);
+          expect(Math.abs(hours - wanted) <= Math.max(0.25, wanted * 0.25), `the ${step} step showed a picture from ${hours.toFixed(2)} h ago`);
+          expect(!live || /\/api\/cctv\/frame\//.test(shown.live), 'the live picture was replaced');
+          await page.keyboard.press('Escape');
+          await sleep(300);
+          expect(await page.evaluate(() => document.getElementById('cctv-history-view').hidden), `Escape did not go back to the live ${where} picture`);
+        }
+      } finally {
+        await block3d(false);
+      }
+    },
+  ],
+  [
     'the 3D map comes back by itself',
     async (page) => {
       await page.evaluate(() => localStorage.removeItem('gev.satelliteByChoice'));

@@ -22,6 +22,8 @@ import { openAiRealtimeProxy } from './openai.js';
 import { googlePlacesContextProxy } from './places.js';
 import { mapillaryProxy } from './mapillary.js';
 import { keySetupEndpoint } from '../standalone/key-setup.js';
+// Zenith's camera extras (older pictures and photos), written for this build.
+import { alonCctvExtras } from '../alon/cctvExtras.js';
 import { weatherProxy } from './weather.js';
 import { firePerimetersProxy } from './firePerimeters.js';
 import { gnssIntegrityProxy } from './gnssIntegrity.js';
@@ -62,6 +64,7 @@ function localProviderPlugins({ realtime } = {}) {
     mapillaryProxy(),
     firePerimetersProxy(),
     gnssIntegrityProxy(),
+    alonCctvExtras({ sourceRoot: defaultSourceRoot }),
     keySetupEndpoint(),
   ];
 }

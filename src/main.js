@@ -1,5 +1,6 @@
 import { startAddOns } from './app/addOns.js';
 import { installAddressLookup } from './app/addressLookup.js';
+import { installCctvHistory } from './app/cctvHistory.js';
 import { installCompassDial } from './app/compassDial.js';
 import { installDayNight } from './app/dayNight.js';
 import { installEarthquakes } from './app/earthquakes.js';
@@ -113,6 +114,7 @@ application
         ['Help card', () => installHelpCard()],
         ['Narrow-window tray', () => installToolbarFit()],
         ['Focus tips', () => installFocusTips()],
+        ['CCTV history', () => installCctvHistory(styleManager)],
       ]);
     },
     // start() hands back the same promise; its failure is reported above.

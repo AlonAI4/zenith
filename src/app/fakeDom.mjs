@@ -146,6 +146,16 @@ class FakeElement extends EventTarget {
     this.parentNode?.removeChild(this);
   }
 
+  /** Put nodes right after this one, in its parent. */
+  after(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) return;
+    for (const node of nodes) node.parentNode?.removeChild(node);
+    const at = parent.children.indexOf(this) + 1;
+    parent.children.splice(at, 0, ...nodes);
+    for (const node of nodes) node.parentNode = parent;
+  }
+
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
   }
