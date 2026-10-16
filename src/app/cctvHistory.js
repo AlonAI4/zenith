@@ -109,6 +109,9 @@ const STYLE = `
 const CAMERA_ICON =
   '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>';
 
+/** A list of older pictures is asked for again when it is older than this. */
+const LIST_FRESH_MS = 60_000;
+
 /** Photos of this camera shown in its time control; the rest are in My photos. */
 const PHOTOS_IN_ROW = 6;
 
@@ -186,6 +189,8 @@ export function installCctvHistory(
   let entries = [];
   let chosen = -1; // -1 is Live
   let asking = 0;
+  /** When the camera's list of older pictures was last asked for. */
+  let listedAt = 0;
 
   const buttons = () => [...row.querySelectorAll('button')];
 
@@ -197,13 +202,26 @@ export function installCctvHistory(
     paint();
   };
 
-  const choose = (index) => {
+  const choose = async (index) => {
     if (index < 0) {
       showLive();
       return;
     }
-    const entry = entries[index];
+    let entry = entries[index];
     if (!entry) return;
+    // The networks move their pictures on: a list over a minute old is asked for again.
+    if (!entry.photo && now() - listedAt > LIST_FRESH_MS) {
+      const label = entry.label;
+      said.textContent = 'Loading the older picture…';
+      if (!(await loadSteps(asking))) return;
+      index = entries.findIndex((one) => !one.photo && one.label === label);
+      if (index < 0) {
+        showLive();
+        said.textContent = 'No picture from then';
+        return;
+      }
+      entry = entries[index];
+    }
     chosen = index;
     const words = entry.photo
       ? pictureWords(entry.time, now()).replace(/^Picture/, 'Your photo')
@@ -264,7 +282,7 @@ export function installCctvHistory(
         label: step.label,
         title: `About ${step.label} ago`,
         time: step.frame.time,
-        src: `${ROUTE}${encodeURIComponent(cameraId)}/frame?key=${encodeURIComponent(step.frame.key)}`,
+        src: `${ROUTE}${encodeURIComponent(cameraId)}/frame?key=${encodeURIComponent(step.frame.key)}&t=${step.frame.time}`,
       })),
       ...ownPhotos.map((photo) => {
         const clock = pictureWords(photo.time, now())
@@ -279,8 +297,33 @@ export function installCctvHistory(
         };
       }),
     ];
-    if (chosen >= entries.length) chosen = -1;
+    // Keep showing the picture that was chosen, if it is still there.
+    const wanted = chosen >= 0 ? picture.getAttribute('src') : null;
+    const still = wanted
+      ? entries.findIndex((entry) => entry.src === wanted)
+      : -1;
     render();
+    if (still >= 0) {
+      chosen = still;
+      paint();
+    } else if (chosen >= 0) showLive();
+  };
+
+  const loadSteps = async (ask) => {
+    const id = cameraId;
+    try {
+      const answer = await fetchJson(`${ROUTE}${encodeURIComponent(id)}`);
+      if (ask !== asking) return false;
+      steps = pickSteps(
+        Array.isArray(answer?.frames) ? answer.frames : [],
+        now(),
+      );
+      listedAt = now();
+      rebuild();
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const loadPhotos = async () => {
@@ -354,16 +397,7 @@ export function installCctvHistory(
     rebuild();
     if (!id) return;
     const ask = ++asking;
-    fetchJson(`${ROUTE}${encodeURIComponent(id)}`)
-      .then((answer) => {
-        if (ask !== asking) return;
-        steps = pickSteps(
-          Array.isArray(answer?.frames) ? answer.frames : [],
-          now(),
-        );
-        rebuild();
-      })
-      .catch(() => {});
+    loadSteps(ask);
     fetchJson(`${CHECK_ROUTE}${encodeURIComponent(id)}`)
       .then((answer) => {
         if (ask === asking)

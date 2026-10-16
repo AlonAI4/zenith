@@ -191,3 +191,28 @@ test("the server starts these routes, from one line in the original's plugin lis
   // A hook that returns a function would be run again by Vite later.
   assert.equal(plugin.configureServer({ middlewares: { use() {} } }), undefined);
 });
+
+test('a malformed address is answered 400 instead of stopping the server', async () => {
+  const handler = cctvExtrasHandler({ history: async () => [], historyFrame: async () => null });
+  const res = fakeResponse();
+  await handler(fakeRequest('/history/%E0'), res);
+  assert.equal(res.status, 400);
+});
+
+test('a Caltrans slot that has moved on to a newer picture is refused, and lists never follow redirects', async () => {
+  const asked = [];
+  const listed = NOW - 60 * 60_000;
+  const fetchImpl = async (url, init = {}) => {
+    asked.push(init);
+    return new Response(init.method === 'HEAD' ? null : Buffer.from([0xff, 0xd8, 0xff]), {
+      headers: { 'last-modified': new Date(listed + 16 * 60_000).toUTCString(), 'content-type': 'image/jpeg' },
+    });
+  };
+  const extras = createCctvExtras({ fetchImpl, now: () => NOW, cameras: async () => [{ id: 'ca-d7-x1', url: CAM }] });
+  assert.equal(await extras.historyFrame('ca-d7-x1', '4', listed), null, 'the picture in the slot is not the one listed');
+  assert.ok(asked.every((init) => init.redirect === 'error'));
+  const matching = await extras.historyFrame('ca-d7-x1', '4', listed + 16 * 60_000);
+  assert.ok(matching?.ok && matching.moves, 'the listed picture is fetched, and marked as one that moves');
+  await extras.history('ca-d7-x1');
+  assert.ok(asked.filter((init) => init.method === 'HEAD').every((init) => init.redirect === 'error'));
+});

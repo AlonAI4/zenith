@@ -112,6 +112,7 @@ export function historyFrameUrl(cameraId, key, camera = null) {
 async function getJson(fetchImpl, url, headers = {}) {
   const answer = await fetchImpl(url, {
     headers: { Accept: 'application/json', ...headers },
+    redirect: 'error',
     signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
   });
   if (!answer.ok) throw new Error(`HTTP ${answer.status}`);
@@ -185,6 +186,7 @@ export function createCctvExtras({
               historyFrameUrl(cameraId, key, camera),
               {
                 method: 'HEAD',
+                redirect: 'error',
                 signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
               },
             );
@@ -221,16 +223,31 @@ export function createCctvExtras({
     return frames;
   }
 
-  /** One older picture, fetched from the network's own server, or null. */
-  async function historyFrame(cameraId, key) {
-    const camera =
-      historySource(cameraId) === 'caltrans'
-        ? await caltransFor(cameraId)
-        : null;
+  /**
+   * One older picture, fetched from the network's own server, or null.
+   * Caltrans keeps its pictures in slots that move on every quarter of an
+   * hour, so there the picture must still be the one listed at `time`.
+   */
+  async function historyFrame(cameraId, key, time = NaN) {
+    const caltrans = historySource(cameraId) === 'caltrans';
+    const camera = caltrans ? await caltransFor(cameraId) : null;
     const url = historyFrameUrl(cameraId, key, camera);
     if (!url) return null;
+    if (caltrans) {
+      try {
+        const answer = await fetchImpl(url, {
+          method: 'HEAD',
+          redirect: 'error',
+          signal: AbortSignal.timeout(LIST_TIMEOUT_MS),
+        });
+        const modified = Date.parse(answer.headers.get('last-modified'));
+        if (!answer.ok || !(Math.abs(modified - time) <= 60_000)) return null;
+      } catch {
+        return null;
+      }
+    }
     const picture = await fetchCctvImageFromUpstream(url, { fetchImpl });
-    return picture?.ok ? picture : null;
+    return picture?.ok ? { ...picture, moves: caltrans } : null;
   }
 
   const photos = createPhotoStore({
@@ -262,11 +279,11 @@ async function readJsonBody(req) {
   }
 }
 
-const send = (res, status, body, type = 'application/json') => {
+const send = (res, status, body, type = 'application/json', keep = true) => {
   res.writeHead(status, {
     'Content-Type': type,
     'Cache-Control':
-      status === 200 && type !== 'application/json'
+      keep && status === 200 && type !== 'application/json'
         ? 'private, max-age=600'
         : 'no-store',
     'X-Content-Type-Options': 'nosniff',
@@ -278,10 +295,13 @@ const send = (res, status, body, type = 'application/json') => {
 export function cctvExtrasHandler(extras) {
   return sameSiteGated(async (req, res) => {
     const url = new URL(req.url || '/', 'http://localhost');
-    const parts = url.pathname
-      .split('/')
-      .filter(Boolean)
-      .map(decodeURIComponent);
+    let parts;
+    try {
+      parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    } catch {
+      send(res, 400, { error: 'Bad address' });
+      return;
+    }
     try {
       if (
         req.method === 'GET' &&
@@ -300,9 +320,11 @@ export function cctvExtrasHandler(extras) {
         const picture = await extras.historyFrame(
           parts[1],
           url.searchParams.get('key'),
+          Number(url.searchParams.get('t')),
         );
-        if (picture) send(res, 200, picture.body, picture.contentType);
-        else send(res, 404, { error: 'No picture from then' });
+        if (picture) {
+          send(res, 200, picture.body, picture.contentType, !picture.moves);
+        } else send(res, 404, { error: 'No picture from then' });
         return;
       }
       if (

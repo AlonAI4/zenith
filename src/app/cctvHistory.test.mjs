@@ -61,6 +61,7 @@ function setUp({
   allowed = true,
   photos = [],
   takeError = null,
+  now = () => NOW,
 } = {}) {
   const doc = fakeDocument();
   const wrap = doc.createElement('div');
@@ -78,7 +79,7 @@ function setUp({
   const asked = [];
   const store = [...photos];
   const remove = installCctvHistory({ _cctvControls: { cctv } }, doc, {
-    now: () => NOW,
+    now,
     fetchJson: async (url, init = {}) => {
       asked.push(init.method ? `${init.method} ${url}` : url);
       if (url.startsWith('/api/alon/cctv/history/')) return { frames };
@@ -140,7 +141,7 @@ test('choosing a time lays the older picture over the live one, and Escape goes 
     threeHours.click();
     const view = doc.getElementById('cctv-history-view');
     const picture = view.querySelector('img');
-    assert.match(picture.src, /^\/api\/alon\/cctv\/history\/fi-c0150301\/frame\?key=k\d+$/);
+    assert.match(picture.src, /^\/api\/alon\/cctv\/history\/fi-c0150301\/frame\?key=k\d+&t=\d+$/);
     assert.ok(view.hidden, 'the older picture shows only once it has loaded');
     picture.onload();
     assert.ok(!view.hidden);
@@ -286,4 +287,46 @@ test('video cameras and CCTV off show nothing; remove takes it all away', async 
   remove();
   for (const id of ['cctv-history', 'cctv-history-view', 'my-photos']) assert.equal(doc.getElementById(id), null, id);
   assert.ok(!listening());
+});
+
+test('a list of older pictures over a minute old is asked for again before a time is shown', async () => {
+  let clock = NOW;
+  const { doc, asked, remove, tell, settle } = setUp({ now: () => clock });
+  try {
+    await tell(FINLAND);
+    const historyAsks = () => asked.filter((url) => url.startsWith('/api/alon/cctv/history/')).length;
+    assert.equal(historyAsks(), 1);
+    clock += 2 * MIN;
+    doc.getElementById('cctv-history').querySelector('.ch-row').querySelectorAll('button')[3].click();
+    await settle();
+    assert.equal(historyAsks(), 2, 'the list was asked for again');
+    assert.match(doc.getElementById('cctv-history-view').querySelector('img').src, /&t=\d+$/);
+  } finally {
+    remove();
+  }
+});
+
+test('deleting the photo on show goes back to Live instead of leaving it on screen', async () => {
+  const photo = { file: '1792184400000-00000009.jpg', cameraId: 'tfl-00001.01251', name: 'Tower Bridge', place: 'London', network: 'TfL', time: NOW - 30 * MIN };
+  const { doc, remove, tell, settle } = setUp({ frames: [], photos: [photo] });
+  try {
+    await tell(LONDON);
+    const row = doc.getElementById('cctv-history').querySelector('.ch-row');
+    row.querySelectorAll('button')[1].click();
+    await settle();
+    const view = doc.getElementById('cctv-history-view');
+    view.querySelector('img').onload();
+    assert.ok(!view.hidden);
+    doc.getElementById('cctv-photos-open').click();
+    await settle();
+    const panel = doc.getElementById('my-photos');
+    panel.querySelector('li').querySelector('button').click();
+    panel.querySelector('.mp-big').querySelector('.mp-danger').click();
+    panel.querySelector('.mp-big').querySelectorAll('.mp-row')[1].querySelector('.mp-danger').click();
+    await settle();
+    assert.ok(view.hidden, 'the deleted photo is no longer shown');
+    assert.equal(row.querySelectorAll('button')[0].getAttribute('aria-checked'), 'true');
+  } finally {
+    remove();
+  }
 });
