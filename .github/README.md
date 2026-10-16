@@ -37,7 +37,7 @@ What each one does is in
 
 ## Run it
 
-You need [Node.js](https://nodejs.org) 26, or 24.14 or newer. Zenith is built and tested on
+You need [Node.js](https://nodejs.org) 26, or version 24 at 24.14 or newer. Zenith is built and tested on
 macOS.
 
 ```bash

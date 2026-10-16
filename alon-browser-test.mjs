@@ -523,6 +523,8 @@ const checks = [
           return { heading: window.__zt.heading(), pitch: (camera.pitch * 180) / Math.PI, height: camera.positionCartographic.height };
         });
       const start = await view();
+      // Dragging the tilt arc swings the camera round its target, so its place is put back too.
+      await page.evaluate(() => (window.__ztSpot = window.__zt.viewer().camera.position.clone()));
       // The dial's own coordinates: the centre is 56 units in from the top left.
       const dial = await page.evaluate(() => {
         const r = document.querySelector('#compass-dial svg').getBoundingClientRect();
@@ -531,7 +533,7 @@ const checks = [
       });
       const at = (x, y) => [dial.x + x * dial.unit, dial.y + y * dial.unit];
       try {
-        // Drag round the ring from its left side to its bottom.
+        // Drag a quarter of the way round the ring, from its left side to its top.
         await page.mouse.move(...at(-39, 0));
         await page.mouse.down();
         for (let step = 1; step <= 10; step++) {
@@ -575,10 +577,16 @@ const checks = [
         await page.keyboard.up('Alt').catch(() => {});
         await page.evaluate(({ heading, pitch }) => {
           const { camera } = window.__zt.viewer();
-          camera.setView({ orientation: { heading: (heading * Math.PI) / 180, pitch: (pitch * Math.PI) / 180, roll: 0 } });
+          camera.setView({
+            destination: window.__ztSpot,
+            orientation: { heading: (heading * Math.PI) / 180, pitch: (pitch * Math.PI) / 180, roll: 0 },
+          });
+          delete window.__ztSpot;
         }, start);
         await sleep(400);
       }
+      const back = await view();
+      expect(Math.abs(back.height - start.height) < 30, `the view was put back ${back.height.toFixed(0)} m up instead of ${start.height.toFixed(0)} m`);
     },
   ],
   [
