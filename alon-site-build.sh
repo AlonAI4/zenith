@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 OUT=.gev-cache/zenith-site
 rm -rf "$OUT"
 mkdir -p "$OUT"
-cp alon-site/index.html alon-site/404.html alon-site/style.css alon-site/_headers alon-site/robots.txt "$OUT"/
+cp alon-site/index.html alon-site/mc.html alon-site/404.html alon-site/style.css alon-site/_headers alon-site/robots.txt "$OUT"/
 cp public/alon/zenith-wordmark.webp public/alon/zenith-favicon.png "$OUT"/
 cp -R alon-site/shots "$OUT"/
 # ZENITH_ZIP=<file> reuses a share zip that was already published, so a page-only
@@ -45,17 +45,18 @@ SIZE=$(size_of "$OUT/Zenith.zip")
 SHA=$(shasum -a 256 "$OUT/Zenith.zip" | cut -d' ' -f1)
 DAY=${ZENITH_DATE:-$(date "+%-d %B %Y")}
 sed -i '' -e "s/__SIZE__/$SIZE/" -e "s/__SHA__/$SHA/" -e "s/__DATE__/$DAY/" \
-  -e "s/__MC_JAR__/$MC_NAME/g" -e "s/__MC_SIZE__/$MC_SIZE/" -e "s/__MC_SHA__/$MC_SHA/" "$OUT/index.html"
+  -e "s/__MC_JAR__/$MC_NAME/g" -e "s/__MC_SIZE__/$MC_SIZE/" -e "s/__MC_SHA__/$MC_SHA/" "$OUT/index.html" "$OUT/mc.html"
 # The version number and the list of what is new come from the one file the
 # app itself reads, so the page and the app cannot disagree.
 node --input-type=module -e '
   import { readFileSync, writeFileSync } from "node:fs";
   import { ZENITH_VERSION, changesAsHtml } from "./src/app/zenithVersion.js";
-  const file = process.argv[1];
-  const page = readFileSync(file, "utf8")
-    .replaceAll("__VERSION__", () => ZENITH_VERSION.number)
-    .replaceAll("__WHATS_NEW__", () => changesAsHtml());
-  if (/__[A-Z_]+__/.test(page)) throw new Error("the page still has an unfilled blank");
-  writeFileSync(file, page);
-' "$OUT/index.html"
+  for (const file of process.argv.slice(1)) {
+    const page = readFileSync(file, "utf8")
+      .replaceAll("__VERSION__", () => ZENITH_VERSION.number)
+      .replaceAll("__WHATS_NEW__", () => changesAsHtml());
+    if (/__[A-Z_]+__/.test(page)) throw new Error(`${file} still has an unfilled blank`);
+    writeFileSync(file, page);
+  }
+' "$OUT/index.html" "$OUT/mc.html"
 echo "Built $OUT ($(du -sh "$OUT" | cut -f1)). Nothing was published."

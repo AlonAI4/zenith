@@ -36,7 +36,7 @@ test('nothing people see calls them friends', () => {
   const ui = ['branding', 'buttonTooltips', 'customSelect', 'panelFullscreen', 'shortcutGuard'].map(
     (name) => `src/ui/${name}.js`,
   );
-  for (const path of [...DOCS, ...app, ...ui, 'alon-browser-test.mjs']) {
+  for (const path of [...DOCS, 'alon-site/mc.html', ...app, ...ui, 'alon-browser-test.mjs']) {
     assert.doesNotMatch(read(path), /\bfriends\b/i, `${path} says "friends"`);
   }
 });

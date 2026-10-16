@@ -3,13 +3,17 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import test from 'node:test';
 
 const site = new URL('../../alon-site/', import.meta.url);
-const page = readFileSync(new URL('index.html', site), 'utf8');
-const pictures = [...page.matchAll(/<img\b[^>]*>/g)].map((tag) => tag[0]).filter((tag) => /src="shots\//.test(tag));
+// Zenith's page and the Zenith MC page share one folder of pictures.
+const pages = ['index.html', 'mc.html'].map((name) => readFileSync(new URL(name, site), 'utf8'));
+const page = pages[0];
+const pictures = pages.flatMap((one) =>
+  [...one.matchAll(/<img\b[^>]*>/g)].map((tag) => ({ tag: tag[0], page: one })).filter(({ tag }) => /src="shots\//.test(tag)),
+);
 
 test('every picture on the download page is there, sized, described and small', () => {
   assert.ok(pictures.length >= 4);
   const used = new Set();
-  for (const tag of pictures) {
+  for (const { tag, page } of pictures) {
     const src = /src="(shots\/[a-z-]+\.webp)"/.exec(tag)?.[1];
     assert.ok(src, tag);
     used.add(src.replace('shots/', ''));
@@ -35,4 +39,13 @@ test('the pictures are credited next to them, and only the satellite map is ever
   assert.doesNotMatch(script, /map=photoreal|pickMap\(/);
   const build = readFileSync(new URL('../../alon-site-build.sh', import.meta.url), 'utf8');
   assert.match(build, /cp -R alon-site\/shots/);
+});
+
+test('the Zenith MC page credits its own pictures, and each page links to the other', () => {
+  const [zenith, mc] = pages;
+  assert.match(mc, /<p class="credit">Pictures taken in Minecraft with Zenith MC\.<\/p>/);
+  assert.doesNotMatch(zenith, /zenith-mc-/, 'no Zenith MC picture is left on the Zenith page');
+  assert.match(zenith, /<a href="mc\.html">Zenith MC<\/a>/);
+  assert.match(mc, /<a href="\.\/">Zenith, the live 3D globe for Mac<\/a>/);
+  for (const one of pages) assert.match(one, /not an official Minecraft product/i);
 });

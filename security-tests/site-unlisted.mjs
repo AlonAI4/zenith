@@ -14,11 +14,13 @@ check(
   'every path is served with an X-Robots-Tag header that says noindex',
 );
 
-for (const page of ['index.html', '404.html']) {
+for (const page of ['index.html', 'mc.html', '404.html']) {
   const tag = /<meta\s+name="robots"\s+content="([^"]*)"/i.exec(read(page));
   check(tag && /\bnoindex\b/.test(tag[1]), `${page} has a robots tag that says noindex`);
 }
-check(!/rel="canonical"|property="og:/i.test(read('index.html')), 'the page sets no sharing or canonical tags');
+for (const page of ['index.html', 'mc.html']) {
+  check(!/rel="canonical"|property="og:/i.test(read(page)), `${page} sets no sharing or canonical tags`);
+}
 
 // robots.txt: split into groups of "User-agent" lines followed by their rules.
 const groups = [];
