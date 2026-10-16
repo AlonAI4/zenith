@@ -445,8 +445,42 @@ const checks = [
         expect(await trayOpen(page), 'the tray did not open');
         await page.keyboard.press('Escape');
         expect(!(await trayOpen(page)), 'Escape did not close the tray');
+        // The more button counts the switches that are on.
+        await press(page, 'time-zones-toggle');
+        const badge = await page.evaluate(
+          (switches) => ({
+            says: document.getElementById('zenith-more-toggle').dataset.on,
+            on: String(switches.filter((id) => document.getElementById(id)?.getAttribute('aria-pressed') === 'true').length),
+          }),
+          SWITCHES,
+        );
+        expect(badge.says === badge.on, `with ${badge.on} switches on the more button says "${badge.says}"`);
+        // Clicking a switch's name in the tray works like clicking the switch.
+        await page.click('#zenith-more-toggle');
+        await page.evaluate(() => document.getElementById('time-zones-toggle').closest('.zt-row').querySelector('.zt-name').click());
+        await sleep(300);
+        expect(!(await pressed(page, 'time-zones-toggle')), 'clicking the name Time zones in the tray did not switch it off');
+        if (!(await trayOpen(page))) await page.click('#zenith-more-toggle');
+        await clickMap(page, 0.5, 0.8);
+        expect(!(await trayOpen(page)), 'a click on the map did not close the tray');
       } else {
         expect(state.inTray === 0 && !state.more, 'the switches should sit in the bar on a wide window');
+        // Narrowing the window live folds the switches away and keeps what is on.
+        await press(page, 'time-zones-toggle');
+        const inTray = () =>
+          page.evaluate((switches) => switches.filter((id) => document.getElementById(id)?.closest('#zenith-tray')).length, SWITCHES);
+        try {
+          await page.setViewport(NARROW);
+          await sleep(800);
+          expect((await inTray()) === SWITCHES.length, 'narrowing the window did not fold the switches into the tray');
+          expect(await pressed(page, 'time-zones-toggle'), 'folding the switches away switched Time zones off');
+          await page.setViewport(WIDE);
+          await sleep(800);
+          expect((await inTray()) === 0, 'widening the window did not bring the switches back to the bar');
+        } finally {
+          await page.setViewport(WIDE);
+          if (await pressed(page, 'time-zones-toggle')) await press(page, 'time-zones-toggle');
+        }
       }
     },
   ],
@@ -482,6 +516,83 @@ const checks = [
       });
       await page.mouse.click(north[0], north[1]);
       await until(page, () => Math.abs(((window.__zt.heading() + 180) % 360) - 180) < 1.5, 6000, 'clicking N did not bring north up');
+
+      const view = () =>
+        page.evaluate(() => {
+          const { camera } = window.__zt.viewer();
+          return { heading: window.__zt.heading(), pitch: (camera.pitch * 180) / Math.PI, height: camera.positionCartographic.height };
+        });
+      const start = await view();
+      // The dial's own coordinates: the centre is 56 units in from the top left.
+      const dial = await page.evaluate(() => {
+        const r = document.querySelector('#compass-dial svg').getBoundingClientRect();
+        const unit = r.width / 126;
+        return { x: r.left + 56 * unit, y: r.top + 56 * unit, unit };
+      });
+      const at = (x, y) => [dial.x + x * dial.unit, dial.y + y * dial.unit];
+      try {
+        // Drag round the ring from its left side to its bottom.
+        await page.mouse.move(...at(-39, 0));
+        await page.mouse.down();
+        for (let step = 1; step <= 10; step++) {
+          const angle = Math.PI + (step / 10) * (-Math.PI / 2);
+          await page.mouse.move(...at(39 * Math.cos(angle), -39 * Math.sin(angle)));
+          await sleep(40);
+        }
+        await page.mouse.up();
+        await sleep(500);
+        const turned = await read();
+        expect(Math.abs(turn(start.heading, turned.camera)) > 30, `dragging the ring turned the view only ${turn(start.heading, turned.camera).toFixed(1)} degrees`);
+        expect(Math.abs(turn(turned.camera, turned.dial)) <= 1.5, 'the dial did not follow the ring drag');
+
+        // Drag the tilt arc to its bottom end: the view looks straight down.
+        await page.mouse.move(...at(60, 0));
+        await page.mouse.down();
+        for (let step = 1; step <= 8; step++) {
+          await page.mouse.move(...at(60 - step * 2, step * 6));
+          await sleep(40);
+        }
+        await page.mouse.up();
+        await sleep(600);
+        const tilted = await view();
+        expect(tilted.pitch < -80, `dragging the tilt arc down left the view at ${tilted.pitch.toFixed(1)} degrees`);
+
+        // Option with the wheel turns the view and does not zoom.
+        const before = await view();
+        await page.mouse.move(...spot(page, 0.5, 0.55));
+        await page.keyboard.down('Alt');
+        for (let i = 0; i < 5; i++) {
+          await page.mouse.wheel({ deltaY: 120 });
+          await sleep(80);
+        }
+        await page.keyboard.up('Alt');
+        await sleep(600);
+        const wheeled = await view();
+        expect(Math.abs(turn(before.heading, wheeled.heading)) > 3, 'Option and the wheel did not turn the view');
+        expect(Math.abs(wheeled.height - before.height) / before.height < 0.02, `Option and the wheel zoomed from ${before.height.toFixed(0)} m to ${wheeled.height.toFixed(0)} m`);
+      } finally {
+        await page.mouse.up().catch(() => {});
+        await page.keyboard.up('Alt').catch(() => {});
+        await page.evaluate(({ heading, pitch }) => {
+          const { camera } = window.__zt.viewer();
+          camera.setView({ orientation: { heading: (heading * Math.PI) / 180, pitch: (pitch * Math.PI) / 180, roll: 0 } });
+        }, start);
+        await sleep(400);
+      }
+    },
+  ],
+  [
+    'a right-click on the map with the pin on opens nothing',
+    async (page) => {
+      await press(page, 'address-lookup-toggle');
+      try {
+        const [x, y] = spot(page, 0.5, 0.6);
+        await page.mouse.click(x, y, { button: 'right' });
+        await sleep(1200);
+        expect(!(await page.evaluate(() => window.__zt.shown(document.getElementById('address-card')))), 'a right-click opened the map pin card');
+      } finally {
+        await press(page, 'address-lookup-toggle');
+      }
     },
   ],
   [
@@ -773,18 +884,42 @@ const checks = [
   ],
   [
     'HD buildings',
-    async (page) => {
+    async (page, setup) => {
       const read = () =>
-        page.evaluate(() => ({
-          on: window.__zt.pressed('hd-detail-toggle'),
-          recommended: window.__zt.viewer().useBrowserRecommendedResolution,
-        }));
-      const before = await read();
-      expect(before.recommended === !before.on, 'the HD switch and the drawing resolution disagree');
-      await press(page, 'hd-detail-toggle');
-      const after = await read();
-      await press(page, 'hd-detail-toggle');
-      expect(after.on !== before.on && after.recommended === !after.on, 'the HD switch did not change the resolution');
+        page.evaluate(() => {
+          const { canvas } = window.__zt.viewer().scene;
+          return {
+            on: window.__zt.pressed('hd-detail-toggle'),
+            recommended: window.__zt.viewer().useBrowserRecommendedResolution,
+            detail: window.__godsEyeView.tileset?.maximumScreenSpaceError ?? null,
+            ratio: canvas.width / canvas.clientWidth,
+          };
+        });
+      // At one device pixel per screen point HD draws the same as normal, so
+      // this runs on a sharp screen, as on a Retina Mac.
+      const size = page.viewport();
+      await page.setViewport({ ...size, deviceScaleFactor: 2 });
+      try {
+        await sleep(1000);
+        const states = [];
+        for (let i = 0; i < 2; i++) {
+          await press(page, 'hd-detail-toggle');
+          await sleep(900);
+          states.push(await read());
+        }
+        expect(states[0].on !== states[1].on, 'the HD switch did not change');
+        for (const state of states) {
+          const word = state.on ? 'on' : 'off';
+          expect(state.recommended === !state.on, `with HD ${word} the drawing resolution setting disagrees`);
+          expect(Math.abs(state.ratio - (state.on ? 2 : 1)) < 0.15, `with HD ${word} the map draws ${state.ratio.toFixed(2)} pixels per screen point`);
+          if (setup.map === 'photoreal') {
+            expect(state.detail === (state.on ? 8 : 16), `with HD ${word} the 3D buildings use detail ${state.detail}`);
+          }
+        }
+      } finally {
+        await page.setViewport(size);
+        await sleep(600);
+      }
     },
   ],
   [
@@ -1082,6 +1217,24 @@ const checks = [
       expect(saved === '{"speed":"fast","clockwise":false}', `the choice was saved as ${saved}`);
       expect(remembered.join() === 'true,true', 'the panel did not show the remembered choice');
       expect(await page.evaluate(() => document.getElementById('video-mode-panel').hidden), 'Escape did not close the video panel');
+
+      // A click on the map ends it too, and that click does not also drop a pin.
+      await press(page, 'address-lookup-toggle');
+      try {
+        await press(page, 'video-mode-toggle', { leaveTray: true });
+        await page.click('#video-mode-start');
+        await sleep(800);
+        expect((await state()).on, 'video mode did not start again');
+        const [x, y] = spot(page, 0.5, 0.6);
+        await page.mouse.click(x, y);
+        await sleep(1200);
+        const clicked = await state();
+        expect(!clicked.on && !clicked.clean, 'a click on the map did not end video mode');
+        expect(!(await page.evaluate(() => window.__zt.shown(document.getElementById('address-card')))), 'the click that ended video mode also opened the map pin card');
+      } finally {
+        if ((await state()).on) await page.keyboard.press('Escape');
+        await press(page, 'address-lookup-toggle');
+      }
     },
   ],
   [
@@ -1921,7 +2074,9 @@ const soloChecks = [
       const marker = () => page.evaluate(() => window.__zt.shown(document.getElementById('tracking-marker')) && getComputedStyle(document.getElementById('tracking-marker')).display !== 'none');
       expect(!(await marker()), 'the marker shows while the plane is close');
       await page.mouse.move(720, 450);
-      for (let i = 0; i < 40; i++) {
+      // Scroll until far out: how far one notch goes depends on how busy the
+      // browser is, so a fixed number of notches can stop short.
+      for (let i = 0; i < 300 && (await page.evaluate(() => window.__zt.height())) < 2_000_000; i++) {
         await page.mouse.wheel({ deltaY: 400 });
         await sleep(50);
       }
