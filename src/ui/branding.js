@@ -22,6 +22,14 @@ function paintTitle(host, doc) {
  */
 export function initBranding(doc = document) {
   doc.title = NAME;
+  // The map credits in two lines: the Cesium ion logo on top, and the Google
+  // Maps logo (with the other credits) under it, instead of one long row.
+  // Cesium sets each part inline itself, so this needs !important.
+  const credits = doc.createElement('style');
+  credits.id = 'zenith-credit-lines';
+  credits.textContent =
+    '#cesium-credits .cesium-credit-logoContainer { display: block !important; margin-bottom: 4px; }';
+  doc.head?.appendChild(credits);
   const jobs = new Map([
     ['#title-bar h1 > span:not(.title-logo)', (el) => paintTitle(el, doc)],
     [
