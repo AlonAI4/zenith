@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { cinemaRunning } from './cinema.js';
 
 /**
  * An HD switch for the 3D buildings. On, the map asks for finer building
@@ -10,8 +11,9 @@ import * as Cesium from 'cesium';
  *
  * Full resolution on a Retina screen is four times the pixels, which made the
  * map draw about a quarter as many frames while it moved. So while the view
- * moves it draws at the screen's normal resolution, and as soon as it stops it
- * draws sharp again: smooth to move, sharp to look at.
+ * moves it draws at the screen's normal resolution, and a quarter of a
+ * second after it stops it draws sharp again: smooth to move, sharp to look at. Video mode and fly-through stay
+ * sharp all the way, because they are for recording.
  */
 
 const STORAGE_KEY = 'gev.hdDetail';
@@ -73,22 +75,39 @@ export function installHdDetail({ viewer, tileset }, doc = document) {
     viewer.scene.requestRender();
   };
 
+  // Moving means the camera's place or direction changed since the last frame.
+  // (Cesium's own move events also fire when the view's shape changes, which
+  // a change of resolution does, so they would switch this back and forth.)
   const camera = viewer.camera;
-  const onMoveStart = () => {
-    win.clearTimeout?.(still);
-    if (moving || !on) return;
-    moving = true;
-    apply();
+  let last = null;
+  const where = () => {
+    const p = camera.positionWC;
+    const d = camera.directionWC;
+    const u = camera.upWC;
+    return p && d && u ? [p.x, p.y, p.z, d.x, d.y, d.z, u.x, u.y, u.z] : null;
   };
-  const onMoveEnd = () => {
+  const changed = (a, b) =>
+    // A millimetre, or about a hundred-thousandth of a degree: smaller changes
+    // are rounding after a resize, not a move.
+    !a ||
+    !b ||
+    a.some((value, i) => Math.abs(value - b[i]) > (i < 3 ? 1e-3 : 2e-7));
+  const onFrame = () => {
+    const now = where();
+    const moved = last !== null && changed(now, last);
+    last = now;
+    if (!moved || !on) return;
     win.clearTimeout?.(still);
     still = win.setTimeout?.(() => {
       moving = false;
       apply();
     }, SHARP_AFTER_MS);
+    // Video mode and fly-through are for recording: they stay sharp.
+    if (moving || cinemaRunning()) return;
+    moving = true;
+    apply();
   };
-  const offStart = camera?.moveStart?.addEventListener(onMoveStart);
-  const offEnd = camera?.moveEnd?.addEventListener(onMoveEnd);
+  const offFrame = viewer.scene.preRender?.addEventListener?.(onFrame);
 
   const button = doc.createElement('button');
   button.id = 'hd-detail-toggle';
@@ -114,8 +133,7 @@ export function installHdDetail({ viewer, tileset }, doc = document) {
   return () => {
     on = false;
     win.clearTimeout?.(still);
-    offStart?.();
-    offEnd?.();
+    offFrame?.();
     apply();
     button.remove();
   };
