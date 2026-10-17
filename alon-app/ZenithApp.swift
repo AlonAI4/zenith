@@ -42,7 +42,9 @@ func launcher(_ action: String) -> (ok: Bool, said: String) {
 final class SpeechBridge: NSObject, WKScriptMessageHandler {
   weak var webView: WKWebView?
   private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-GB"))
-  private let engine = AVAudioEngine()
+  /// Made only while V is held, so nothing touches the audio system otherwise.
+  private var engine: AVAudioEngine?
+  private let audio = DispatchQueue(label: "zenith.speech.audio")
   private var request: SFSpeechAudioBufferRecognitionRequest?
   private var task: SFSpeechRecognitionTask?
   /// Whether V is still held: the permission question can outlast the key.
@@ -84,38 +86,80 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
   }
 
   private func listen(_ recognizer: SFSpeechRecognizer) {
+    // The microphone is asked for without waiting: a question macOS cannot
+    // show (Screen Time covering the window, for one) must never freeze it.
+    AVCaptureDevice.requestAccess(for: .audio) { granted in
+      DispatchQueue.main.async {
+        guard self.wanted else { return }
+        guard granted else {
+          self.send("error", "The microphone is off for Zenith. Turn it on in System Settings, Privacy & Security, Microphone.")
+          return
+        }
+        self.startAudio(recognizer)
+      }
+    }
+  }
+
+  /// Sets the microphone going on its own queue (CoreAudio can take a while),
+  /// then starts the recognition back on the main thread.
+  private func startAudio(_ recognizer: SFSpeechRecognizer) {
     let request = SFSpeechAudioBufferRecognitionRequest()
     request.requiresOnDeviceRecognition = true
     request.shouldReportPartialResults = true
     self.request = request
-    let input = engine.inputNode
-    let format = input.outputFormat(forBus: 0)
-    // A Mac with no microphone has a silent input; listening to it would crash.
-    guard format.sampleRate > 0, format.channelCount > 0 else {
-      send("error", "No microphone found. Plug one in to use voice control.")
-      finish(quiet: true)
-      return
-    }
-    input.removeTap(onBus: 0)
-    input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-      request.append(buffer)
-    }
-    engine.prepare()
-    do { try engine.start() } catch {
-      send("error", "The microphone did not start. Check System Settings, Privacy & Security, Microphone.")
-      finish(quiet: true)
-      return
-    }
-    send("listening")
-    task = recognizer.recognitionTask(with: request) { result, error in
-      DispatchQueue.main.async {
-        // A recognition that was called off must not end the next one.
-        guard self.request === request else { return }
-        if let result = result {
-          self.send(result.isFinal ? "final" : "partial", result.bestTranscription.formattedString)
+    audio.async {
+      let engine = AVAudioEngine()
+      let input = engine.inputNode
+      let format = input.outputFormat(forBus: 0)
+      // A Mac with no microphone has a silent input; listening to it would crash.
+      guard format.sampleRate > 0, format.channelCount > 0 else {
+        DispatchQueue.main.async {
+          self.send("error", "No microphone found. Plug one in to use voice control.")
+          self.finish(quiet: true)
         }
-        if error != nil || result?.isFinal == true { self.finish(quiet: false) }
+        return
       }
+      input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        request.append(buffer)
+      }
+      engine.prepare()
+      let started = (try? engine.start()) != nil
+      DispatchQueue.main.async {
+        // V was let go, or another hold began, while the microphone started.
+        guard started, self.wanted, self.request === request else {
+          self.audio.async {
+            engine.stop()
+            input.removeTap(onBus: 0)
+          }
+          if !started {
+            self.send("error", "The microphone did not start. Check System Settings, Privacy & Security, Microphone.")
+            self.finish(quiet: true)
+          }
+          return
+        }
+        self.engine = engine
+        self.send("listening")
+        self.task = recognizer.recognitionTask(with: request) { result, error in
+          DispatchQueue.main.async {
+            // A recognition that was called off must not end the next one.
+            guard self.request === request else { return }
+            if let result = result {
+              self.send(result.isFinal ? "final" : "partial", result.bestTranscription.formattedString)
+            }
+            if error != nil || result?.isFinal == true { self.finish(quiet: false) }
+          }
+        }
+      }
+    }
+  }
+
+  /// The microphone off, on the audio queue. Nothing to do if it never started.
+  private func stopAudio() {
+    guard let engine = engine else { return }
+    self.engine = nil
+    audio.async {
+      engine.stop()
+      engine.inputNode.removeTap(onBus: 0)
     }
   }
 
@@ -123,8 +167,7 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
   private func stop() {
     wanted = false
     guard request != nil else { return }
-    if engine.isRunning { engine.stop() }
-    engine.inputNode.removeTap(onBus: 0)
+    stopAudio()
     request?.endAudio()
   }
 
@@ -135,8 +178,7 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
   }
 
   private func finish(quiet: Bool) {
-    if engine.isRunning { engine.stop() }
-    engine.inputNode.removeTap(onBus: 0)
+    stopAudio()
     task?.cancel()
     task = nil
     request = nil
