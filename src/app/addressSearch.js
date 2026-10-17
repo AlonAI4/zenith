@@ -47,7 +47,17 @@ const STREET_WORDS = Object.freeze({
   wy: 'way',
   hl: 'hill',
   ct: 'court',
+  n: 'north',
+  s: 'south',
+  e: 'east',
+  w: 'west',
+  ne: 'north east',
+  nw: 'north west',
+  se: 'south east',
+  sw: 'south west',
 });
+
+const DIRECTIONS = new Set(['north', 'south', 'east', 'west']);
 
 /**
  * A house number, then a street, then perhaps a town or postcode after a
@@ -61,6 +71,8 @@ export function parseAddress(text) {
       String(text ?? ''),
     );
   if (!found || !/[a-z]{2}/i.test(found[2])) return null;
+  // "10115 Berlin" or "75001 Paris" is a postcode and a town, not a street.
+  if (found[1].length >= 5 && !/\s/.test(found[2].trim())) return null;
   return {
     number: found[1].toLowerCase(),
     street: found[2].trim(),
@@ -98,9 +110,37 @@ export function likeness(a, b) {
   return 1 - row[b.length] / Math.max(a.length, b.length);
 }
 
+/** How well a street on the map matches the typed one, from 0 to 1. */
+export function streetScore(typed, mapped) {
+  const a = normalStreet(typed);
+  const b = normalStreet(mapped);
+  // North Street is not South Street, however alike the letters are.
+  const ways = (text) =>
+    text
+      .split(' ')
+      .filter((word) => DIRECTIONS.has(word))
+      .sort()
+      .join();
+  if (ways(a) !== ways(b)) return 0;
+  return likeness(a, b);
+}
+
 /** Whether a street on the map is the street that was typed, typing mistakes and all. */
 export function sameStreet(typed, mapped) {
-  return likeness(normalStreet(typed), normalStreet(mapped)) >= 0.8;
+  return streetScore(typed, mapped) >= 0.8;
+}
+
+/** Whether a town or postcode typed after the comma is one of these place names, as whole words. */
+export function townMatches(typed, names) {
+  const town = String(typed || '')
+    .toLowerCase()
+    .split(/\s*,\s*/)[0]
+    .trim();
+  if (!town) return true;
+  const escaped = town.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(
+    names.filter(Boolean).join(' | ').toLowerCase(),
+  );
 }
 
 /**
@@ -116,7 +156,8 @@ export function chooseAddressHit(features, address) {
       const about = feature?.properties || {};
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
       const street = about.type === 'street' ? about.name : about.street;
-      if (!street || !sameStreet(address.street, street)) return null;
+      const score = street ? streetScore(address.street, street) : 0;
+      if (score < 0.8) return null;
       const town = about.city || about.district || about.county || '';
       // A town or postcode after the comma must match too, when one was typed.
       const where = [
@@ -125,21 +166,18 @@ export function chooseAddressHit(features, address) {
         about.county,
         about.postcode,
         about.locality,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      if (
-        address.rest &&
-        !where.includes(address.rest.toLowerCase().split(/\s*,\s*/)[0])
-      )
-        return null;
-      return { lat, lon, about, street, town };
+      ];
+      if (!townMatches(address.rest, where)) return null;
+      return { lat, lon, about, street, town, score };
     })
     .filter(Boolean);
+  // Only the best-matching street name: King Street is not Kings Street
+  // when both are there.
+  const best = Math.max(0, ...hits.map((hit) => hit.score));
+  const named = hits.filter((hit) => hit.score === best);
   const house =
     address.number &&
-    hits.find(
+    named.find(
       (hit) =>
         String(hit.about.housenumber || '').toLowerCase() === address.number,
     );
@@ -153,7 +191,7 @@ export function chooseAddressHit(features, address) {
         .join(', '),
     };
   }
-  const street = hits.find((hit) => hit.about.type === 'street') || hits[0];
+  const street = named.find((hit) => hit.about.type === 'street') || named[0];
   if (!street) return null;
   return {
     kind: 'street',
@@ -172,7 +210,7 @@ export function chooseAddressHit(features, address) {
 export function installAddressSearch(
   { viewer },
   doc = document,
-  { fetchImpl = fetch } = {},
+  { fetchImpl = fetch, navigation = null } = {},
 ) {
   const win = doc.defaultView ?? window;
   const input = doc.getElementById('location-search');
@@ -180,9 +218,11 @@ export function installAddressSearch(
   let passing = false;
   let request = 0;
 
-  // Hand the search back to the original, as if this add-on were not here.
-  const passOn = () => {
+  // Hand the search back to the original, as if this add-on were not here,
+  // with the words that were typed when Enter was pressed.
+  const passOn = (typed) => {
     passing = true;
+    input.value = typed;
     try {
       input.dispatchEvent(
         new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
@@ -213,13 +253,32 @@ export function installAddressSearch(
     });
   };
 
+  // Any search, address or not, makes an older address lookup stale.
+  const onAnyKey = (event) => {
+    if (!passing && event.key === 'Enter' && event.target === input)
+      request += 1;
+  };
+
   const onKey = async (event) => {
     if (passing || event.key !== 'Enter' || event.target !== input) return;
-    const address = parseAddress(input.value);
+    const typed = input.value;
+    const address = parseAddress(typed);
     if (!address) return;
     event.stopImmediatePropagation();
     event.preventDefault();
-    const mine = ++request;
+    const mine = request;
+    // The app's own rule for who moves the camera: this search now owns it,
+    // and a city, a landmark or another search after it wins over it.
+    const generation = navigation?.beginDeferredLocationNavigation?.();
+    if (generation === false) return;
+    const stillMine = () =>
+      mine === request &&
+      (generation == null ||
+        navigation.reassertDeferredLocationNavigation(generation) !== false);
+    showNotice(doc, 'Looking up the address…', {
+      id: 'zenith-address-notice',
+      ms: 15_000,
+    });
     let hit = null;
     const ask = async (q) => {
       const centre = viewer.camera.positionCartographic;
@@ -236,24 +295,38 @@ export function installAddressSearch(
       return response.ok ? (await response.json())?.features : [];
     };
     try {
-      hit = chooseAddressHit(await ask(input.value.trim()), address);
+      // Short words written out ("E 42nd St" as "east 42nd street"): Photon
+      // finds the house more often that way.
+      const street = normalStreet(address.street);
+      hit = chooseAddressHit(
+        await ask(
+          [`${address.number} ${street}`, address.rest]
+            .filter(Boolean)
+            .join(', '),
+        ),
+        address,
+      );
       // An unmapped number can pull in houses of that number on other
       // streets: then the street alone is asked for.
       if (!hit) {
-        const street = [address.street, address.rest]
-          .filter(Boolean)
-          .join(', ');
-        hit = chooseAddressHit(await ask(street), { ...address, number: '' });
+        hit = chooseAddressHit(
+          await ask([street, address.rest].filter(Boolean).join(', ')),
+          { ...address, number: '' },
+        );
       }
     } catch (error) {
       console.warn('[address-search]', error?.message || error);
     }
-    if (mine !== request) return;
+    doc.getElementById('zenith-address-notice')?.remove();
+    if (!stillMine()) return;
     if (!hit) {
-      passOn();
+      passOn(typed);
       return;
     }
+    // As the original search leaves it after a find.
     input.blur();
+    input.value = '';
+    input.classList.remove('expanded');
     if (hit.kind === 'street') {
       showNotice(
         doc,
@@ -263,6 +336,10 @@ export function installAddressSearch(
     }
     fly(hit);
   };
+  win.addEventListener('keydown', onAnyKey, true);
   win.addEventListener('keydown', onKey, true);
-  return () => win.removeEventListener('keydown', onKey, true);
+  return () => {
+    win.removeEventListener('keydown', onAnyKey, true);
+    win.removeEventListener('keydown', onKey, true);
+  };
 }

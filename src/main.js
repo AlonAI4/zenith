@@ -98,7 +98,11 @@ application
         // Before the Map pin: an open target box takes the first Escape.
         ['Target box', () => installTargetBox(scene)],
         ['Map pin', () => installAddressLookup(scene)],
-        ['Address search', () => installAddressSearch(scene)],
+        [
+          'Address search',
+          () =>
+            installAddressSearch(scene, document, { navigation: styleManager }),
+        ],
         ['Measure', () => installMeasureTool(scene)],
         [
           'Saved places',

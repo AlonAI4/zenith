@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  townMatches,
   chooseAddressHit,
   likeness,
   normalStreet,
@@ -137,4 +138,40 @@ test('a town typed after the comma must match', () => {
     'house',
   );
   assert.equal(chooseAddressHit(null, parseAddress('10 High Street')), null);
+});
+
+test('compass words must agree: North Street is not South Street, nor E 42nd St West 42nd Street', () => {
+  assert.ok(!sameStreet('North Street', 'South Street'));
+  assert.ok(!sameStreet('East Street', 'West Street'));
+  assert.ok(!sameStreet('E 42nd St', 'West 42nd Street'));
+  assert.ok(sameStreet('E 42nd St', 'East 42nd Street'));
+});
+
+test('the best-named street wins: Kings Street is not chosen for King Street', () => {
+  const answers = [
+    photon(-0.2, 51.6, {
+      type: 'house',
+      housenumber: '5',
+      street: 'Kings Street',
+      city: 'London',
+    }),
+    photon(-0.1, 51.5, { type: 'street', name: 'King Street', city: 'London' }),
+  ];
+  const hit = chooseAddressHit(answers, parseAddress('5 King Street'));
+  assert.equal(hit.kind, 'street');
+  assert.equal(hit.lat, 51.5);
+});
+
+test('a typed town matches whole words only', () => {
+  assert.ok(townMatches('London', ['London Borough of Richmond upon Thames']));
+  assert.ok(townMatches('SW1A 2AA', ['City of Westminster', 'SW1A 2AA']));
+  assert.ok(!townMatches('Ham', ['Birmingham']));
+  assert.ok(!townMatches('Bath', ['Bathgate']));
+  assert.ok(townMatches('', ['Anywhere']));
+});
+
+test('a postcode and a town is not a street address', () => {
+  assert.equal(parseAddress('10115 Berlin'), null);
+  assert.equal(parseAddress('75001 Paris'), null);
+  assert.ok(parseAddress('10 Berlin Road'));
 });
