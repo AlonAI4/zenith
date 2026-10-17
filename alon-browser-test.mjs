@@ -695,7 +695,7 @@ const checks = [
   ],
   [
     'the classified look: on from the start, one switch that is remembered, redacted lines read on focus, no scrambling with reduced motion',
-    async (page) => {
+    async (page, setup) => {
       expect(await pressed(page, 'classified-toggle'), 'the classified look is not on from the start');
       const rightClickPalace = async () => {
         await page.evaluate(() => {
@@ -762,7 +762,8 @@ const checks = [
         agent: window.__zt.shown(document.getElementById('zenith-agent-line')),
       }));
       expect(!off.body && !off.agent, 'switching the classified look off left parts of it on');
-      await page.reload({ waitUntil: 'domcontentloaded' });
+      // Opened again where the run started, so the checks after this one see the usual view.
+      await open(page, setup.narrow ? NARROW : WIDE, setup.map === 'esri-imagery' ? `${LONDON}&map=esri-imagery` : LONDON);
       await until(
         page,
         () =>
