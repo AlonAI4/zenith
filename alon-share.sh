@@ -17,5 +17,6 @@ git archive --format=zip --prefix=Zenith/ -o "$OUT" alon -- . \
   ':(exclude)alon-site' ':(exclude)alon-site-build.sh' ':(exclude)alon-site-publish.sh' \
   ':(exclude)alon-backup.sh' ':(exclude)alon-browser-test.mjs' \
   ':(exclude)alon-browser.mjs' ':(exclude)alon-speed-check.mjs' \
-  ':(exclude)alon-site-shots.mjs' ':(exclude)alon-app' ':(exclude)alon-release.sh'
+  ':(exclude)alon-site-shots.mjs' ':(exclude)alon-app' ':(exclude)alon-release.sh' \
+  ':(exclude)alon-smooth-check.mjs' ':(exclude)alon-smooth-results.md'
 echo "Made $OUT ($(du -h "$OUT" | cut -f1))"

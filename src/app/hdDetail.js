@@ -7,6 +7,11 @@ import * as Cesium from 'cesium';
  *
  * It cannot add detail the source does not have: very close to the ground the
  * 3D scan itself is the limit.
+ *
+ * Full resolution on a Retina screen is four times the pixels, which made the
+ * map draw about a quarter as many frames while it moved. So while the view
+ * moves it draws at the screen's normal resolution, and as soon as it stops it
+ * draws sharp again: smooth to move, sharp to look at.
  */
 
 const STORAGE_KEY = 'gev.hdDetail';
@@ -15,6 +20,8 @@ const HD_SCREEN_SPACE_ERROR = 8;
 const NORMAL_SCREEN_SPACE_ERROR = 16;
 /** Full resolution, but never more than two device pixels per CSS pixel. */
 const MAX_PIXEL_RATIO = 2;
+/** How long the view must stay still before it is drawn sharp again. */
+export const SHARP_AFTER_MS = 250;
 
 function readSaved() {
   try {
@@ -46,6 +53,9 @@ export function hdResolutionScale(ratio, cap = MAX_PIXEL_RATIO) {
  */
 export function installHdDetail({ viewer, tileset }, doc = document) {
   let on = readSaved();
+  let moving = false;
+  let still = null;
+  const win = doc.defaultView ?? globalThis;
 
   const apply = () => {
     if (viewer.isDestroyed()) return;
@@ -54,12 +64,31 @@ export function installHdDetail({ viewer, tileset }, doc = document) {
         ? HD_SCREEN_SPACE_ERROR
         : NORMAL_SCREEN_SPACE_ERROR;
     }
-    viewer.useBrowserRecommendedResolution = !on;
-    viewer.resolutionScale = on
-      ? hdResolutionScale(doc.defaultView?.devicePixelRatio)
-      : 1;
+    const sharp = on && !moving;
+    if (viewer.useBrowserRecommendedResolution !== !sharp) {
+      viewer.useBrowserRecommendedResolution = !sharp;
+    }
+    const scale = sharp ? hdResolutionScale(win.devicePixelRatio) : 1;
+    if (viewer.resolutionScale !== scale) viewer.resolutionScale = scale;
     viewer.scene.requestRender();
   };
+
+  const camera = viewer.camera;
+  const onMoveStart = () => {
+    win.clearTimeout?.(still);
+    if (moving || !on) return;
+    moving = true;
+    apply();
+  };
+  const onMoveEnd = () => {
+    win.clearTimeout?.(still);
+    still = win.setTimeout?.(() => {
+      moving = false;
+      apply();
+    }, SHARP_AFTER_MS);
+  };
+  const offStart = camera?.moveStart?.addEventListener(onMoveStart);
+  const offEnd = camera?.moveEnd?.addEventListener(onMoveEnd);
 
   const button = doc.createElement('button');
   button.id = 'hd-detail-toggle';
@@ -84,6 +113,9 @@ export function installHdDetail({ viewer, tileset }, doc = document) {
 
   return () => {
     on = false;
+    win.clearTimeout?.(still);
+    offStart?.();
+    offEnd?.();
     apply();
     button.remove();
   };
