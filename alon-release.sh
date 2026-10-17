@@ -76,9 +76,11 @@ cp -cR "$CODE" "$REL/work/bundle-code"
   { echo "Installing the packages failed: $REL/work/npm.log" >&2; exit 1; }
 echo "Packages installed"
 
-# 4. Zenith.app: the window, the launcher, Node, the code and the icon.
+# 4. Zenith.app: its own window (Swift), the launcher, Node, the code and the icon.
 APP="$REL/work/Zenith.app"
-osacompile -o "$APP" alon-app/Zenith.applescript
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+swiftc -O -target arm64-apple-macos13.0 -o "$APP/Contents/MacOS/Zenith" alon-app/ZenithApp.swift \
+  -framework AppKit -framework WebKit
 RES="$APP/Contents/Resources"
 cp alon-app/launcher.sh "$RES/launcher.sh"
 chmod +x "$RES/launcher.sh"
@@ -98,16 +100,26 @@ for size in 16 32 128 256 512; do
   sips -z $size $size "$REL/work/icon-1024.png" --out "$ICONSET/icon_${size}x${size}.png" > /dev/null
   sips -z $((size * 2)) $((size * 2)) "$REL/work/icon-1024.png" --out "$ICONSET/icon_${size}x${size}@2x.png" > /dev/null
 done
-iconutil -c icns "$ICONSET" -o "$RES/applet.icns"
+iconutil -c icns "$ICONSET" -o "$RES/Zenith.icns"
 PLIST="$APP/Contents/Info.plist"
-plutil -replace CFBundleIdentifier -string "io.github.alonai4.zenith" "$PLIST"
-plutil -replace CFBundleName -string "Zenith" "$PLIST"
-plutil -replace CFBundleShortVersionString -string "$VERSION" "$PLIST"
-plutil -replace CFBundleVersion -string "$VERSION" "$PLIST"
-plutil -replace LSMinimumSystemVersion -string "13.0" "$PLIST"
+plutil -create xml1 "$PLIST"
+plutil -insert CFBundleExecutable -string "Zenith" "$PLIST"
+plutil -insert CFBundlePackageType -string "APPL" "$PLIST"
+plutil -insert CFBundleIconFile -string "Zenith" "$PLIST"
+plutil -insert CFBundleDisplayName -string "Zenith" "$PLIST"
+plutil -insert NSPrincipalClass -string "NSApplication" "$PLIST"
+plutil -insert NSHighResolutionCapable -bool true "$PLIST"
+plutil -insert NSMicrophoneUsageDescription -string "Zenith uses the microphone only when you switch on voice control." "$PLIST"
+# The page is on this Mac (http://localhost); the map loads its pictures like a browser does.
+plutil -insert NSAppTransportSecurity -json '{"NSAllowsLocalNetworking":true,"NSAllowsArbitraryLoadsInWebContent":true}' "$PLIST"
+plutil -insert CFBundleIdentifier -string "io.github.alonai4.zenith" "$PLIST"
+plutil -insert CFBundleName -string "Zenith" "$PLIST"
+plutil -insert CFBundleShortVersionString -string "$VERSION" "$PLIST"
+plutil -insert CFBundleVersion -string "$VERSION" "$PLIST"
+plutil -insert LSMinimumSystemVersion -string "13.0" "$PLIST"
 # Apple silicon only: the Node and the packages inside are arm64.
-plutil -replace LSArchitecturePriority -json '["arm64"]' "$PLIST"
-plutil -replace NSHumanReadableCopyright -string "Zenith, built on God's Eye View by Bilawal Sidhu (MIT)." "$PLIST"
+plutil -insert LSArchitecturePriority -json '["arm64"]' "$PLIST"
+plutil -insert NSHumanReadableCopyright -string "Zenith, built on God's Eye View by Bilawal Sidhu (MIT)." "$PLIST"
 xattr -cr "$APP"
 
 # The values in .env that are long enough to be keys, one per line.

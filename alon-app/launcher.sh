@@ -1,6 +1,6 @@
 #!/bin/zsh
 # The Zenith Mac app's launcher. It sits inside Zenith.app/Contents/Resources,
-# and the app's window (Zenith.applescript) calls it:
+# and the app's window (ZenithApp.swift) calls it with ZENITH_NO_BROWSER=1:
 #   start | stop | status | open | restart | check-bg | note
 # Everything Zenith writes goes in ~/Library/Application Support/Zenith,
 # never inside the app: the code (app/, with the keys in app/.env), the Node
@@ -20,6 +20,8 @@ NODE="$RUNTIME/bin/node"
 MANIFEST_URL="${ZENITH_UPDATE_URL:-https://github.com/AlonAI4/zenith/releases/latest/download/update.json}"
 mkdir -p "$DATA" "$LOGS"
 
+# The app shows Zenith in its own window; by hand, it opens in the browser.
+open_page() { [ -n "${ZENITH_NO_BROWSER:-}" ] || open "$URL"; }
 is_zenith() { curl -s -m 2 "$URL" 2>/dev/null | grep -q '<title>Zenith</title>'; }
 port_busy() { lsof -ti "tcp:$PORT" -sTCP:LISTEN > /dev/null 2>&1; }
 # Ours only if the process in server.pid is the one serving the port: after a
@@ -68,7 +70,7 @@ stop_server() {
 
 start() {
   if is_zenith; then
-    open "$URL"
+    open_page
     ours && echo "started" || echo "elsewhere"
     return 0
   fi
@@ -88,14 +90,14 @@ start() {
       tool confirm > /dev/null
       [[ "$applied" == *'"applied"'* ]] && echo "updated $(cat "$APP/.zenith-version")" > "$DATA/just-updated"
     fi
-    open "$URL"
+    open_page
     echo "started"
     return 0
   fi
   stop_server
   if [ -n "$changed" ] && [[ "$(tool rollback)" == *'"rolled-back"'* ]] && serve; then
     echo "The new version did not start, so Zenith went back to the one before. Details: $LOGS/zenith.log" > "$DATA/just-updated"
-    open "$URL"
+    open_page
     echo "started"
     return 0
   fi
