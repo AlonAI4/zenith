@@ -1,5 +1,6 @@
 import { startAddOns } from './app/addOns.js';
 import { installAddressLookup } from './app/addressLookup.js';
+import { installAddressSearch } from './app/addressSearch.js';
 import { installCctvHistory } from './app/cctvHistory.js';
 import { installCompassDial } from './app/compassDial.js';
 import { installDayNight } from './app/dayNight.js';
@@ -93,8 +94,10 @@ application
         ['Earthquakes', () => installEarthquakes(scene)],
         ['Time zones', () => installTimeZones(scene)],
         ['Day and night', () => installDayNight(scene)],
-        ['Map pin', () => installAddressLookup(scene)],
+        // Before the Map pin: an open target box takes the first Escape.
         ['Target box', () => installTargetBox(scene)],
+        ['Map pin', () => installAddressLookup(scene)],
+        ['Address search', () => installAddressSearch(scene)],
         ['Measure', () => installMeasureTool(scene)],
         [
           'Saved places',

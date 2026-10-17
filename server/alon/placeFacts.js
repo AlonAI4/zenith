@@ -308,7 +308,7 @@ export function pacer(
   let queue = Promise.resolve();
   let last = -Infinity;
   let waiting = 0;
-  return (work) => {
+  return (work, signal) => {
     if (waiting >= maxWaiting) {
       return Promise.reject(
         Object.assign(new Error('Too many lookups waiting'), { code: 'BUSY' }),
@@ -319,6 +319,8 @@ export function pacer(
       try {
         const wait = last + gapMs - now();
         if (wait > 0) await sleep(wait);
+        // Nobody is waiting for the answer any more: keep the turn for someone who is.
+        signal?.throwIfAborted();
         last = now();
         return await work();
       } finally {
@@ -336,10 +338,12 @@ export function pacer(
  */
 export function createPlaceFacts({
   requestJson = fetchRegionalJson,
-  nominatimTurn = (work) => enqueueNominatim(work, { bounded: true }),
+  nominatimTurn = (work, signal) =>
+    enqueueNominatim(work, { bounded: true, signal }),
   overpassTurn = pacer(),
 } = {}) {
   const cache = new Map();
+  const asking = new Map();
   const remember = (key, facts) => {
     if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
     cache.set(key, facts);
@@ -347,9 +351,7 @@ export function createPlaceFacts({
   };
   const options = { headers: HEADERS, redirect: 'error', timeoutMs: 9000 };
 
-  return async (lat, lon) => {
-    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
-    if (cache.has(key)) return cache.get(key);
+  const lookUp = async (lat, lon, key, signal) => {
     const params = new URLSearchParams({
       format: 'jsonv2',
       lat: lat.toFixed(6),
@@ -362,13 +364,15 @@ export function createPlaceFacts({
       'accept-language': 'en',
     });
     const building = factsFromNominatim(
-      await nominatimTurn(() =>
-        requestJson(`${NOMINATIM_REVERSE}?${params}`, options),
+      await nominatimTurn(
+        () => requestJson(`${NOMINATIM_REVERSE}?${params}`, options),
+        signal,
       ),
       lat,
       lon,
     );
     if (building) return remember(key, building);
+    signal?.throwIfAborted();
     const at = `${lat.toFixed(6)},${lon.toFixed(6)}`;
     const query =
       `[out:json][timeout:8];is_in(${at})->.a;` +
@@ -376,6 +380,7 @@ export function createPlaceFacts({
     const ask = async () => {
       let failed;
       for (const server of OVERPASS) {
+        signal?.throwIfAborted();
         try {
           // encodeURIComponent, not URLSearchParams: Overpass reads a + as a plus, not a space.
           return await requestJson(
@@ -388,18 +393,45 @@ export function createPlaceFacts({
             },
           );
         } catch (error) {
+          // A park too big to send is too big on the other server too.
+          if (error?.code === 'RESPONSE_TOO_LARGE') throw error;
           failed = error;
         }
       }
       throw Object.assign(
         new Error(failed?.message || 'Overpass did not answer'),
-        {
-          code: 'PARKS_DOWN',
-        },
+        { code: 'PARKS_DOWN' },
       );
     };
-    const park = factsFromOverpass(await overpassTurn(ask));
+    const park = factsFromOverpass(await overpassTurn(ask, signal));
     return remember(key, park);
+  };
+
+  /**
+   * Answers from the cache, or shares one lookup between everyone asking
+   * for the same spot at once. The lookup is called off when all of them
+   * have gone, so a page that moved on does not spend the services' requests.
+   */
+  return (lat, lon, { signal } = {}) => {
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if (cache.has(key)) return Promise.resolve(cache.get(key));
+    let shared = asking.get(key);
+    if (!shared) {
+      const stop = new AbortController();
+      shared = { stop, waiting: 0 };
+      shared.answer = lookUp(lat, lon, key, stop.signal).finally(() =>
+        asking.delete(key),
+      );
+      asking.set(key, shared);
+    }
+    shared.waiting += 1;
+    const leave = () => {
+      shared.waiting -= 1;
+      if (shared.waiting === 0) shared.stop.abort();
+    };
+    if (signal?.aborted) leave();
+    else signal?.addEventListener('abort', leave, { once: true });
+    return shared.answer;
   };
 }
 
@@ -442,8 +474,13 @@ export function placeFactsHandler(
       send(res, 429, { error: 'Too many lookups: wait a moment' });
       return;
     }
+    // The page gave up (a newer right-click, or closed): stop asking for it.
+    const gone = new AbortController();
+    res.on?.('close', () => {
+      if (!res.writableFinished) gone.abort();
+    });
     try {
-      const facts = await lookUp(lat, lon);
+      const facts = await lookUp(lat, lon, { signal: gone.signal });
       send(res, 200, facts ? { found: true, ...facts } : { found: false });
     } catch (error) {
       const busy =
@@ -451,9 +488,11 @@ export function placeFactsHandler(
       send(res, busy ? 429 : 502, {
         error: busy
           ? 'Too many lookups: wait a moment'
-          : error?.code === 'PARKS_DOWN'
-            ? 'No building here, and the park service (Overpass) is not answering. Try again later'
-            : 'The map facts service did not answer',
+          : error?.code === 'RESPONSE_TOO_LARGE'
+            ? 'This area is too big to outline here'
+            : error?.code === 'PARKS_DOWN'
+              ? 'No building here, and the park service (Overpass) is not answering. Try again later'
+              : 'The map facts service did not answer',
       });
     }
   });

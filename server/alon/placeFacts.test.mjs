@@ -330,3 +330,56 @@ test('the route answers this page only, checks the spot, and refuses other websi
   )(fakeRequest('/?lat=51.5&lon=-0.1'), limited);
   assert.equal(limited.status, 429);
 });
+
+test('two asks for the same spot share one lookup, and a lookup nobody waits for is called off', async () => {
+  let asked = 0;
+  let release;
+  const look = createPlaceFacts({
+    requestJson: async () => {
+      asked += 1;
+      await new Promise((resolve) => (release = resolve));
+      return nominatimHouse;
+    },
+    nominatimTurn: (work, signal) => {
+      signal?.throwIfAborted();
+      return work();
+    },
+    overpassTurn: (work) => work(),
+  });
+  const [a, b] = [look(...inside), look(...inside)];
+  await new Promise((resolve) => setImmediate(resolve));
+  release();
+  assert.equal(await a, await b);
+  assert.equal(asked, 1);
+
+  // Everyone left before its turn: the request is never sent.
+  let sent = 0;
+  const gate = createPlaceFacts({
+    requestJson: async () => {
+      sent += 1;
+      return nominatimHouse;
+    },
+    nominatimTurn: async (work, signal) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      signal?.throwIfAborted();
+      return work();
+    },
+  });
+  const leaving = new AbortController();
+  const answer = gate(LAT + 0.01, LON, { signal: leaving.signal });
+  leaving.abort();
+  await assert.rejects(answer);
+  assert.equal(sent, 0);
+});
+
+test('a turn whose asker has gone is skipped', async () => {
+  const turn = pacer(1100, { now: () => 0, sleep: async () => {} });
+  const gone = new AbortController();
+  gone.abort();
+  let ran = false;
+  await assert.rejects(
+    turn(() => (ran = true), gone.signal),
+    { name: 'AbortError' },
+  );
+  assert.equal(ran, false);
+});

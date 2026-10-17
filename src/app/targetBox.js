@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { guard } from './addOns.js';
 import { closeOnEscape } from './escapeKey.js';
 import { isMeasuring } from './measureTool.js';
 
@@ -249,26 +250,39 @@ export function installTargetBox({ viewer }, doc = document) {
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
   };
-  const offFrame = scene.postRender.addEventListener(place);
+  const offFrame = scene.postRender.addEventListener(
+    guard('Target box', place),
+  );
 
+  let asking = null;
   const hide = () => {
     request += 1;
+    // A newer right-click or a close: the answer is no longer wanted.
+    asking?.abort();
+    asking = null;
     target = null;
     spot = null;
     highlight.entities.removeAll();
     layer.classList.remove('open');
     scene.requestRender();
   };
-  close.addEventListener('click', hide);
   let opener = null;
+  // Back to the button that opened the box, or, when its card has closed
+  // meanwhile, to the Map pin switch.
+  const giveBackFocus = () =>
+    (opener?.offsetParent
+      ? opener
+      : opener && doc.getElementById('address-lookup-toggle')
+    )?.focus();
+  close.addEventListener('click', () => {
+    hide();
+    giveBackFocus();
+  });
   const offEscape = closeOnEscape(
     win,
     () => layer.classList.contains('open'),
     hide,
-    {
-      panel,
-      opener: { focus: () => opener?.focus?.() },
-    },
+    { panel, opener: { focus: giveBackFocus } },
   );
 
   const paint = (ring) => {
@@ -317,11 +331,15 @@ export function installTargetBox({ viewer }, doc = document) {
         { text: `${lat.toFixed(5)}, ${lon.toFixed(5)}`, kind: 'faint' },
       ],
     });
+    asking = new AbortController();
     try {
       const response = await fetch(
         `${ROUTE}?lat=${lat.toFixed(6)}&lon=${lon.toFixed(6)}`,
         {
-          signal: AbortSignal.timeout(TIMEOUT_MS),
+          signal: AbortSignal.any([
+            asking.signal,
+            AbortSignal.timeout(TIMEOUT_MS),
+          ]),
         },
       );
       const answer = await response.json().catch(() => ({}));
@@ -390,7 +408,6 @@ export function installTargetBox({ viewer }, doc = document) {
 
   // From the keyboard: the map pin card's Target box button opens the box
   // for the pinned spot.
-  const card = doc.getElementById('address-card');
   const fromCard = doc.createElement('button');
   fromCard.type = 'button';
   fromCard.id = 'address-card-target';
@@ -399,21 +416,32 @@ export function installTargetBox({ viewer }, doc = document) {
   fromCard.style.cssText =
     'margin-top:8px;padding:3px 10px;border:1px solid rgba(0,246,255,.45);border-radius:6px;' +
     'background:transparent;color:#00f6ff;font:600 11px/1.4 var(--font-mono,monospace);cursor:pointer';
-  fromCard.addEventListener('click', async () => {
-    const lat = Number(card?.dataset.lat);
-    const lon = Number(card?.dataset.lon);
+  fromCard.addEventListener('click', () => {
+    const lat = Number(fromCard.parentElement?.dataset.lat);
+    const lon = Number(fromCard.parentElement?.dataset.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
-    const ground =
-      viewer.scene.globe?.getHeight?.(
-        Cesium.Cartographic.fromDegrees(lon, lat),
-      ) ?? 0;
-    await openAt(lat, lon, ground);
+    const where = Cesium.Cartographic.fromDegrees(lon, lat);
+    // The top of what is there: on the 3D map the globe is hidden, so its
+    // height would be the sea's, not the ground's.
+    const sampled = scene.sampleHeightSupported
+      ? scene.sampleHeight(where)
+      : undefined;
+    const top = Number.isFinite(sampled)
+      ? sampled
+      : (scene.globe?.getHeight?.(where) ?? 0);
+    // openAt shows the box at once; the answer fills it in later.
+    openAt(lat, lon, top);
     opener = fromCard;
     close.focus();
   });
-  card?.appendChild(fromCard);
+  // Installed before the Map pin, so that Escape closes this box first; the
+  // card is made a moment later.
+  queueMicrotask(() =>
+    doc.getElementById('address-card')?.appendChild(fromCard),
+  );
 
   return () => {
+    hide();
     offEscape();
     offFrame();
     handler.destroy();
