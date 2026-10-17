@@ -46,6 +46,11 @@ export const ZENITH_SWITCHES = Object.freeze([
     what: 'Sharper 3D buildings, on from the start. Switch off to save data and graphics.',
   },
   {
+    id: 'classified-toggle',
+    name: 'Classified look',
+    what: 'The spy look, on from the start: decrypting target boxes, redacted lines (hover to read), a lock-on when you follow something, FLIR and CCTV readouts, an AGENT line with a Zulu clock. Only a look: everything shown is public map data. Your codename and radio blips are set below.',
+  },
+  {
     id: 'measure-toggle',
     name: 'Measure',
     closesTray: true,

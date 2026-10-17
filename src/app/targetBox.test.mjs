@@ -36,11 +36,17 @@ test('the box for a building: kind in the header, then name, address, size, floo
       'Victoria, City of Westminster, SW1A 1AA',
       'Area 1.8 ha',
       '3 floors · 23 m tall',
-      '51.50140, -0.14189',
+      '51.50140, -0.14189 · TQ 29067 79687',
       'Map data © OpenStreetMap contributors, via Nominatim',
     ],
   );
   assert.equal(rows[0].kind, 'title');
+  // The name and address decrypt; the coordinates and source go under REDACTED bars.
+  assert.deepEqual(
+    rows.filter((row) => row.decrypt).map((row) => row.text),
+    ['Buckingham Palace', 'Buckingham Gate'],
+  );
+  assert.equal(rows.filter((row) => row.secret).length, 2);
 });
 
 test('a house with no name leads with its address, and missing facts are left out', () => {

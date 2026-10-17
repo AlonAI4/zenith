@@ -220,5 +220,54 @@ export function createPhotoStore({
     });
   }
 
-  return { permission, list, take, read, remove };
+  /**
+   * Keep a picture Zenith drew itself: a case file of the map with a target
+   * box. Only a JPEG, no bigger than a camera picture, under a name made here.
+   * @returns {Promise<{photo?: object, error?: string, status: number}>}
+   */
+  function keep({ body, title, lat, lon }) {
+    return inTurn(async () => {
+      const jpeg =
+        Buffer.isBuffer(body) &&
+        body.length > 3 &&
+        body[0] === 0xff &&
+        body[1] === 0xd8 &&
+        body[2] === 0xff;
+      if (!jpeg || body.length > limits.picture)
+        return {
+          status: 400,
+          error: 'Only a picture of the view can be saved',
+        };
+      const photos = await readIndex();
+      const used = photos.reduce((sum, photo) => sum + (photo.bytes || 0), 0);
+      if (photos.length >= limits.count || used + body.length > limits.bytes) {
+        return {
+          status: 507,
+          error: 'The photos folder is full. Delete some photos to save more.',
+        };
+      }
+      const time = now();
+      const file = `${String(time).padStart(13, '0')}-${randomBytes(4).toString('hex')}.jpg`;
+      await mkdir(dir, { recursive: true });
+      await writeFile(path.join(dir, file), body);
+      const photo = {
+        file,
+        cameraId: 'case-file',
+        name: `Case file: ${String(title ?? '').replace(/[\u0000-\u001f]/g, '')}`.slice(
+          0,
+          160,
+        ),
+        place: 'Saved from a target box',
+        network: 'Your own picture of the map',
+        lat: Number.isFinite(lat) ? lat : null,
+        lon: Number.isFinite(lon) ? lon : null,
+        time,
+        bytes: body.length,
+      };
+      await writeIndex([...photos, photo]);
+      return { status: 200, photo };
+    });
+  }
+
+  return { permission, list, take, read, remove, keep };
 }

@@ -2,6 +2,7 @@ import { startAddOns } from './app/addOns.js';
 import { installAddressLookup } from './app/addressLookup.js';
 import { installAddressSearch } from './app/addressSearch.js';
 import { installCctvHistory } from './app/cctvHistory.js';
+import { installClassified } from './app/classified.js';
 import { installCompassDial } from './app/compassDial.js';
 import { installDayNight } from './app/dayNight.js';
 import { installEarthquakes } from './app/earthquakes.js';
@@ -119,6 +120,7 @@ application
             }),
         ],
         ['HD buildings', () => installHdDetail(scene)],
+        ['Classified look', () => installClassified(scene, { styleManager })],
         ['Help card', () => installHelpCard()],
         ['Narrow-window tray', () => installToolbarFit()],
         ['Focus tips', () => installFocusTips()],

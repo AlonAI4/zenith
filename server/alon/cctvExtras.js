@@ -262,6 +262,22 @@ export function createCctvExtras({
 const MAX_BODY_BYTES = 2048;
 
 /** A small JSON request body, or null. */
+const CASE_FILE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** A JPEG sent by the page, or null when it is something else or too big. */
+async function readJpegBody(req, maxBytes) {
+  if (!/^image\/jpeg\b/i.test(String(req.headers?.['content-type'] ?? '')))
+    return null;
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) return null;
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
 async function readJsonBody(req) {
   if (
     !/^application\/json\b/i.test(String(req.headers?.['content-type'] ?? ''))
@@ -350,6 +366,29 @@ export function cctvExtrasHandler(extras) {
           send(res, status, answer);
           return;
         }
+      }
+      if (
+        req.method === 'POST' &&
+        parts[0] === 'case-files' &&
+        parts.length === 1
+      ) {
+        const body = await readJpegBody(req, CASE_FILE_MAX_BYTES);
+        if (!body) {
+          send(res, 400, { error: 'Only a picture of the view can be saved' });
+          return;
+        }
+        const number = (name) => {
+          const value = url.searchParams.get(name);
+          return value === null ? NaN : Number(value);
+        };
+        const { status, ...answer } = await extras.photos.keep({
+          body,
+          title: String(url.searchParams.get('title') ?? '').slice(0, 120),
+          lat: number('lat'),
+          lon: number('lon'),
+        });
+        send(res, status, answer);
+        return;
       }
       if (parts[0] === 'photos' && parts.length === 2) {
         if (req.method === 'GET') {

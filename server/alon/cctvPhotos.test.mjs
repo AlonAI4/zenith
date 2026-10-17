@@ -5,12 +5,39 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { cctvExtrasHandler } from './cctvExtras.js';
-import { createPhotoStore, photoFileName, photoPermission } from './cctvPhotos.js';
+import {
+  createPhotoStore,
+  photoFileName,
+  photoPermission,
+} from './cctvPhotos.js';
 
 const CAMERAS = [
-  { id: 'tfl-00001.01251', pack: 'tfl', name: 'Tower Bridge', city: 'London', lat: 51.5, lon: -0.07, url: 'https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/00001.01251.jpg', feedType: 'image' },
-  { id: 'txdot-1', pack: 'txdot', name: 'I-35', city: 'Austin', url: 'https://its.txdot.gov/x.jpg', feedType: 'image' },
-  { id: 'vegvesen-9', pack: 'vegvesen', name: 'E6', city: 'Oslo', url: 'https://kamera.vegvesen.no/x.m3u8', feedType: 'hls' },
+  {
+    id: 'tfl-00001.01251',
+    pack: 'tfl',
+    name: 'Tower Bridge',
+    city: 'London',
+    lat: 51.5,
+    lon: -0.07,
+    url: 'https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/00001.01251.jpg',
+    feedType: 'image',
+  },
+  {
+    id: 'txdot-1',
+    pack: 'txdot',
+    name: 'I-35',
+    city: 'Austin',
+    url: 'https://its.txdot.gov/x.jpg',
+    feedType: 'image',
+  },
+  {
+    id: 'vegvesen-9',
+    pack: 'vegvesen',
+    name: 'E6',
+    city: 'Oslo',
+    url: 'https://kamera.vegvesen.no/x.m3u8',
+    feedType: 'hls',
+  },
 ];
 const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 0xff, 0xd9]);
 
@@ -28,12 +55,20 @@ function setUp({ limits, picture = JPEG, type = 'image/jpeg' } = {}) {
       return new Response(picture, { headers: { 'content-type': type } });
     },
   });
-  return { dir, store, fetched, done: () => rmSync(dir, { recursive: true, force: true }) };
+  return {
+    dir,
+    store,
+    fetched,
+    done: () => rmSync(dir, { recursive: true, force: true }),
+  };
 }
 
 test('only cameras whose network allows copies, and only pictures, not video', () => {
   assert.deepEqual(photoPermission(CAMERAS[0]), { allowed: true, why: '' });
-  assert.match(photoPermission(CAMERAS[1]).why, /terms do not say copies may be saved/);
+  assert.match(
+    photoPermission(CAMERAS[1]).why,
+    /terms do not say copies may be saved/,
+  );
   assert.match(photoPermission(CAMERAS[2]).why, /not video/);
   assert.match(photoPermission(null).why, /not in the list/);
 });
@@ -47,7 +82,10 @@ test('a photo is fetched from the camera itself, saved under its own name, and l
     assert.deepEqual(fetched, [CAMERAS[0].url, CAMERAS[0].url]);
     assert.ok(photoFileName(first.photo.file), first.photo.file);
     assert.equal(first.photo.name, 'Tower Bridge');
-    assert.equal(first.photo.network, 'Transport for London (Open Government Licence)');
+    assert.equal(
+      first.photo.network,
+      'Transport for London (Open Government Licence)',
+    );
     assert.deepEqual(readFileSync(path.join(dir, first.photo.file)), JPEG);
     const { photos, full } = await store.list();
     assert.deepEqual(
@@ -64,7 +102,14 @@ test('a photo is fetched from the camera itself, saved under its own name, and l
 test('refused: other networks, video, unknown ids and ids with path tricks; nothing is fetched', async () => {
   const { dir, store, fetched, done } = setUp();
   try {
-    for (const id of ['txdot-1', 'vegvesen-9', 'nope', '../../etc/passwd', 'a/b', '']) {
+    for (const id of [
+      'txdot-1',
+      'vegvesen-9',
+      'nope',
+      '../../etc/passwd',
+      'a/b',
+      '',
+    ]) {
       const answer = await store.take(id);
       assert.equal(answer.status, 403, id);
     }
@@ -76,7 +121,10 @@ test('refused: other networks, video, unknown ids and ids with path tricks; noth
 });
 
 test('a picture that is too big or not a picture is not saved', async () => {
-  const big = setUp({ limits: { count: 10, bytes: 1_000_000, picture: 5 }, picture: JPEG });
+  const big = setUp({
+    limits: { count: 10, bytes: 1_000_000, picture: 5 },
+    picture: JPEG,
+  });
   const text = setUp({ type: 'text/html', picture: Buffer.from('<html>') });
   try {
     assert.equal((await big.store.take('tfl-00001.01251')).status, 502);
@@ -89,7 +137,9 @@ test('a picture that is too big or not a picture is not saved', async () => {
 });
 
 test('a full folder says so instead of deleting anything', async () => {
-  const { store, done } = setUp({ limits: { count: 2, bytes: 1_000_000, picture: 1000 } });
+  const { store, done } = setUp({
+    limits: { count: 2, bytes: 1_000_000, picture: 1000 },
+  });
   try {
     assert.equal((await store.take('tfl-00001.01251')).status, 200);
     assert.equal((await store.take('tfl-00001.01251')).status, 200);
@@ -107,7 +157,11 @@ test('a full folder says so instead of deleting anything', async () => {
 test('two quick presses are both kept', async () => {
   const { store, done } = setUp();
   try {
-    await Promise.all([store.take('tfl-00001.01251'), store.take('tfl-00001.01251'), store.take('tfl-00001.01251')]);
+    await Promise.all([
+      store.take('tfl-00001.01251'),
+      store.take('tfl-00001.01251'),
+      store.take('tfl-00001.01251'),
+    ]);
     assert.equal((await store.list()).photos.length, 3);
   } finally {
     done();
@@ -118,7 +172,12 @@ test('delete removes the photo and its file; names outside the list are refused'
   const { dir, store, done } = setUp();
   try {
     const { photo } = await store.take('tfl-00001.01251');
-    for (const name of ['../photos.json', 'photos.json', `${photo.file}/..`, '1792184863000-zzzzzzzz.jpg']) {
+    for (const name of [
+      '../photos.json',
+      'photos.json',
+      `${photo.file}/..`,
+      '1792184863000-zzzzzzzz.jpg',
+    ]) {
       assert.equal(await store.remove(name), false, name);
       assert.equal(await store.read(name), null, name);
     }
@@ -137,7 +196,11 @@ function request(method, url, { headers = {}, body = '' } = {}) {
   return Object.assign(req, {
     method,
     url,
-    headers: { host: 'localhost:4173', 'sec-fetch-site': 'same-origin', ...headers },
+    headers: {
+      host: 'localhost:4173',
+      'sec-fetch-site': 'same-origin',
+      ...headers,
+    },
     socket: {},
   });
 }
@@ -151,26 +214,50 @@ function response() {
 
 test('the photo route takes only a camera id in JSON, and refuses other websites', async () => {
   const { store, done } = setUp();
-  const handler = cctvExtrasHandler({ photos: store, history: async () => [], historyFrame: async () => null });
+  const handler = cctvExtrasHandler({
+    photos: store,
+    history: async () => [],
+    historyFrame: async () => null,
+  });
   try {
     const json = { 'content-type': 'application/json' };
     const plain = response();
-    await handler(request('POST', '/photos', { body: 'cameraId=tfl-00001.01251', headers: { 'content-type': 'text/plain' } }), plain);
+    await handler(
+      request('POST', '/photos', {
+        body: 'cameraId=tfl-00001.01251',
+        headers: { 'content-type': 'text/plain' },
+      }),
+      plain,
+    );
     assert.equal(plain.status, 400);
 
     const elsewhere = response();
     await handler(
       request('POST', '/photos', {
         body: JSON.stringify({ cameraId: 'tfl-00001.01251' }),
-        headers: { ...json, origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
+        headers: {
+          ...json,
+          origin: 'https://evil.example',
+          'sec-fetch-site': 'cross-site',
+        },
       }),
       elsewhere,
     );
     assert.equal(elsewhere.statusCode ?? elsewhere.status, 403);
-    assert.deepEqual((await store.list()).photos, [], 'another website took no photo');
+    assert.deepEqual(
+      (await store.list()).photos,
+      [],
+      'another website took no photo',
+    );
 
     const taken = response();
-    await handler(request('POST', '/photos', { body: JSON.stringify({ cameraId: 'tfl-00001.01251' }), headers: json }), taken);
+    await handler(
+      request('POST', '/photos', {
+        body: JSON.stringify({ cameraId: 'tfl-00001.01251' }),
+        headers: json,
+      }),
+      taken,
+    );
     assert.equal(taken.status, 200);
     const { file } = JSON.parse(taken.body).photo;
 
@@ -190,6 +277,85 @@ test('the photo route takes only a camera id in JSON, and refuses other websites
     const check = response();
     await handler(request('GET', '/photo-check/txdot-1'), check);
     assert.equal(JSON.parse(check.body).allowed, false);
+  } finally {
+    done();
+  }
+});
+
+test('a case file from a target box is kept as a JPEG in My Photos, and nothing else is', async () => {
+  const { store, dir, done } = setUp();
+  const handler = cctvExtrasHandler({
+    photos: store,
+    history: async () => [],
+    historyFrame: async () => null,
+  });
+  const jpeg = { 'content-type': 'image/jpeg' };
+  try {
+    const saved = response();
+    await handler(
+      request(
+        'POST',
+        '/case-files?title=Buckingham%20Palace&lat=51.5014&lon=-0.14189',
+        { body: JPEG, headers: jpeg },
+      ),
+      saved,
+    );
+    assert.equal(saved.status, 200);
+    const { photo } = JSON.parse(saved.body);
+    assert.equal(photo.name, 'Case file: Buckingham Palace');
+    assert.equal(photo.lat, 51.5014);
+    assert.ok(photoFileName(photo.file));
+    assert.deepEqual(readFileSync(path.join(dir, photo.file)), JPEG);
+
+    const png = response();
+    await handler(
+      request('POST', '/case-files?title=x', {
+        body: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        headers: jpeg,
+      }),
+      png,
+    );
+    assert.equal(png.status, 400, 'bytes that are not a JPEG are refused');
+
+    const typed = response();
+    await handler(
+      request('POST', '/case-files?title=x', {
+        body: JPEG,
+        headers: { 'content-type': 'text/plain' },
+      }),
+      typed,
+    );
+    assert.equal(typed.status, 400);
+
+    const elsewhere = response();
+    await handler(
+      request('POST', '/case-files?title=x', {
+        body: JPEG,
+        headers: {
+          ...jpeg,
+          origin: 'https://evil.example',
+          'sec-fetch-site': 'cross-site',
+        },
+      }),
+      elsewhere,
+    );
+    assert.equal(elsewhere.statusCode ?? elsewhere.status, 403);
+    assert.equal(
+      (await store.list()).photos.length,
+      1,
+      'only the one case file was kept',
+    );
+  } finally {
+    done();
+  }
+});
+
+test('a case file bigger than a camera picture is refused', async () => {
+  const { store, done } = setUp({
+    limits: { count: 10, bytes: 1000, picture: 8 },
+  });
+  try {
+    assert.equal((await store.keep({ body: JPEG, title: 'big' })).status, 400);
   } finally {
     done();
   }

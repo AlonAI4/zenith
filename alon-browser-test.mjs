@@ -40,6 +40,7 @@ const SWITCHES = [
   'day-night-toggle',
   'address-lookup-toggle',
   'hd-detail-toggle',
+  'classified-toggle',
   'measure-toggle',
   'saved-places-toggle',
   'video-mode-toggle',
@@ -609,6 +610,8 @@ const checks = [
         const [x, y] = spot(page, 0.5, 0.5);
         await page.mouse.click(x, y, { button: 'right' });
         await until(page, () => !/ACQUIRING/.test(document.querySelector('#target-box-panel .tb-head')?.textContent ?? 'ACQUIRING'), 25_000, 'the target box never finished looking');
+        // The classified look decrypts the name for about a second.
+        await sleep(1300);
         const box = await page.evaluate(() => ({
           head: document.querySelector('#target-box-panel .tb-head').textContent,
           text: document.getElementById('target-box-panel').textContent,
@@ -688,6 +691,79 @@ const checks = [
         });
         await sleep(400);
       }
+    },
+  ],
+  [
+    'the classified look: on from the start, one switch that is remembered, redacted lines read on focus, no scrambling with reduced motion',
+    async (page) => {
+      expect(await pressed(page, 'classified-toggle'), 'the classified look is not on from the start');
+      const rightClickPalace = async () => {
+        await page.evaluate(() => {
+          const { camera } = window.__zt.viewer();
+          window.__ztSpot ||= camera.positionWC.clone();
+          window.__ztLook ||= { heading: camera.heading, pitch: camera.pitch };
+          camera.setView({
+            destination: camera.positionWC.constructor.fromDegrees(-0.14189, 51.5014, 700),
+            orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+          });
+        });
+        await sleep(2000);
+        const [x, y] = spot(page, 0.5, 0.5);
+        await page.mouse.click(x, y, { button: 'right' });
+        await until(page, () => !/ACQUIRING/.test(document.querySelector('#target-box-panel .tb-head')?.textContent ?? 'ACQUIRING'), 25_000, 'the target box never finished looking');
+      };
+      try {
+        await rightClickPalace();
+        const redacted = await page.evaluate(() => {
+          const row = document.querySelector('#target-box-panel .tb-redact');
+          if (!row) return null;
+          const bar = () => getComputedStyle(row, '::after').display;
+          const before = bar();
+          row.focus();
+          return { before, focused: bar() };
+        });
+        if (!redacted) throw new Skip('the map facts service did not answer');
+        expect(redacted.before !== 'none', 'the coordinates line is not under a REDACTED bar');
+        expect(redacted.focused === 'none', 'keyboard focus did not lift the REDACTED bar');
+        await page.keyboard.press('Escape');
+
+        await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+        await rightClickPalace();
+        const title = () => page.evaluate(() => document.querySelector('#target-box-panel .tb-title')?.textContent);
+        const first = await title();
+        await sleep(1200);
+        expect(first === (await title()), `with reduced motion the name still scrambled (${first})`);
+        await page.keyboard.press('Escape');
+      } finally {
+        await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+        await page.evaluate(() => {
+          if (!window.__ztSpot) return;
+          const { camera } = window.__zt.viewer();
+          camera.setView({ destination: window.__ztSpot, orientation: { ...window.__ztLook, roll: 0 } });
+          delete window.__ztSpot;
+          delete window.__ztLook;
+        });
+      }
+
+      await press(page, 'classified-toggle');
+      const off = await page.evaluate(() => ({
+        body: document.body.classList.contains('zenith-classified'),
+        agent: window.__zt.shown(document.getElementById('zenith-agent-line')),
+      }));
+      expect(!off.body && !off.agent, 'switching the classified look off left parts of it on');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await until(
+        page,
+        () =>
+          Boolean(document.getElementById('classified-toggle') && window.__godsEyeView?.viewer) &&
+          !document.elementFromPoint(innerWidth / 2, 50)?.closest('#loading-screen'),
+        90_000,
+        'the app did not start again',
+      );
+      await sleep(1000);
+      expect(!(await pressed(page, 'classified-toggle')), 'the classified look was not remembered as off');
+      await press(page, 'classified-toggle');
+      expect(await pressed(page, 'classified-toggle'), 'the classified look did not come back on');
     },
   ],
   [
@@ -2303,6 +2379,12 @@ const soloChecks = [
       await followPlane(page);
       const marker = () => page.evaluate(() => window.__zt.shown(document.getElementById('tracking-marker')) && getComputedStyle(document.getElementById('tracking-marker')).display !== 'none');
       expect(!(await marker()), 'the marker shows while the plane is close');
+      // The classified look locks on to what is followed.
+      const lock = await page.evaluate(() => ({
+        shown: window.__zt.shown(document.getElementById('zenith-lock')),
+        text: document.querySelector('#zenith-lock .zl-tag')?.textContent ?? '',
+      }));
+      expect(lock.shown && /^TRACKING\s+\S/.test(lock.text), `no lock-on reticle on the followed plane (${lock.text})`);
       await page.mouse.move(720, 450);
       // Scroll until far out: how far one notch goes depends on how busy the
       // browser is, so a fixed number of notches can stop short.
@@ -2574,6 +2656,8 @@ async function main() {
   await page.evaluate(() => {
     localStorage.setItem('gev:first-run-mission:v1', 'suppressed');
     localStorage.setItem('gev.helpCard', 'closed');
+    // The once-a-day secure-link sequence would cover the first checks.
+    localStorage.setItem('gev.secureLinkDay', new Date().toISOString().slice(0, 10));
   });
 
   const setups = [

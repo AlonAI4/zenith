@@ -1,6 +1,8 @@
 import * as Cesium from 'cesium';
 import { guard } from './addOns.js';
+import { blip, decrypt } from './classified.js';
 import { closeOnEscape } from './escapeKey.js';
+import { gridReference } from './gridRef.js';
 import { isMeasuring } from './measureTool.js';
 
 /**
@@ -17,6 +19,8 @@ import { isMeasuring } from './measureTool.js';
  */
 
 export const ROUTE = '/api/alon/place';
+/** Where case files go: My Photos, on this computer. */
+export const CASE_ROUTE = '/api/alon/cctv/case-files';
 /** Above this camera height a right-click asks to zoom in instead. */
 export const TARGET_MAX_HEIGHT_M = 6000;
 const CYAN = '#00f6ff';
@@ -37,9 +41,13 @@ export function formatArea(m2) {
  * @returns {{ header: string, rows: Array<{ text: string, kind: 'title'|'line'|'faint' }> }}
  */
 export function targetRows(facts, lat, lon) {
+  // Latitude and longitude, and the British grid reference beside them in Great Britain.
   const coordinates = {
-    text: `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+    text: [`${lat.toFixed(5)}, ${lon.toFixed(5)}`, gridReference(lat, lon)]
+      .filter(Boolean)
+      .join(' · '),
     kind: 'faint',
+    secret: true,
   };
   if (!facts?.found) {
     return {
@@ -59,13 +67,18 @@ export function targetRows(facts, lat, lon) {
     .filter(Boolean)
     .join(' · ');
   const rows = [
-    { text: facts.name || facts.address || facts.kind, kind: 'title' },
-    facts.name && facts.address && { text: facts.address, kind: 'line' },
+    {
+      text: facts.name || facts.address || facts.kind,
+      kind: 'title',
+      decrypt: true,
+    },
+    facts.name &&
+      facts.address && { text: facts.address, kind: 'line', decrypt: true },
     facts.place && { text: facts.place, kind: 'line' },
     size && { text: `Area ${size}`, kind: 'line' },
     build && { text: build, kind: 'line' },
     coordinates,
-    facts.source && { text: facts.source, kind: 'faint' },
+    facts.source && { text: facts.source, kind: 'faint', secret: true },
   ].filter(Boolean);
   return {
     header: `TARGET // ${String(facts.kind || 'PLACE').toUpperCase()}`,
@@ -127,6 +140,13 @@ const STYLE = `
 #target-box-panel .tb-rows { padding: 6px 10px 0; }
 #target-box-panel .tb-title { color: #fff; font-weight: 700; font-size: 13px; }
 #target-box-panel .tb-faint { opacity: .65; font-size: 11px; }
+#target-box-panel .tb-case {
+  margin: 8px 10px 0; padding: 3px 8px; border: 1px solid rgba(0,246,255,.5); border-radius: 3px;
+  background: rgba(0,246,255,.08); color: ${CYAN}; font: 700 10px/1.4 var(--font-mono, monospace);
+  letter-spacing: .12em; cursor: pointer;
+}
+#target-box-panel .tb-case[hidden] { display: none; }
+#target-box-panel > .tb-faint { padding: 4px 10px 0; }
 `;
 
 /**
@@ -170,7 +190,15 @@ export function installTargetBox({ viewer }, doc = document) {
   const rows = doc.createElement('div');
   rows.className = 'tb-rows';
   rows.setAttribute('role', 'status');
-  panel.append(head, rows);
+  const saveCase = doc.createElement('button');
+  saveCase.type = 'button';
+  saveCase.className = 'tb-case';
+  saveCase.textContent = 'SAVE CASE FILE';
+  saveCase.title = 'Save a picture of this view with the box into My Photos';
+  const caseNote = doc.createElement('div');
+  caseNote.className = 'tb-faint';
+  caseNote.setAttribute('role', 'status');
+  panel.append(head, rows, saveCase, caseNote);
   layer.append(corners, panel);
   doc.body.appendChild(layer);
 
@@ -178,16 +206,29 @@ export function installTargetBox({ viewer }, doc = document) {
   viewer.dataSources.add(highlight);
   const color = Cesium.Color.fromCssColorString(CYAN);
 
-  const show = ({ header, rows: list }) => {
+  let decrypting = [];
+  let shown = null;
+  const show = ({ header, rows: list }, { found = false } = {}) => {
+    shown = { header, list };
+    for (const stop of decrypting) stop();
+    decrypting = [];
     headText.textContent = header;
     rows.replaceChildren(
-      ...list.map(({ text, kind }) => {
+      ...list.map(({ text, kind, decrypt: scramble, secret }) => {
         const row = doc.createElement('div');
         row.className = `tb-${kind}`;
-        row.textContent = text;
+        if (scramble) decrypting.push(decrypt(row, text, { win }));
+        else row.textContent = text;
+        // Under a REDACTED bar with the classified look; hover or focus lifts it.
+        if (secret) {
+          row.classList.add('tb-redact');
+          row.tabIndex = 0;
+        }
         return row;
       }),
     );
+    saveCase.hidden = !found;
+    caseNote.textContent = '';
     layer.classList.add('open');
     place();
   };
@@ -307,6 +348,91 @@ export function installTargetBox({ viewer }, doc = document) {
     scene.requestRender();
   };
 
+  /**
+   * The case file: the view as drawn, the corners, the box with its real
+   * (decrypted, unredacted) text, and a TOP SECRET stamp, as a JPEG.
+   */
+  const caseFileImage = () => {
+    scene.render();
+    const source = scene.canvas;
+    const scale = source.width / (source.clientWidth || source.width);
+    const shot = doc.createElement('canvas');
+    shot.width = source.width;
+    shot.height = source.height;
+    const ctx = shot.getContext('2d');
+    ctx.drawImage(source, 0, 0);
+    ctx.scale(scale, scale);
+    ctx.strokeStyle = CYAN;
+    ctx.lineWidth = 2.5;
+    if (corners.style.display !== 'none') {
+      const box = corners.getBoundingClientRect();
+      ctx.save();
+      ctx.translate(box.left, box.top);
+      ctx.stroke(new Path2D(cornerPath.getAttribute('d')));
+      ctx.restore();
+    }
+    const at = panel.getBoundingClientRect();
+    const lines = shown?.list ?? [];
+    const tall = 28 + lines.length * 17 + 10;
+    ctx.fillStyle = 'rgba(2,10,16,.92)';
+    ctx.fillRect(at.left, at.top, 260, tall);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(at.left, at.top, 260, tall);
+    ctx.fillStyle = CYAN;
+    ctx.font = '700 11px ui-monospace, monospace';
+    ctx.fillText(shown?.header ?? '', at.left + 10, at.top + 18);
+    lines.forEach(({ text, kind }, i) => {
+      ctx.fillStyle = kind === 'faint' ? 'rgba(223,248,255,.65)' : '#fff';
+      ctx.font = `${kind === 'title' ? 700 : 500} ${kind === 'faint' ? 10 : 12}px ui-monospace, monospace`;
+      ctx.fillText(text, at.left + 10, at.top + 44 + i * 17, 240);
+    });
+    ctx.save();
+    ctx.translate(source.clientWidth / 2, 70);
+    ctx.rotate(-0.05);
+    ctx.font = '800 22px ui-monospace, monospace';
+    const stamp = 'TOP SECRET // ZENITH EYES ONLY';
+    const wide = ctx.measureText(stamp).width + 28;
+    ctx.strokeStyle = '#ff2e3e';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-wide / 2, -22, wide, 40);
+    ctx.fillStyle = '#ff2e3e';
+    ctx.textAlign = 'center';
+    ctx.fillText(stamp, 0, 6);
+    ctx.restore();
+    return new Promise((resolve) => shot.toBlob(resolve, 'image/jpeg', 0.9));
+  };
+
+  saveCase.addEventListener('click', async () => {
+    const title = shown?.list?.[0]?.text ?? 'Target';
+    const where = target ?? spot;
+    saveCase.disabled = true;
+    caseNote.textContent = 'Saving…';
+    try {
+      const picture = await caseFileImage();
+      if (!picture) throw new Error('The view could not be drawn');
+      const params = new URLSearchParams({ title: title.slice(0, 120) });
+      if (where) {
+        params.set('lat', where.lat.toFixed(5));
+        params.set('lon', where.lon.toFixed(5));
+      }
+      const response = await fetch(`${CASE_ROUTE}?${params}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/jpeg' },
+        body: picture,
+      });
+      const answer = await response.json().catch(() => ({}));
+      caseNote.textContent = response.ok
+        ? 'Saved to My Photos'
+        : answer.error || 'The case file was not saved';
+    } catch (error) {
+      caseNote.textContent = String(
+        error?.message || 'The case file was not saved',
+      );
+    } finally {
+      saveCase.disabled = false;
+    }
+  });
+
   /** Look up and show the place at a spot. */
   const openAt = async (lat, lon, height = 0) => {
     hide();
@@ -356,7 +482,8 @@ export function installTargetBox({ viewer }, doc = document) {
         spot = null;
         paint(answer.outline);
       }
-      show(targetRows(answer, lat, lon));
+      show(targetRows(answer, lat, lon), { found: Boolean(target) });
+      blip('open', win);
     } catch (error) {
       if (mine !== request) return;
       show({
