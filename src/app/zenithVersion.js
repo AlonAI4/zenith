@@ -14,7 +14,7 @@ export const ZENITH_VERSION = Object.freeze({
     'Cameras in Finland, British Columbia and parts of California can show their older pictures, up to a day back.',
     "Take a photo of a camera whenever you want: it stays on your Mac, in My photos and in that camera's times.",
     'Escape now closes every panel, the keyboard reaches everything, and screen readers hear what changes.',
-    'From the original project: bike-share station names in English, smoother snow, and safer place searches.',
+    'From the original project: fifty new pieces of work, such as the real map coming back by itself after a fallback.',
     'Zenith MC, the Minecraft mod, now has its own download page.',
   ]),
 });
