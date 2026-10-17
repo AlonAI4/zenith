@@ -22,6 +22,8 @@ import {
  */
 
 const STORAGE_KEY = 'gev.addressLookup';
+/** Sent with { lat, lon } to put the pin and its card on a spot. */
+export const PIN_AT_EVENT = 'zenith:pin-at';
 const PHOTON_REVERSE = 'https://photon.komoot.io/reverse';
 const WIKIPEDIA = 'https://en.wikipedia.org/w/api.php';
 const WIKIPEDIA_ASKER =
@@ -509,8 +511,15 @@ export function installAddressLookup({ viewer }, doc = document) {
       camera.pickEllipsoid(click.position, scene.ellipsoid);
     if (!Cesium.defined(spot)) return;
     const where = Cesium.Cartographic.fromCartesian(spot);
-    const lat = Cesium.Math.toDegrees(where.latitude);
-    const lon = Cesium.Math.toDegrees(where.longitude);
+    await pinAt(
+      Cesium.Math.toDegrees(where.latitude),
+      Cesium.Math.toDegrees(where.longitude),
+      click.position.y,
+    );
+  };
+
+  /** Put the pin and the card on a spot: from a click, or from a search. */
+  const pinAt = async (lat, lon, screenY) => {
     const coordinates = [`Coordinates: ${formatCoordinates(lat, lon)}`];
     card.dataset.lat = lat.toFixed(5);
     card.dataset.lon = lon.toFixed(5);
@@ -530,11 +539,11 @@ export function installAddressLookup({ viewer }, doc = document) {
 
     if (!closeEnoughForAddress(camera.positionCartographic?.height)) {
       show([['Zoom in closer to look up an address', STRONG], coordinates]);
-      placeCard(click.position.y);
+      placeCard(screenY);
       return;
     }
     show([['Looking up the address…', STRONG], coordinates]);
-    placeCard(click.position.y);
+    placeCard(screenY);
     try {
       const found = await ask(lat, lon, mine);
       if (mine !== request || !found) return;
@@ -553,6 +562,14 @@ export function installAddressLookup({ viewer }, doc = document) {
 
   const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
   handler.setInputAction(onClick, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+  // The address search (addressSearch.js) opens the card on the house it found.
+  const win = doc.defaultView ?? window;
+  const onPinAt = (event) => {
+    const { lat, lon } = event.detail || {};
+    if (Number.isFinite(lat) && Number.isFinite(lon))
+      pinAt(lat, lon, win.innerHeight / 2);
+  };
+  win.addEventListener(PIN_AT_EVENT, onPinAt);
 
   const button = doc.createElement('button');
   button.id = 'address-lookup-toggle';
@@ -576,6 +593,7 @@ export function installAddressLookup({ viewer }, doc = document) {
 
   return () => {
     offEscape();
+    win.removeEventListener(PIN_AT_EVENT, onPinAt);
     handler.destroy();
     if (pins && !scene.isDestroyed()) scene.primitives.remove(pins);
     card.remove();

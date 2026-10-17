@@ -643,6 +643,54 @@ const checks = [
     },
   ],
   [
+    'searching a street address flies to the house, looking down, with the map pin card on it',
+    async (page) => {
+      await page.evaluate(() => {
+        const { camera } = window.__zt.viewer();
+        window.__ztSpot = camera.positionWC.clone();
+        window.__ztLook = { heading: camera.heading, pitch: camera.pitch };
+      });
+      try {
+        // As a person would: open the LOCATION tray, then the search box.
+        await page.click('#location-bar-toggle');
+        await sleep(500);
+        await page.click('#search-toggle');
+        await until(page, () => document.activeElement?.id === 'location-search', 3000, 'the search box did not open');
+        await page.keyboard.type('10 Downing Street, London');
+        await page.keyboard.press('Enter');
+        // 10 Downing Street, as OpenStreetMap has it.
+        await until(
+          page,
+          () => {
+            const viewer = window.__zt.viewer();
+            const where = viewer.camera.positionCartographic;
+            const rad = Math.PI / 180;
+            const lat = where.latitude / rad;
+            const lon = where.longitude / rad;
+            const metres = Math.hypot((lat - 51.50349) * 111_320, (lon + 0.1277) * 111_320 * Math.cos(51.5 * rad));
+            const card = document.getElementById('address-card');
+            return metres < 150 && window.__zt.pitch() < -80 && window.__zt.shown(card) && /Downing/.test(card.textContent);
+          },
+          30_000,
+          'the search did not land on 10 Downing Street looking down with the card open',
+        );
+        const height = await page.evaluate(() => window.__zt.height());
+        expect(height < 600, `the view stopped ${Math.round(height)} m up, too high to see the house`);
+      } finally {
+        await page.keyboard.press('Escape');
+        await page.evaluate(() => {
+          if (!window.__ztSpot) return;
+          const { camera } = window.__zt.viewer();
+          camera.cancelFlight();
+          camera.setView({ destination: window.__ztSpot, orientation: { ...window.__ztLook, roll: 0 } });
+          delete window.__ztSpot;
+          delete window.__ztLook;
+        });
+        await sleep(400);
+      }
+    },
+  ],
+  [
     'scale follows the zoom',
     async (page) => {
       const metres = () =>
