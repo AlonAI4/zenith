@@ -263,6 +263,7 @@ const MAX_BODY_BYTES = 2048;
 
 /** A small JSON request body, or null. */
 const CASE_FILE_MAX_BYTES = 5 * 1024 * 1024;
+const TOO_BIG = Symbol('too big');
 
 /** A JPEG sent by the page, or null when it is something else or too big. */
 async function readJpegBody(req, maxBytes) {
@@ -272,7 +273,7 @@ async function readJpegBody(req, maxBytes) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > maxBytes) return null;
+    if (size > maxBytes) return TOO_BIG;
     chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
@@ -373,6 +374,10 @@ export function cctvExtrasHandler(extras) {
         parts.length === 1
       ) {
         const body = await readJpegBody(req, CASE_FILE_MAX_BYTES);
+        if (body === TOO_BIG) {
+          send(res, 413, { error: 'The picture is too big to save' });
+          return;
+        }
         if (!body) {
           send(res, 400, { error: 'Only a picture of the view can be saved' });
           return;

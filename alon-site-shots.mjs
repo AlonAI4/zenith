@@ -217,7 +217,8 @@ async function main() {
     try {
       // Each picture starts with every switch off.
       await page.evaluate(() => {
-        for (const key of ['dayNight', 'earthquakes', 'timeZones', 'trainStations', 'addressLookup', 'mapLabels']) localStorage.setItem(`gev.${key}`, '0');
+        for (const key of ['dayNight', 'earthquakes', 'timeZones', 'trainStations', 'addressLookup', 'mapLabels', 'classified']) localStorage.setItem(`gev.${key}`, '0');
+        localStorage.setItem('gev.secureLinkDay', new Date().toISOString().slice(0, 10));
       });
       await shot.take(page);
       await settle(page);

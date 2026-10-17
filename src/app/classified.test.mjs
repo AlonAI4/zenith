@@ -25,8 +25,37 @@ test('scrambled text settles into the real text, keeping its spaces and punctuat
   assert.deepEqual(scrambleFrames('', 3), ['', '', '']);
 });
 
-test('decrypting ends on the real text, and with reduced motion shows it at once', () => {
-  const element = { textContent: '', setAttribute() {} };
+function fakeElement() {
+  const span = () => ({
+    textContent: '',
+    className: '',
+    hidden: null,
+    setAttribute(name, value) {
+      if (name === 'aria-hidden') this.hidden = value;
+    },
+  });
+  const element = {
+    ownerDocument: { createElement: span },
+    children: [],
+    own: '',
+    get textContent() {
+      return this.children.length
+        ? this.children.map((c) => c.textContent).join('')
+        : this.own;
+    },
+    set textContent(value) {
+      this.own = value;
+      this.children = [];
+    },
+    replaceChildren(...children) {
+      this.children = children;
+    },
+  };
+  return element;
+}
+
+test('decrypting ends on the real text, screen readers only ever get the real text, and reduced motion shows it at once', () => {
+  const element = fakeElement();
   const timers = [];
   const win = {
     matchMedia: () => ({ matches: false }),
@@ -34,15 +63,23 @@ test('decrypting ends on the real text, and with reduced motion shows it at once
     clearInterval: () => {},
   };
   decrypt(element, 'Buckingham Palace', { win });
-  assert.notEqual(element.textContent, 'Buckingham Palace');
+  const [shown, heard] = element.children;
+  assert.equal(
+    shown.hidden,
+    'true',
+    'the scrambled letters are hidden from screen readers',
+  );
+  assert.notEqual(shown.textContent, 'Buckingham Palace');
+  assert.equal(heard.textContent, 'Buckingham Palace');
   for (let i = 0; i < 40; i++) timers[0]();
   assert.equal(element.textContent, 'Buckingham Palace');
 
-  const still = { textContent: '', setAttribute() {} };
+  const still = fakeElement();
   decrypt(still, 'Buckingham Palace', {
     win: { ...win, matchMedia: () => ({ matches: true }) },
   });
   assert.equal(still.textContent, 'Buckingham Palace');
+  assert.equal(still.children.length, 0);
   assert.equal(reducedMotion({ matchMedia: () => ({ matches: true }) }), true);
   assert.equal(reducedMotion({}), false);
 });

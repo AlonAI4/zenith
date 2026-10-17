@@ -96,11 +96,20 @@ export function scrambleFrames(text, count = 18, random = Math.random) {
 export function decrypt(element, text, { win = globalThis, ms = 900 } = {}) {
   element.textContent = text;
   if (!on || reducedMotion(win) || !text) return () => {};
-  element.setAttribute('aria-label', text);
+  const doc = element.ownerDocument;
+  if (!doc) return () => {};
+  // Screen readers get the real text only, never the scrambled letters.
+  const shown = doc.createElement('span');
+  shown.setAttribute('aria-hidden', 'true');
+  const heard = doc.createElement('span');
+  heard.className = 'zenith-sr-only';
+  heard.textContent = text;
   const frames = scrambleFrames(text);
+  shown.textContent = frames[0];
+  element.replaceChildren(shown, heard);
   let frame = 0;
   const timer = win.setInterval(() => {
-    element.textContent = frames[frame];
+    shown.textContent = frames[frame];
     frame += 1;
     if (frame >= frames.length) stop();
   }, ms / frames.length);
@@ -108,7 +117,6 @@ export function decrypt(element, text, { win = globalThis, ms = 900 } = {}) {
     win.clearInterval(timer);
     element.textContent = text;
   };
-  element.textContent = frames[0];
   return stop;
 }
 
@@ -163,6 +171,7 @@ export function bootLines(codename) {
 }
 
 const STYLE = `
+.zenith-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #classified-toggle { font: 700 9px/1 var(--font-mono, monospace); letter-spacing: .06em; }
 #zenith-agent-line { margin-top: 6px; font: 600 10px/1.2 var(--font-mono, monospace); letter-spacing: .18em; color: ${CYAN}; text-shadow: 0 0 6px rgba(0,0,0,.9); }
 body:not(.zenith-classified) #zenith-agent-line { display: none; }
@@ -193,7 +202,7 @@ body:not(.zenith-classified) #zenith-agent-line { display: none; }
 #zenith-grain { position: fixed; inset: 0; z-index: 125; pointer-events: none; display: none; }
 #zenith-grain .zg-lines { position: absolute; inset: 0;
   background: repeating-linear-gradient(to bottom, rgba(0,0,0,.18) 0 1px, transparent 1px 3px); }
-#zenith-grain .zg-noise { position: absolute; inset: -50%; opacity: .09; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+#zenith-grain .zg-noise { position: absolute; inset: -15%; opacity: .09; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
   animation: zg-move .5s steps(5) infinite; }
 @keyframes zg-move { 20% { transform: translate(-6%, 4%); } 40% { transform: translate(5%, -7%); } 60% { transform: translate(-3%, 8%); } 80% { transform: translate(7%, 2%); } }
 #zenith-grain .zg-uplink { position: absolute; right: 24px; top: 24px; display: flex; align-items: flex-end; gap: 3px;
@@ -304,6 +313,10 @@ export function installClassified(
   const hudLine = doc.createElement('div');
   hudLine.className = 'zh-line';
   hud.append(hudLine);
+  // The CCTV REC dot is made once, so its blink is never restarted.
+  const recDot = doc.createElement('span');
+  recDot.className = 'zh-rec';
+  const recText = doc.createTextNode('');
   const cross = svg(
     doc,
     '<svg class="zh-cross" viewBox="0 0 64 64"><path d="M32 0V24M32 40V64M0 32H24M40 32H64M26 32H38M32 26V38"/></svg>',
@@ -349,19 +362,21 @@ export function installClassified(
     if (flir) {
       const heading =
         Math.round(Cesium.Math.toDegrees(camera.heading) + 360) % 360;
-      hudLine.textContent = [
+      const said = [
         Number(thermalMode()) >= 0.5 ? 'BLK HOT' : 'WHT HOT',
         `HDG ${String(heading).padStart(3, '0')}°`,
         rangeText,
       ]
         .filter(Boolean)
         .join('   ');
+      // Written only when it changes: this runs with every frame drawn.
+      if (hudLine.textContent !== said) hudLine.textContent = said;
     } else if (cctv) {
       const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-      hudLine.replaceChildren(
-        Object.assign(doc.createElement('span'), { className: 'zh-rec' }),
-        `${cameraId}   ${stamp} UTC`,
-      );
+      const said = `${cameraId}   ${stamp} UTC`;
+      if (recText.data !== said) recText.data = said;
+      if (hudLine.firstChild !== recDot)
+        hudLine.replaceChildren(recDot, recText);
     }
     const video = on && cinemaRunning();
     grain.style.display = video ? 'block' : 'none';
@@ -496,10 +511,17 @@ export function installClassified(
     const all = bootLines(read(CODENAME_KEY));
     let shown = motion() ? 0 : all.length;
     text.textContent = all.slice(0, shown).join('\n');
+    // The key that skips the screen is only for that, not also a shortcut.
+    const onKey = (event) => {
+      if (event.metaKey || event.ctrlKey) return;
+      event.stopImmediatePropagation();
+      event.preventDefault();
+      end();
+    };
     const end = () => {
       win.clearInterval(typing);
       win.clearTimeout(done);
-      win.removeEventListener('keydown', end, true);
+      win.removeEventListener('keydown', onKey, true);
       boot.remove();
     };
     const typing = win.setInterval(() => {
@@ -509,7 +531,7 @@ export function installClassified(
     }, 360);
     const done = win.setTimeout(end, 2400);
     boot.addEventListener('click', end);
-    win.addEventListener('keydown', end, true);
+    win.addEventListener('keydown', onKey, true);
     cleanups.push(end);
   }
 

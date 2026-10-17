@@ -35,6 +35,10 @@ test('grid references have the right letters and five-figure numbers', () => {
 
 test('places outside Great Britain have no grid reference', () => {
   assert.equal(gridReference(48.8584, 2.2945), null);
+  assert.equal(gridReference(53.3498, -6.2603), null, 'Dublin');
+  assert.equal(gridReference(54.5973, -5.9301), null, 'Belfast');
+  assert.equal(gridReference(50.9513, 1.8587), null, 'Calais');
+  assert.match(gridReference(55.3, -5.8), /^NR /, 'Kintyre stays in');
   assert.equal(gridReference(40.7128, -74.006), null);
   assert.equal(gridReference(Number.NaN, 0), null);
 });

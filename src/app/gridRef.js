@@ -127,6 +127,10 @@ export function gridReference(latDeg, lonDeg) {
     lonDeg > 2.1
   )
     return null;
+  // The grid's box also covers northern France and Ireland, which have
+  // grids of their own.
+  if (lonDeg > 1.5 && latDeg < 51.25) return null;
+  if (latDeg > 51.3 && latDeg < 55.25 && lonDeg < -5.42) return null;
   const { easting, northing } = wgs84ToGrid(latDeg, lonDeg);
   if (!(
     easting >= 0 &&

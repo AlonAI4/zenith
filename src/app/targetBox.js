@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import { guard } from './addOns.js';
-import { blip, decrypt } from './classified.js';
+import { blip, classifiedOn, decrypt } from './classified.js';
 import { closeOnEscape } from './escapeKey.js';
 import { gridReference } from './gridRef.js';
 import { isMeasuring } from './measureTool.js';
@@ -222,7 +222,8 @@ export function installTargetBox({ viewer }, doc = document) {
         // Under a REDACTED bar with the classified look; hover or focus lifts it.
         if (secret) {
           row.classList.add('tb-redact');
-          row.tabIndex = 0;
+          // A keyboard stop only when there is a bar to lift.
+          if (classifiedOn()) row.tabIndex = 0;
         }
         return row;
       }),
@@ -355,12 +356,15 @@ export function installTargetBox({ viewer }, doc = document) {
   const caseFileImage = () => {
     scene.render();
     const source = scene.canvas;
-    const scale = source.width / (source.clientWidth || source.width);
+    // At most 2560 pixels wide: a 5K screen's full picture can pass the 5 MB
+    // a saved picture may have.
+    const fit = Math.min(1, 2560 / source.width);
+    const scale = (source.width * fit) / (source.clientWidth || source.width);
     const shot = doc.createElement('canvas');
-    shot.width = source.width;
-    shot.height = source.height;
+    shot.width = Math.round(source.width * fit);
+    shot.height = Math.round(source.height * fit);
     const ctx = shot.getContext('2d');
-    ctx.drawImage(source, 0, 0);
+    ctx.drawImage(source, 0, 0, shot.width, shot.height);
     ctx.scale(scale, scale);
     ctx.strokeStyle = CYAN;
     ctx.lineWidth = 2.5;
