@@ -27,6 +27,7 @@ import {
   rollBack,
   signManifest,
   zipEntries,
+  installEnv,
 } from './appUpdate.mjs';
 
 const keys = generateKeyPairSync('ed25519');
@@ -460,4 +461,15 @@ test('first open puts the code that came inside the app in place; the private ke
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("installing an update's packages finds the app's own Node, with nothing else on the PATH", () => {
+  const env = installEnv(
+    { PATH: '/usr/bin:/bin', HOME: '/x' },
+    '/data/runtime/v24/bin/node',
+  );
+  assert.equal(env.PATH, '/data/runtime/v24/bin:/usr/bin:/bin');
+  assert.equal(env.HOME, '/x');
+  assert.equal(env.PUPPETEER_SKIP_DOWNLOAD, '1');
+  assert.match(installEnv({}, '/a/bin/node').PATH, /^\/a\/bin:\/usr\/bin/);
 });

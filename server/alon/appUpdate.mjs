@@ -72,6 +72,20 @@ export function signManifest(fields, privateKeyPem) {
   );
 }
 
+/**
+ * The surroundings for installing an update's packages. Some packages run
+ * `node` while they install, and an app opened from the Finder has no Node
+ * on its PATH: the app's own Node goes first.
+ */
+export function installEnv(env, nodePath) {
+  const own = path.dirname(nodePath);
+  return {
+    ...env,
+    PATH: [own, env.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'].join(':'),
+    PUPPETEER_SKIP_DOWNLOAD: '1',
+  };
+}
+
 /** Whether an address may be used: https, or this computer itself for tests. */
 export function allowedAddress(url) {
   try {
@@ -476,7 +490,7 @@ async function main(argv) {
               [npm, 'ci', '--no-audit', '--no-fund'],
               {
                 cwd: folder,
-                env: { ...process.env, PUPPETEER_SKIP_DOWNLOAD: '1' },
+                env: installEnv(process.env, process.execPath),
                 stdio: 'ignore',
               },
             )
