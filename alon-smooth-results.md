@@ -95,3 +95,21 @@ The classified look's own work is 0.1% of the time while turning (the
 profile's largest Zenith file). Well within 10% of before. The suburb quality
 comparison (Stage C) needs the paid 3D map and was not run, so these are
 compared with 1.2.1, not with Stage C.
+
+## Blurry suburbs: the 3D scan is the limit (Stage C, 17 Oct)
+
+The paid 3D map over a suburban street in Forest Hill (Honor Oak Road), 180 m
+up, looking down at 40°, Retina window. The same view drawn at four detail
+levels (`tileset.maximumScreenSpaceError`; lower asks for finer tiles sooner):
+
+| Detail level | New tiles loaded | Tile memory | Picture |
+|---|---|---|---|
+| 16 (Cesium's default) | | 128 MB | the same as 8, pixel for pixel |
+| 8 (Zenith's HD) | 0 | 128 MB | |
+| 4 | 11 | 131 MB | a few far-off tiles change; the houses look the same |
+| 2 | 0 | 131 MB | the same as 4, pixel for pixel |
+
+At this distance even the default level already loads the finest tiles Google
+has for these houses: the blobby trees and soft walls are Google's scan of the
+area, not Zenith asking for coarse tiles. Asking for more detail adds nothing,
+so nothing was changed.
