@@ -239,6 +239,29 @@ export function chooseAddressHit(features, address) {
 }
 
 /**
+ * The house in an answer from the app's Google address route, when Google
+ * knows the exact building (a rooftop or a numbered address), or null.
+ * @returns {{ kind: 'house', lat: number, lon: number, label: string } | null}
+ */
+export function googleHouse(answer) {
+  const best = answer?.status === 'OK' ? answer.results?.[0] : null;
+  const where = best?.geometry?.location;
+  const exact =
+    best?.geometry?.location_type === 'ROOFTOP' ||
+    (best?.types || []).some((type) =>
+      ['street_address', 'premise', 'subpremise'].includes(type),
+    );
+  if (!exact || !Number.isFinite(where?.lat) || !Number.isFinite(where?.lng))
+    return null;
+  return {
+    kind: 'house',
+    lat: where.lat,
+    lon: where.lng,
+    label: String(best.formatted_address || ''),
+  };
+}
+
+/**
  * @param {{ viewer: Cesium.Viewer }} scene
  * @param {Document} [doc]
  * @param {{ fetchImpl?: typeof fetch }} [options]
@@ -254,6 +277,17 @@ export function installAddressSearch(
   if (!input) return () => {};
   let passing = false;
   let request = 0;
+  // With a Google Maps key, Google is asked when the free map does not know
+  // the house number: it knows many more.
+  let google = false;
+  fetchImpl('/api/setup/status', { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : null))
+    .then((status) => {
+      google = Boolean(
+        status?.keys?.find?.((key) => key.id === 'google-maps')?.set,
+      );
+    })
+    .catch(() => {});
 
   // Hand the search back to the original, as if this add-on were not here,
   // with the words that were typed when Enter was pressed.
@@ -350,6 +384,13 @@ export function installAddressSearch(
           await ask([street, address.rest].filter(Boolean).join(', ')),
           { ...address, number: '' },
         );
+      }
+      if (google && hit?.kind !== 'house') {
+        const response = await fetchImpl(
+          `/api/google/geocode?${new URLSearchParams({ address: typed.trim() })}`,
+          { signal: AbortSignal.timeout(TIMEOUT_MS) },
+        );
+        if (response.ok) hit = googleHouse(await response.json()) || hit;
       }
     } catch (error) {
       console.warn('[address-search]', error?.message || error);

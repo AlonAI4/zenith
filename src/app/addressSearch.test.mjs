@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  googleHouse,
   townMatches,
   chooseAddressHit,
   likeness,
@@ -200,4 +201,30 @@ test('spoken addresses have no comma: the town starts after the street word', ()
     street: 'Old Court Place',
     rest: 'London',
   });
+});
+
+test("Google's answer counts as the house only when Google knows the building", () => {
+  const answer = (location_type, types) => ({
+    status: 'OK',
+    results: [
+      {
+        formatted_address: '10 Downing St, London SW1A 2AA, UK',
+        geometry: { location: { lat: 51.5034, lng: -0.1276 }, location_type },
+        types,
+      },
+    ],
+  });
+  assert.deepEqual(googleHouse(answer('ROOFTOP', ['street_address'])), {
+    kind: 'house',
+    lat: 51.5034,
+    lon: -0.1276,
+    label: '10 Downing St, London SW1A 2AA, UK',
+  });
+  assert.equal(
+    googleHouse(answer('RANGE_INTERPOLATED', ['street_address'])).kind,
+    'house',
+  );
+  assert.equal(googleHouse(answer('GEOMETRIC_CENTER', ['route'])), null);
+  assert.equal(googleHouse({ status: 'ZERO_RESULTS', results: [] }), null);
+  assert.equal(googleHouse(null), null);
 });
