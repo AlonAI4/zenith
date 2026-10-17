@@ -22,6 +22,12 @@ import { installTrainStations } from './app/trainStations.js';
 import { installVideoMode } from './app/videoMode.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
+import { initBranding } from './ui/branding.js';
+import { initButtonTooltips } from './ui/buttonTooltips.js';
+import { initCustomSelects } from './ui/customSelect.js';
+import { initPanelFullscreen } from './ui/panelFullscreen.js';
+import { initShortcutGuard } from './ui/shortcutGuard.js';
+import { initToggleLook } from './ui/toggleLook.js';
 import { t } from './i18n/index.js';
 
 const application = createStandaloneApplication({

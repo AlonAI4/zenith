@@ -40,3 +40,29 @@ test('nothing people see calls them friends', () => {
     assert.doesNotMatch(read(path), /\bfriends\b/i, `${path} says "friends"`);
   }
 });
+
+test('the page is called Zenith, which the Mac app and launchers look for', () => {
+  // An update of the original once put its own title back; launcher.sh and
+  // Start Zenith.command check for this exact title to know Zenith is running.
+  assert.match(read('index.html'), /<title>Zenith<\/title>/);
+  assert.match(read('index.html'), /href="\/alon\/zenith-favicon\.png"/);
+});
+
+test('the header and loading screen show the Zenith emblem, name and credit', () => {
+  // The same update put the original's logo, title and motto back here.
+  for (const file of ['src/ui/templates/scene-chrome.html', 'src/ui/templates/hud-loading.html']) {
+    assert.match(read(file), /src="\/alon\/zenith-emblem\.webp"/, file);
+    assert.match(read(file), /ZEN<span class="title-accent">ITH<\/span>/, file);
+  }
+  assert.match(read('src/ui/templates/scene-chrome.html'), /<p class="subtitle"[^>]*>BUILT ON GOD'S EYE VIEW<\/p>/);
+});
+
+test('every add-on main.js starts is also imported there', () => {
+  // An update of the original kept the lines that start these add-ons but
+  // dropped their imports, so six of them failed at start.
+  const main = read('src/main.js');
+  const called = new Set([...main.matchAll(/\b((?:init|install)[A-Z]\w+)\(/g)].map((m) => m[1]));
+  for (const name of called) {
+    assert.match(main, new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\} from`), `${name} is started but not imported`);
+  }
+});

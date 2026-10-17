@@ -422,7 +422,12 @@ export function findUnmarked() {
 
 // Text that never reaches the page as UI: tool results and descriptions for
 // AI clients (MCP and the voice model).
-const NOT_UI = [/^src\/tools\//];
+const NOT_UI = [
+  /^src\/tools\//,
+  // Zenith's own add-ons, written in English only for this build.
+  /^src\/app\/(addOns|addressLookup|cctvHistory|dayNight|earthquakes|hdDetail|helpCard|mapLabels|measureTool|myPhotos|notice|savedPlaces|scaleBar|settingsFile|timeZones|toolbarFit|trackingMarker|trainStations|videoMode)\.js$/,
+  /^src\/ui\/(branding|buttonTooltips|customSelect|panelFullscreen|shortcutGuard|toggleLook)\.js$/,
+];
 
 function sourceFiles() {
   return trackedFiles(
