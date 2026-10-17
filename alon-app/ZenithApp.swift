@@ -5,7 +5,9 @@
 // WebKit view, and stops it when the app quits. Links to other websites open
 // in the normal browser. Updates are looked for in the background; when one
 // is ready, the app offers Restart now.
+import AVFoundation
 import AppKit
+import Speech
 import WebKit
 
 let zenithURL = URL(string: "http://localhost:4173/")!
@@ -33,6 +35,94 @@ func launcher(_ action: String) -> (ok: Bool, said: String) {
 /// The page view: a click on the window when it is not in front still reaches
 /// the button under it, as in a browser (a plain WebKit view only brings the
 /// window forward on that first click).
+/// Free voice control: while V is held, the page asks for speech to be turned
+/// into text here, on the Mac, by Apple's speech recognition. Only Zenith's
+/// own page may ask, recognition must happen on the device (no sound is sent
+/// to a server), and nothing heard is kept.
+final class SpeechBridge: NSObject, WKScriptMessageHandler {
+  weak var webView: WKWebView?
+  private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-GB"))
+  private let engine = AVAudioEngine()
+  private var request: SFSpeechAudioBufferRecognitionRequest?
+  private var task: SFSpeechRecognitionTask?
+
+  func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+    let origin = message.frameInfo.securityOrigin
+    guard message.frameInfo.isMainFrame, origin.protocol == "http",
+          ["localhost", "127.0.0.1"].contains(origin.host), origin.port == 4173,
+          let action = message.body as? String else { return }
+    if action == "start" { start() } else if action == "stop" { stop() }
+  }
+
+  /// Tells the page what happened, as a zenith:speech event.
+  private func send(_ kind: String, _ text: String = "") {
+    guard let data = try? JSONSerialization.data(withJSONObject: ["kind": kind, "text": text]),
+          let json = String(data: data, encoding: .utf8) else { return }
+    webView?.evaluateJavaScript("window.dispatchEvent(new CustomEvent('zenith:speech', { detail: \(json) }))")
+  }
+
+  private func start() {
+    finish(quiet: true)
+    SFSpeechRecognizer.requestAuthorization { status in
+      DispatchQueue.main.async {
+        guard status == .authorized else {
+          self.send("error", "Speech recognition is off for Zenith. Turn it on in System Settings, Privacy & Security, Speech Recognition.")
+          return
+        }
+        guard let recognizer = self.recognizer, recognizer.isAvailable, recognizer.supportsOnDeviceRecognition else {
+          self.send("error", "This Mac cannot turn speech into text on the device, so free voice control is off.")
+          return
+        }
+        self.listen(recognizer)
+      }
+    }
+  }
+
+  private func listen(_ recognizer: SFSpeechRecognizer) {
+    let request = SFSpeechAudioBufferRecognitionRequest()
+    request.requiresOnDeviceRecognition = true
+    request.shouldReportPartialResults = true
+    self.request = request
+    let input = engine.inputNode
+    input.removeTap(onBus: 0)
+    input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { buffer, _ in
+      request.append(buffer)
+    }
+    engine.prepare()
+    do { try engine.start() } catch {
+      send("error", "The microphone did not start. Check System Settings, Privacy & Security, Microphone.")
+      finish(quiet: true)
+      return
+    }
+    send("listening")
+    task = recognizer.recognitionTask(with: request) { result, error in
+      DispatchQueue.main.async {
+        if let result = result {
+          self.send(result.isFinal ? "final" : "partial", result.bestTranscription.formattedString)
+        }
+        if error != nil || result?.isFinal == true { self.finish(quiet: false) }
+      }
+    }
+  }
+
+  /// V was let go: no more sound; the last words still come back as "final".
+  private func stop() {
+    guard request != nil else { return }
+    if engine.isRunning { engine.stop() }
+    engine.inputNode.removeTap(onBus: 0)
+    request?.endAudio()
+  }
+
+  private func finish(quiet: Bool) {
+    if engine.isRunning { engine.stop() }
+    engine.inputNode.removeTap(onBus: 0)
+    task?.cancel()
+    task = nil
+    request = nil
+    if !quiet { send("done") }
+  }
+}
+
 final class ZenithWebView: WKWebView {
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
@@ -46,13 +136,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
   var pageReady = false
   var pendingNote = ""
   var checking: Timer?
+  let speech = SpeechBridge()
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     buildMenu()
     let configuration = WKWebViewConfiguration()
     configuration.preferences.isElementFullscreenEnabled = true
     configuration.websiteDataStore = .default()
+    // Free voice control (see SpeechBridge); the page learns it is there.
+    configuration.userContentController.add(speech, name: "zenithSpeech")
+    configuration.userContentController.addUserScript(WKUserScript(
+      source: "window.__zenithNativeSpeech = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
     webView = ZenithWebView(frame: .zero, configuration: configuration)
+    speech.webView = webView
     webView.navigationDelegate = self
     webView.uiDelegate = self
     // Dark until Zenith draws, not white.

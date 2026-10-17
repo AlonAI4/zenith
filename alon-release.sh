@@ -82,7 +82,7 @@ echo "Packages installed"
 APP="$REL/work/Zenith.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 swiftc -O -target arm64-apple-macos13.0 -o "$APP/Contents/MacOS/Zenith" alon-app/ZenithApp.swift \
-  -framework AppKit -framework WebKit
+  -framework AppKit -framework WebKit -framework Speech -framework AVFoundation
 RES="$APP/Contents/Resources"
 cp alon-app/launcher.sh "$RES/launcher.sh"
 chmod +x "$RES/launcher.sh"
@@ -112,6 +112,7 @@ plutil -insert CFBundleDisplayName -string "Zenith" "$PLIST"
 plutil -insert NSPrincipalClass -string "NSApplication" "$PLIST"
 plutil -insert NSHighResolutionCapable -bool true "$PLIST"
 plutil -insert NSMicrophoneUsageDescription -string "Zenith uses the microphone only when you switch on voice control." "$PLIST"
+plutil -insert NSSpeechRecognitionUsageDescription -string "Zenith turns your voice commands into text on this Mac, only while you hold V. Nothing is sent to a server or kept." "$PLIST"
 # The page is on this Mac (http://localhost); the map loads its pictures like a browser does.
 plutil -insert NSAppTransportSecurity -json '{"NSAllowsLocalNetworking":true,"NSAllowsArbitraryLoadsInWebContent":true}' "$PLIST"
 plutil -insert CFBundleIdentifier -string "io.github.alonai4.zenith" "$PLIST"

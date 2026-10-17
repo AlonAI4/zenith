@@ -364,23 +364,26 @@ export function installTargetBox({ viewer }, doc = document) {
     ctx.scale(scale, scale);
     ctx.strokeStyle = CYAN;
     ctx.lineWidth = 2.5;
-    if (corners.style.display !== 'none') {
+    if (boxOpen && corners.style.display !== 'none') {
       const box = corners.getBoundingClientRect();
       ctx.save();
       ctx.translate(box.left, box.top);
       ctx.stroke(new Path2D(cornerPath.getAttribute('d')));
       ctx.restore();
     }
+    const boxOpen = layer.classList.contains('open');
     const at = panel.getBoundingClientRect();
-    const lines = shown?.list ?? [];
+    const lines = boxOpen ? (shown?.list ?? []) : [];
     const tall = 28 + lines.length * 17 + 10;
-    ctx.fillStyle = 'rgba(2,10,16,.92)';
-    ctx.fillRect(at.left, at.top, 260, tall);
-    ctx.lineWidth = 1;
-    ctx.strokeRect(at.left, at.top, 260, tall);
-    ctx.fillStyle = CYAN;
-    ctx.font = '700 11px ui-monospace, monospace';
-    ctx.fillText(shown?.header ?? '', at.left + 10, at.top + 18);
+    if (boxOpen) {
+      ctx.fillStyle = 'rgba(2,10,16,.92)';
+      ctx.fillRect(at.left, at.top, 260, tall);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(at.left, at.top, 260, tall);
+      ctx.fillStyle = CYAN;
+      ctx.font = '700 11px ui-monospace, monospace';
+      ctx.fillText(shown?.header ?? '', at.left + 10, at.top + 18);
+    }
     lines.forEach(({ text, kind }, i) => {
       ctx.fillStyle = kind === 'faint' ? 'rgba(223,248,255,.65)' : '#fff';
       ctx.font = `${kind === 'title' ? 700 : 500} ${kind === 'faint' ? 10 : 12}px ui-monospace, monospace`;
@@ -402,28 +405,49 @@ export function installTargetBox({ viewer }, doc = document) {
     return new Promise((resolve) => shot.toBlob(resolve, 'image/jpeg', 0.9));
   };
 
+  /** Save a case file into My photos; returns what to tell the person. */
+  const saveCaseFile = async (title, where) => {
+    const picture = await caseFileImage();
+    if (!picture) throw new Error('The view could not be drawn');
+    const params = new URLSearchParams({ title: title.slice(0, 120) });
+    if (where) {
+      params.set('lat', where.lat.toFixed(5));
+      params.set('lon', where.lon.toFixed(5));
+    }
+    const response = await fetch(`${CASE_ROUTE}?${params}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: picture,
+    });
+    const answer = await response.json().catch(() => ({}));
+    return response.ok
+      ? 'Saved to My Photos'
+      : answer.error || 'The case file was not saved';
+  };
+
+  // Voice control's "take photo" with no camera picture open: the map itself.
+  const onSaveView = async () => {
+    const centre = camera.positionCartographic;
+    const said = await saveCaseFile(
+      'Map view',
+      centre && {
+        lat: Cesium.Math.toDegrees(centre.latitude),
+        lon: Cesium.Math.toDegrees(centre.longitude),
+      },
+    ).catch((error) => String(error?.message || 'The picture was not saved'));
+    win.dispatchEvent(
+      new CustomEvent('zenith:saved-view', { detail: { said } }),
+    );
+  };
+  win.addEventListener('zenith:save-view', onSaveView);
+
   saveCase.addEventListener('click', async () => {
     const title = shown?.list?.[0]?.text ?? 'Target';
     const where = target ?? spot;
     saveCase.disabled = true;
     caseNote.textContent = 'Saving…';
     try {
-      const picture = await caseFileImage();
-      if (!picture) throw new Error('The view could not be drawn');
-      const params = new URLSearchParams({ title: title.slice(0, 120) });
-      if (where) {
-        params.set('lat', where.lat.toFixed(5));
-        params.set('lon', where.lon.toFixed(5));
-      }
-      const response = await fetch(`${CASE_ROUTE}?${params}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'image/jpeg' },
-        body: picture,
-      });
-      const answer = await response.json().catch(() => ({}));
-      caseNote.textContent = response.ok
-        ? 'Saved to My Photos'
-        : answer.error || 'The case file was not saved';
+      caseNote.textContent = await saveCaseFile(title, where);
     } catch (error) {
       caseNote.textContent = String(
         error?.message || 'The case file was not saved',
@@ -569,6 +593,7 @@ export function installTargetBox({ viewer }, doc = document) {
 
   return () => {
     hide();
+    win.removeEventListener('zenith:save-view', onSaveView);
     offEscape();
     offFrame();
     handler.destroy();

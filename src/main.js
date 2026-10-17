@@ -7,6 +7,7 @@ import { installCompassDial } from './app/compassDial.js';
 import { installDayNight } from './app/dayNight.js';
 import { installEarthquakes } from './app/earthquakes.js';
 import { installFocusTips } from './app/focusTips.js';
+import { installFreeVoice } from './app/freeVoice.js';
 import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
 import { installHelpCard } from './app/helpCard.js';
@@ -129,6 +130,14 @@ application
         ['Narrow-window tray', () => installToolbarFit()],
         ['Focus tips', () => installFocusTips()],
         ['CCTV history', () => installCctvHistory(styleManager)],
+        [
+          'Free voice',
+          () =>
+            installFreeVoice(scene, {
+              styleManager,
+              dataManager: data?.dataManager,
+            }),
+        ],
       ]);
     },
     // start() hands back the same promise; its failure is reported above.

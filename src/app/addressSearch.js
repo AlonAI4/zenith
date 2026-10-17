@@ -58,6 +58,29 @@ const STREET_WORDS = Object.freeze({
 });
 
 const DIRECTIONS = new Set(['north', 'south', 'east', 'west']);
+/** Words that end a street's name. */
+const STREET_TYPES = new Set([
+  'street',
+  'road',
+  'avenue',
+  'lane',
+  'close',
+  'crescent',
+  'drive',
+  'gardens',
+  'place',
+  'square',
+  'terrace',
+  'grove',
+  'way',
+  'court',
+  'row',
+  'walk',
+  'mews',
+  'rise',
+  'parade',
+  'boulevard',
+]);
 
 /**
  * A house number, then a street, then perhaps a town or postcode after a
@@ -73,11 +96,21 @@ export function parseAddress(text) {
   if (!found || !/[a-z]{2}/i.test(found[2])) return null;
   // "10115 Berlin" or "75001 Paris" is a postcode and a town, not a street.
   if (found[1].length >= 5 && !/\s/.test(found[2].trim())) return null;
-  return {
-    number: found[1].toLowerCase(),
-    street: found[2].trim(),
-    rest: (found[3] || '').trim(),
-  };
+  let street = found[2].trim();
+  let rest = (found[3] || '').trim();
+  // Spoken, there is no comma: "10 Downing Street London". The street ends
+  // at its street word, and what follows is the town.
+  if (!rest) {
+    const words = street.split(/\s+/);
+    const end = words.findIndex(
+      (word, i) => i > 0 && STREET_TYPES.has(normalStreet(word)),
+    );
+    if (end > 0 && end < words.length - 1) {
+      street = words.slice(0, end + 1).join(' ');
+      rest = words.slice(end + 1).join(' ');
+    }
+  }
+  return { number: found[1].toLowerCase(), street, rest };
 }
 
 /** Lower case, no dots or commas, and shortened street words written out. */

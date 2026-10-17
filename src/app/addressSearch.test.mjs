@@ -175,3 +175,19 @@ test('a postcode and a town is not a street address', () => {
   assert.equal(parseAddress('75001 Paris'), null);
   assert.ok(parseAddress('10 Berlin Road'));
 });
+
+test('spoken addresses have no comma: the town starts after the street word', () => {
+  assert.deepEqual(parseAddress('10 downing street london'), {
+    number: '10',
+    street: 'downing street',
+    rest: 'london',
+  });
+  assert.deepEqual(parseAddress('221B Baker St London'), {
+    number: '221b',
+    street: 'Baker St',
+    rest: 'London',
+  });
+  // A street word at the end, or in the middle of a name, is left alone.
+  assert.equal(parseAddress('5 Park Road').rest, '');
+  assert.equal(parseAddress('5 Avenue Road').street, 'Avenue Road');
+});
