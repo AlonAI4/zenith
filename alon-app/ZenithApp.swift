@@ -30,6 +30,13 @@ func launcher(_ action: String) -> (ok: Bool, said: String) {
   return (process.terminationStatus == 0, said)
 }
 
+/// The page view: a click on the window when it is not in front still reaches
+/// the button under it, as in a browser (a plain WebKit view only brings the
+/// window forward on that first click).
+final class ZenithWebView: WKWebView {
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
   var window: NSWindow!
   var webView: WKWebView!
@@ -45,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     let configuration = WKWebViewConfiguration()
     configuration.preferences.isElementFullscreenEnabled = true
     configuration.websiteDataStore = .default()
-    webView = WKWebView(frame: .zero, configuration: configuration)
+    webView = ZenithWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = self
     webView.uiDelegate = self
     // Dark until Zenith draws, not white.
