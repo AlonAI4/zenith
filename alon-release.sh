@@ -19,7 +19,9 @@ PRIVATE=0
 
 KEY="$HOME/.config/zenith/update-signing-key.pem"
 [ -f "$KEY" ] || { echo "No signing key at $KEY." >&2; exit 1; }
-if [ -n "$(git status --porcelain)" ]; then
+# The download site is not part of the app (and other chats edit it), so its
+# files may be mid-edit.
+if [ -n "$(git status --porcelain -- . ':(exclude)alon-site')" ]; then
   echo "Commit everything first: the release is built from the saved code only." >&2
   exit 1
 fi
