@@ -7,15 +7,13 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.2',
-  date: '16 October 2026',
+  number: '1.2.1',
+  date: '17 October 2026',
   changes: Object.freeze([
-    'Zenith now comes as a Mac app: drag it into Applications, and it updates itself when a new version is out.',
-    'Cameras in Finland, British Columbia and parts of California can show their older pictures, up to a day back.',
-    "Take a photo of a camera whenever you want: it stays on your Mac, in My photos and in that camera's times.",
-    'Escape now closes every panel, the keyboard reaches everything, and screen readers hear what changes.',
-    'From the original project: fifty new pieces of work, such as the real map coming back by itself after a fallback.',
-    'Zenith MC, the Minecraft mod, now has its own download page.',
+    'Moving the map is about three times smoother: HD draws lighter while you move and sharp again when you stop.',
+    'The Google Maps logo now sits on its own line, under the Cesium one.',
+    'In the Mac app, the first click on the window reaches the button, and the window no longer flashes white while it starts.',
+    'Everything from version 1.2 is still here: the Mac app, camera look-back and camera photos.',
   ]),
 });
 
