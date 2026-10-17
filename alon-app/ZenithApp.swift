@@ -34,6 +34,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
   var window: NSWindow!
   var webView: WKWebView!
   let waiting = NSTextField(labelWithString: "Starting Zenith…")
+  /// A short note along the top of the window (never a box that can get stuck in front).
+  let banner = NSTextField(labelWithString: "")
+  var pageReady = false
+  var pendingNote = ""
   var checking: Timer?
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -44,6 +48,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     webView = WKWebView(frame: .zero, configuration: configuration)
     webView.navigationDelegate = self
     webView.uiDelegate = self
+    // Dark until Zenith draws, not white.
+    webView.setValue(false, forKey: "drawsBackground")
     webView.isHidden = true
 
     window = NSWindow(
@@ -57,9 +63,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     window.collectionBehavior = .fullScreenPrimary
     window.center()
     window.setFrameAutosaveName("ZenithWindow")
+    // A remembered size smaller than the smallest allowed one is not kept.
+    if window.frame.width < window.minSize.width || window.frame.height < window.minSize.height {
+      window.setContentSize(NSSize(width: 1440, height: 900))
+      window.center()
+    }
     let content = NSView()
     window.contentView = content
-    for view in [webView!, waiting] as [NSView] {
+    banner.isHidden = true
+    banner.alignment = .center
+    banner.textColor = NSColor(red: 0.01, green: 0.06, blue: 0.09, alpha: 1)
+    banner.backgroundColor = NSColor(red: 0.45, green: 0.9, blue: 1, alpha: 0.95)
+    banner.drawsBackground = true
+    banner.font = .systemFont(ofSize: 13, weight: .semibold)
+    banner.lineBreakMode = .byWordWrapping
+    banner.maximumNumberOfLines = 2
+    for view in [webView!, waiting, banner] as [NSView] {
       view.translatesAutoresizingMaskIntoConstraints = false
       content.addSubview(view)
     }
@@ -72,6 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
       webView.bottomAnchor.constraint(equalTo: content.bottomAnchor),
       waiting.centerXAnchor.constraint(equalTo: content.centerXAnchor),
       waiting.centerYAnchor.constraint(equalTo: content.centerYAnchor),
+      banner.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+      banner.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+      banner.bottomAnchor.constraint(equalTo: content.bottomAnchor),
     ])
     window.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
@@ -108,6 +130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
   }
 
   func showNote(_ note: String) {
+    // Nothing is shown over the window until Zenith's page is up.
+    guard pageReady else {
+      pendingNote += (pendingNote.isEmpty ? "" : "\n") + note
+      return
+    }
     for line in note.split(separator: "\n").map(String.init) where !line.isEmpty {
       if line.hasPrefix("READY ") {
         let alert = NSAlert()
@@ -126,8 +153,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
           }
         }
       } else {
-        tell("Zenith", line)
+        say(line)
       }
+    }
+  }
+
+  /// A short note along the bottom of the window, gone after twelve seconds.
+  func say(_ text: String) {
+    banner.stringValue = "  \(text)  "
+    banner.isHidden = false
+    DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
+      if self?.banner.stringValue == "  \(text)  " { self?.banner.isHidden = true }
     }
   }
 
@@ -150,6 +186,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     waiting.isHidden = true
     webView.isHidden = false
     window.makeFirstResponder(webView)
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    guard !pageReady else { return }
+    pageReady = true
+    let waitingNote = pendingNote
+    pendingNote = ""
+    if !waitingNote.isEmpty { showNote(waitingNote) }
   }
 
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -209,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     completionHandler(target)
   }
   func downloadDidFinish(_ download: WKDownload) {
-    tell("Saved", "The file is in your Downloads folder.")
+    say("Saved in your Downloads folder.")
   }
 
   // Choosing a file (such as loading a settings file).

@@ -46,6 +46,8 @@ code { font: 0.9em var(--mono); color: #eaffff; background: rgba(120, 220, 255, 
 .download svg { width: 22px; height: 22px; }
 svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .meta { margin: 16px 0 0; font-size: 11px; color: var(--dim); }
+.downloads { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px 24px; }
+.downloads .meta { margin-top: 10px; }
 main { max-width: 980px; margin: 0 auto; padding: 0 20px 20px; }
 section { margin: 28px 0; padding: 26px 26px 22px; border: 1px solid var(--line); border-radius: 16px; background: rgba(7, 17, 28, 0.82); }
 h2 { margin: 0 0 16px; font-size: 13px; color: var(--cyan); }
