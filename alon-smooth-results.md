@@ -76,3 +76,22 @@ from the camera's own place and direction. Checked in Chrome at 1.25, 1.5, 1.75
 and 2 device pixels per point: no switches and no frames drawn in ten idle
 seconds. Turning by hand: about 49 frames a second. Video mode and fly-through
 stay at full sharpness (2880 wide) for recordings.
+
+## With the classified look on (1.3, 17 Oct)
+
+Chrome, the same view and settings as above, dev server, the new add-ons all
+on (target boxes, address search, classified look, free voice). The machine
+was busy (load 6.7), so these are if anything on the slow side.
+
+| | 1.2.1 | 1.3, classified look on |
+|---|---|---|
+| Frames a second, turning | 53.6 | 59.5 |
+| Frames a second, zooming | | 60.0 |
+| Frames drawn standing still (5 s) | 0 | 0 |
+| First start, ready to use | 7.9 s | 6.5 s |
+| Memory (JavaScript) | 87 MB | 84 MB |
+
+The classified look's own work is 0.1% of the time while turning (the
+profile's largest Zenith file). Well within 10% of before. The suburb quality
+comparison (Stage C) needs the paid 3D map and was not run, so these are
+compared with 1.2.1, not with Stage C.
