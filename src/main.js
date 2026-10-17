@@ -22,12 +22,7 @@ import { installTrainStations } from './app/trainStations.js';
 import { installVideoMode } from './app/videoMode.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
-import { initBranding } from './ui/branding.js';
-import { initButtonTooltips } from './ui/buttonTooltips.js';
-import { initCustomSelects } from './ui/customSelect.js';
-import { initPanelFullscreen } from './ui/panelFullscreen.js';
-import { initShortcutGuard } from './ui/shortcutGuard.js';
-import { initToggleLook } from './ui/toggleLook.js';
+import { t } from './i18n/index.js';
 
 const application = createStandaloneApplication({
   googleApiKey: import.meta.env.GOOGLE_MAPS_API_KEY,
@@ -38,7 +33,9 @@ const application = createStandaloneApplication({
 application.start().catch((error) => {
   console.error("God's Eye View initialization failed:", error);
   const loaderStatus = document.querySelector('#loading-screen .loader-status');
-  loaderStatus.textContent = `Error: ${describeError(error)}`;
+  loaderStatus.textContent = t('Error: {message}', {
+    message: describeError(error),
+  });
   loaderStatus.style.color = '#ff4444';
 });
 
