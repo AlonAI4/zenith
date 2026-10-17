@@ -725,6 +725,17 @@ const checks = [
         if (!redacted) throw new Skip('the map facts service did not answer');
         expect(redacted.before !== 'none', 'the coordinates line is not under a REDACTED bar');
         expect(redacted.focused === 'none', 'keyboard focus did not lift the REDACTED bar');
+        // SAVE CASE FILE puts a picture in My photos (removed again after).
+        await page.click('#target-box-panel .tb-case');
+        await until(page, () => /Saved|not|could/.test(document.querySelector('#target-box-panel > .tb-faint')?.textContent ?? ''), 15_000, 'saving the case file said nothing');
+        const saved = await page.evaluate(async () => {
+          const note = document.querySelector('#target-box-panel > .tb-faint').textContent;
+          const { photos } = await (await fetch('/api/alon/cctv/photos')).json();
+          const mine = photos.find((photo) => photo.cameraId === 'case-file' && Date.now() - photo.time < 60_000);
+          if (mine) await fetch(`/api/alon/cctv/photos/${mine.file}`, { method: 'DELETE' });
+          return { note, found: Boolean(mine) };
+        });
+        expect(saved.note === 'Saved to My Photos' && saved.found, `the case file was not saved: ${saved.note}`);
         await page.keyboard.press('Escape');
 
         await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);

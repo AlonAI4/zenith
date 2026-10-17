@@ -368,6 +368,7 @@ export function installTargetBox({ viewer }, doc = document) {
     ctx.scale(scale, scale);
     ctx.strokeStyle = CYAN;
     ctx.lineWidth = 2.5;
+    const boxOpen = layer.classList.contains('open');
     if (boxOpen && corners.style.display !== 'none') {
       const box = corners.getBoundingClientRect();
       ctx.save();
@@ -375,7 +376,6 @@ export function installTargetBox({ viewer }, doc = document) {
       ctx.stroke(new Path2D(cornerPath.getAttribute('d')));
       ctx.restore();
     }
-    const boxOpen = layer.classList.contains('open');
     const at = panel.getBoundingClientRect();
     const lines = boxOpen ? (shown?.list ?? []) : [];
     const tall = 28 + lines.length * 17 + 10;

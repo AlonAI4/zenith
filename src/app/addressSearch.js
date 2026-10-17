@@ -102,8 +102,12 @@ export function parseAddress(text) {
   // at its street word, and what follows is the town.
   if (!rest) {
     const words = street.split(/\s+/);
+    // The last street word in a row: "Earls Court Road" ends at Road.
     const end = words.findIndex(
-      (word, i) => i > 0 && STREET_TYPES.has(normalStreet(word)),
+      (word, i) =>
+        i > 0 &&
+        STREET_TYPES.has(normalStreet(word)) &&
+        !STREET_TYPES.has(normalStreet(words[i + 1] ?? '')),
     );
     if (end > 0 && end < words.length - 1) {
       street = words.slice(0, end + 1).join(' ');

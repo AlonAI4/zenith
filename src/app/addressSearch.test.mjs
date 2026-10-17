@@ -190,4 +190,14 @@ test('spoken addresses have no comma: the town starts after the street word', ()
   // A street word at the end, or in the middle of a name, is left alone.
   assert.equal(parseAddress('5 Park Road').rest, '');
   assert.equal(parseAddress('5 Avenue Road').street, 'Avenue Road');
+  assert.deepEqual(parseAddress('120 Earls Court Road'), {
+    number: '120',
+    street: 'Earls Court Road',
+    rest: '',
+  });
+  assert.deepEqual(parseAddress('4 Old Court Place London'), {
+    number: '4',
+    street: 'Old Court Place',
+    rest: 'London',
+  });
 });

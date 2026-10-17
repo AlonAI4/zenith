@@ -45,6 +45,8 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
   private let engine = AVAudioEngine()
   private var request: SFSpeechAudioBufferRecognitionRequest?
   private var task: SFSpeechRecognitionTask?
+  /// Whether V is still held: the permission question can outlast the key.
+  private var wanted = false
 
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
     let origin = message.frameInfo.securityOrigin
@@ -63,8 +65,11 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
 
   private func start() {
     finish(quiet: true)
+    wanted = true
     SFSpeechRecognizer.requestAuthorization { status in
       DispatchQueue.main.async {
+        // V was let go while macOS asked: do not start the microphone now.
+        guard self.wanted else { return }
         guard status == .authorized else {
           self.send("error", "Speech recognition is off for Zenith. Turn it on in System Settings, Privacy & Security, Speech Recognition.")
           return
@@ -84,8 +89,15 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
     request.shouldReportPartialResults = true
     self.request = request
     let input = engine.inputNode
+    let format = input.outputFormat(forBus: 0)
+    // A Mac with no microphone has a silent input; listening to it would crash.
+    guard format.sampleRate > 0, format.channelCount > 0 else {
+      send("error", "No microphone found. Plug one in to use voice control.")
+      finish(quiet: true)
+      return
+    }
     input.removeTap(onBus: 0)
-    input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0)) { buffer, _ in
+    input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
       request.append(buffer)
     }
     engine.prepare()
@@ -97,6 +109,8 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
     send("listening")
     task = recognizer.recognitionTask(with: request) { result, error in
       DispatchQueue.main.async {
+        // A recognition that was called off must not end the next one.
+        guard self.request === request else { return }
         if let result = result {
           self.send(result.isFinal ? "final" : "partial", result.bestTranscription.formattedString)
         }
@@ -107,10 +121,17 @@ final class SpeechBridge: NSObject, WKScriptMessageHandler {
 
   /// V was let go: no more sound; the last words still come back as "final".
   private func stop() {
+    wanted = false
     guard request != nil else { return }
     if engine.isRunning { engine.stop() }
     engine.inputNode.removeTap(onBus: 0)
     request?.endAudio()
+  }
+
+  /// The page went away (a reload or another page): the microphone goes off.
+  func reset() {
+    wanted = false
+    finish(quiet: true)
   }
 
   private func finish(quiet: Bool) {
@@ -286,6 +307,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
   // Shown as soon as the page starts to draw: Zenith has its own loading screen,
   // and the first start loads many files.
   func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    // A new page never inherits a listening microphone.
+    speech.reset()
     waiting.isHidden = true
     webView.isHidden = false
     window.makeFirstResponder(webView)

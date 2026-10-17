@@ -1,4 +1,5 @@
 import { voiceLayerAliasMap } from '../voice/layerManifest.js';
+import { cinemaRunning } from './cinema.js';
 import { showNotice } from './notice.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 
@@ -226,10 +227,14 @@ export function installFreeVoice(
     } else if (kind === 'final') {
       lastHeard = '';
       run(text);
-    } else if (kind === 'done' && lastHeard) {
-      const heard = lastHeard;
-      lastHeard = '';
-      run(heard);
+    } else if (kind === 'done') {
+      if (lastHeard) {
+        const heard = lastHeard;
+        lastHeard = '';
+        run(heard);
+      } else if (label.textContent === 'LISTENING') {
+        say('NOTHING HEARD', 'Hold V and speak', 2500);
+      }
     } else if (kind === 'error') say('VOICE OFF', text, 8000);
   };
   win.addEventListener('zenith:speech', onSpeech);
@@ -243,10 +248,14 @@ export function installFreeVoice(
       win.webkit.messageHandlers.zenithSpeech.postMessage('start');
       return;
     }
-    browserRecognition = new Recognition();
-    browserRecognition.lang = 'en-GB';
-    browserRecognition.interimResults = true;
-    browserRecognition.onresult = (result) => {
+    const recognition = new Recognition();
+    browserRecognition = recognition;
+    // An older recognition still finishing must not speak for this one.
+    const current = () => recognition === browserRecognition;
+    recognition.lang = 'en-GB';
+    recognition.interimResults = true;
+    recognition.onresult = (result) => {
+      if (!current()) return;
       const last = result.results[result.results.length - 1];
       onSpeech({
         detail: {
@@ -255,13 +264,15 @@ export function installFreeVoice(
         },
       });
     };
-    browserRecognition.onerror = (error) =>
+    recognition.onerror = (error) =>
+      current() &&
       error.error !== 'aborted' &&
       onSpeech({
         detail: { kind: 'error', text: `Voice did not work (${error.error}).` },
       });
-    browserRecognition.onend = () => onSpeech({ detail: { kind: 'done' } });
-    browserRecognition.start();
+    recognition.onend = () =>
+      current() && onSpeech({ detail: { kind: 'done' } });
+    recognition.start();
     onSpeech({ detail: { kind: 'listening' } });
   };
   const stopListening = () => {
@@ -282,6 +293,8 @@ export function installFreeVoice(
 
   const onDown = (event) => {
     if (!ready || passing || !isV(event) || typing(event.target)) return;
+    // In video mode any key ends the recording: V is left to do that.
+    if (cinemaRunning()) return;
     event.stopImmediatePropagation();
     event.preventDefault();
     if (event.repeat || holdTimer || listening) return;
@@ -291,6 +304,11 @@ export function installFreeVoice(
     }, HOLD_MS);
   };
   const onUp = (event) => {
+    // Letting go of V always stops listening, whatever else is held.
+    if (listening && event.code === 'KeyV') {
+      stopListening();
+      return;
+    }
     if (!ready || !isV(event)) return;
     if (holdTimer) {
       // A tap: hand the V back to what it did before.
@@ -308,8 +326,17 @@ export function installFreeVoice(
     }
     if (listening) stopListening();
   };
+  // The window lost the keyboard (another app, a dialog, a reload): the
+  // microphone goes off, as the key's release will never arrive.
+  const letGo = () => {
+    win.clearTimeout(holdTimer);
+    holdTimer = null;
+    if (listening) stopListening();
+  };
   win.addEventListener('keydown', onDown, true);
   win.addEventListener('keyup', onUp, true);
+  win.addEventListener('blur', letGo);
+  win.addEventListener('pagehide', letGo);
 
   if (native)
     win.setTimeout(
@@ -331,6 +358,8 @@ export function installFreeVoice(
     win.removeEventListener('zenith:saved-view', onSaved);
     win.removeEventListener('keydown', onDown, true);
     win.removeEventListener('keyup', onUp, true);
+    win.removeEventListener('blur', letGo);
+    win.removeEventListener('pagehide', letGo);
     if (listening) stopListening();
     box.remove();
     style.remove();
