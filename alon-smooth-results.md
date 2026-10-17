@@ -66,3 +66,13 @@ server today. Waiting for Alon's choice.
   loading screen). The cause of the slowness is pixels for the graphics chip,
   which WebKit draws the same way.
 - Memory of the app's WebKit page.
+
+## After the review (803c64e)
+
+A fresh-context review found that Cesium's camera move events also fire when
+the view's shape changes, which a change of resolution does at in-between
+scalings, so HD could switch sharp and blurry again and again. HD now decides
+from the camera's own place and direction. Checked in Chrome at 1.25, 1.5, 1.75
+and 2 device pixels per point: no switches and no frames drawn in ten idle
+seconds. Turning by hand: about 49 frames a second. Video mode and fly-through
+stay at full sharpness (2880 wide) for recordings.
