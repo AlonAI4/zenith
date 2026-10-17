@@ -262,4 +262,4 @@ export function geocodeProxy({ search = fetchNominatimSearch } = {}) {
   };
 }
 
-export { NOMINATIM_MAX_PENDING };
+export { NOMINATIM_MAX_PENDING, enqueueNominatim };

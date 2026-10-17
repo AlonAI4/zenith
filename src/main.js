@@ -14,6 +14,7 @@ import { installMeasureTool } from './app/measureTool.js';
 import { installPanelGuard } from './app/panelGuard.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { installSavedPlaces } from './app/savedPlaces.js';
+import { installTargetBox } from './app/targetBox.js';
 import { installScaleBar } from './app/scaleBar.js';
 import { installTimeZones } from './app/timeZones.js';
 import { installToolbarFit } from './app/toolbarFit.js';
@@ -93,6 +94,7 @@ application
         ['Time zones', () => installTimeZones(scene)],
         ['Day and night', () => installDayNight(scene)],
         ['Map pin', () => installAddressLookup(scene)],
+        ['Target box', () => installTargetBox(scene)],
         ['Measure', () => installMeasureTool(scene)],
         [
           'Saved places',

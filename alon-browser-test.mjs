@@ -590,16 +590,55 @@ const checks = [
     },
   ],
   [
-    'a right-click on the map with the pin on opens nothing',
+    'a right-click on a building shows its target box and highlight, not the map pin card; Escape clears it',
     async (page) => {
       await press(page, 'address-lookup-toggle');
       try {
-        const [x, y] = spot(page, 0.5, 0.6);
+        // Straight down over Buckingham Palace, so the middle of the window is the palace.
+        await page.evaluate(() => {
+          const { camera } = window.__zt.viewer();
+          window.__ztSpot = camera.positionWC.clone();
+          window.__ztLook = { heading: camera.heading, pitch: camera.pitch };
+          camera.setView({
+            // positionWC is a Cartesian3, so its class makes the new place.
+            destination: camera.positionWC.constructor.fromDegrees(-0.14189, 51.5014, 700),
+            orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+          });
+        });
+        await sleep(2500);
+        const [x, y] = spot(page, 0.5, 0.5);
         await page.mouse.click(x, y, { button: 'right' });
-        await sleep(1200);
-        expect(!(await page.evaluate(() => window.__zt.shown(document.getElementById('address-card')))), 'a right-click opened the map pin card');
+        await until(page, () => !/ACQUIRING/.test(document.querySelector('#target-box-panel .tb-head')?.textContent ?? 'ACQUIRING'), 25_000, 'the target box never finished looking');
+        const box = await page.evaluate(() => ({
+          head: document.querySelector('#target-box-panel .tb-head').textContent,
+          text: document.getElementById('target-box-panel').textContent,
+          corners: window.__zt.box('#target-box-corners'),
+          highlight: window.__zt.entities('zenith-target-box'),
+          card: window.__zt.shown(document.getElementById('address-card')),
+        }));
+        if (/NO SIGNAL/.test(box.head)) throw new Skip(`the map facts service did not answer: ${box.text}`);
+        expect(!box.card, 'a right-click opened the map pin card');
+        expect(/PALACE|BUILDING|CASTLE/.test(box.head), `the box says ${box.head}`);
+        expect(/Buckingham Palace/.test(box.text), `the box does not name the palace: ${box.text}`);
+        expect(box.highlight === 2, `the highlight has ${box.highlight} parts, not a fill and an outline`);
+        expect(box.corners && box.corners.right - box.corners.left > 40, 'no corner brackets around the palace');
+        await page.keyboard.press('Escape');
+        await sleep(300);
+        const cleared = await page.evaluate(() => ({
+          open: window.__zt.shown(document.getElementById('target-box-panel')),
+          highlight: window.__zt.entities('zenith-target-box'),
+        }));
+        expect(!cleared.open && cleared.highlight === 0, 'Escape did not clear the target box');
       } finally {
         await press(page, 'address-lookup-toggle');
+        await page.evaluate(() => {
+          if (!window.__ztSpot) return;
+          const { camera } = window.__zt.viewer();
+          camera.setView({ destination: window.__ztSpot, orientation: { ...window.__ztLook, roll: 0 } });
+          delete window.__ztSpot;
+          delete window.__ztLook;
+        });
+        await sleep(400);
       }
     },
   ],
