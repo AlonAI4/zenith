@@ -850,7 +850,7 @@ const checks = [
     },
   ],
   [
-    'a right-click finds the buildings that said NO MATCH (Anfield, the Pentagon, Montjuic flats, a Soweto house); the Capitol stays found, Camp Nou stays NO MATCH',
+    'a right-click finds the buildings that said NO MATCH (Anfield, the Pentagon, Montjuic flats, a Soweto house, an Austin building that said YES); the Capitol stays found, Camp Nou stays NO MATCH',
     async (page, setup) => {
       // Live lookups at the spots from Alon's screenshots: run on the free
       // satellite map only, a few seconds a spot.
@@ -862,6 +862,8 @@ const checks = [
         ['Montjuic, first block', 41.3649, 2.14152, /BUILDING/],
         ['Montjuic, second block', 41.36496, 2.142, /BUILDING/],
         ['the Texas Capitol', 30.27437, -97.74029, /Texas State Capitol/],
+        // Tagged only "yes": the box said TARGET // YES before 1.5.3.
+        ['an Austin building', 30.27406, -97.74358, /TARGET \/\/ BUILDING\b/],
         // A house with no OpenStreetMap outline: found in Overture's traced ones.
         ['a Soweto house', -26.2472, 27.84535, /Overture Maps Foundation/],
         ['Spotify Camp Nou', 41.38078, 2.12154, null],

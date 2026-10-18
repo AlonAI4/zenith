@@ -104,6 +104,9 @@ test('a place is described in plain words', () => {
   assert.equal(describeKind({ category: 'building', type: 'yes' }), 'Building');
   assert.equal(describeKind({ category: 'building', type: 'apartments' }), 'Block of flats');
   assert.equal(describeKind({ category: 'building', type: 'boat_house' }), 'Boat house');
+  // The Sydney Opera House said just "Civic".
+  assert.equal(describeKind({ category: 'building', type: 'civic' }), 'Civic building');
+  assert.equal(describeKind({ building: 'transportation' }), 'Transport building');
   assert.equal(describeKind({}), 'Place');
 });
 
