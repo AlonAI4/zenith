@@ -547,6 +547,49 @@ const checks = [
     },
   ],
   [
+    'every switch has a key that works it, named in its tooltip, and keys do nothing while typing',
+    async (page) => {
+      // Each switch's key, from its tooltip: "Map pin (P)".
+      const keys = await page.evaluate((ids) => ids.map((id) => {
+        const button = document.getElementById(id);
+        return [id, /\(([^)]{1})\)$/.exec(button?.title ?? '')?.[1] ?? null];
+      }), SWITCHES);
+      const untitled = keys.filter(([, key]) => !key).map(([id]) => id);
+      expect(untitled.length === 0, `no key in the tooltip of: ${untitled.join(', ')}`);
+      const state = (id) =>
+        page.evaluate((id) => {
+          const button = document.getElementById(id);
+          return `${button.getAttribute('aria-pressed')}|${button.getAttribute('aria-expanded')}`;
+        }, id);
+      await page.evaluate(() => document.activeElement?.blur?.());
+      for (const [id, key] of keys) {
+        const before = await state(id);
+        await page.keyboard.press(key === '?' ? '?' : key.toLowerCase());
+        await sleep(500);
+        const after = await state(id);
+        // And back again, so every switch is left as it was. (A panel may
+        // have put the focus in its own box, where a key is typing.)
+        await page.evaluate(() => document.activeElement?.blur?.());
+        await page.keyboard.press(key === '?' ? '?' : key.toLowerCase());
+        await sleep(500);
+        expect(after !== before, `the ${key} key did not work #${id}`);
+        expect((await state(id)) === before, `pressing ${key} twice did not put #${id} back`);
+        await page.evaluate(() => document.activeElement?.blur?.());
+      }
+      // Typing a P in a box is typing, not the map pin.
+      const pin = await state('address-lookup-toggle');
+      await page.evaluate(() => {
+        const box = document.createElement('input');
+        box.id = 'zt-typing';
+        document.body.appendChild(box);
+        box.focus();
+      });
+      await page.keyboard.type('pmt');
+      expect((await state('address-lookup-toggle')) === pin, 'typing in a box worked the map pin');
+      await page.evaluate(() => document.getElementById('zt-typing').remove());
+    },
+  ],
+  [
     'a switch that is on looks on (blue)',
     async (page) => {
       await press(page, 'time-zones-toggle');

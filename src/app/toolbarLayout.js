@@ -1,4 +1,5 @@
 import { closeOnEscape } from './escapeKey.js';
+import { SWITCH_KEYS, keyLabel } from './switchKeys.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 
 /**
@@ -63,6 +64,10 @@ const STYLE = `
   color: rgba(214, 246, 255, 0.4);
 }
 #zenith-layers-menu .zl-state::after { content: 'OFF'; }
+#zenith-layers-menu .zl-key {
+  min-width: 20px; padding: 1px 5px; border: 1px solid rgba(0, 246, 255, 0.35); border-radius: 4px;
+  text-align: center; font: 700 10px var(--font-mono, ui-monospace, monospace); color: rgba(214, 246, 255, 0.75);
+}
 #zenith-layers-menu .zl-row:has(button[aria-pressed='true']) .zl-state { color: #00f6ff; }
 #zenith-layers-menu .zl-row:has(button[aria-pressed='true']) .zl-state::after { content: 'ON'; }
 `;
@@ -111,7 +116,11 @@ export function installToolbarLayout(doc = document, win = window) {
       const state = doc.createElement('span');
       state.className = 'zl-state';
       state.setAttribute('aria-hidden', 'true');
-      row.append(name, state);
+      const key = doc.createElement('kbd');
+      key.className = 'zl-key';
+      key.textContent = SWITCH_KEYS[id] ? keyLabel(SWITCH_KEYS[id]) : '';
+      key.title = 'Its key';
+      row.append(name, state, key);
       menu.appendChild(row);
       return [id, row];
     }),
