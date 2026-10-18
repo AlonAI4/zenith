@@ -58,6 +58,10 @@ export function passLine(name, result, nowMs) {
   if (result.status !== 'ok')
     return `${name} · no pass above ${OVERHEAD_MIN_ELEV_DEG}° in the next 24 h`;
   const { pass } = result;
+  // A pass already under way when it was worked out: where it rose and how
+  // high it climbs are not known, only when it sets.
+  if (result.joined && isOverheadNow(pass, nowMs))
+    return `${name} · OVERHEAD NOW · sets ${untilText(pass.setMs - nowMs)}`;
   const peak = `up to ${Math.round(pass.maxElevDeg)}°`;
   const from = `from the ${compassPoint(pass.riseAzDeg)}`;
   const when = isOverheadNow(pass, nowMs)
@@ -121,15 +125,21 @@ export function installOverhead({ dataManager } = {}, doc = document) {
 
   const count = (state, nowMs) => {
     const module = layer();
-    state.results = OVERHEAD_SATELLITES.map(
-      ({ id }) =>
-        module?.getNextSatellitePass?.(id, {
-          latDeg: state.lat,
-          lonDeg: state.lon,
-          minElevDeg: OVERHEAD_MIN_ELEV_DEG,
-          fromMs: nowMs,
-        }) ?? { status: 'no-tle' },
-    );
+    state.results = OVERHEAD_SATELLITES.map(({ id }, i) => {
+      // A pass under way is kept until it sets: worked out again from now,
+      // it would start where the satellite is, not where it rose.
+      const kept = state.results?.[i];
+      if (kept?.status === 'ok' && isOverheadNow(kept.pass, nowMs)) return kept;
+      const result = module?.getNextSatellitePass?.(id, {
+        latDeg: state.lat,
+        lonDeg: state.lon,
+        minElevDeg: OVERHEAD_MIN_ELEV_DEG,
+        fromMs: nowMs,
+      }) ?? { status: 'no-tle' };
+      return result.status === 'ok' && result.pass.riseMs <= nowMs
+        ? { ...result, joined: true }
+        : result;
+    });
     state.loaded = state.results.some((result) => result.status !== 'no-tle');
     state.at = nowMs;
   };
@@ -141,6 +151,17 @@ export function installOverhead({ dataManager } = {}, doc = document) {
     return row;
   };
 
+  // Lines replaced while the keyboard was on the switch-on button: the
+  // focus stays in the box, on the section, not lost to the top of the page.
+  const replace = (state, ...parts) => {
+    const hadFocus = state.element.contains(doc.activeElement);
+    state.element.replaceChildren(...parts);
+    if (hadFocus) {
+      state.element.tabIndex = -1;
+      state.element.focus();
+    }
+  };
+
   const paint = (state, nowMs) => {
     const head = line('OVERHEAD', 'zo-head');
     if (!state.loaded) {
@@ -150,7 +171,7 @@ export function installOverhead({ dataManager } = {}, doc = document) {
       if (state.shown === shown) return;
       state.shown = shown;
       if (on) {
-        state.element.replaceChildren(head, line('Loading the satellites…'));
+        replace(state, head, line('Loading the satellites…'));
         return;
       }
       const button = doc.createElement('button');
@@ -158,28 +179,40 @@ export function installOverhead({ dataManager } = {}, doc = document) {
       button.className = 'zo-switch';
       button.textContent = 'Switch on satellites';
       button.addEventListener('click', () => {
-        dataManager?.setEnabled?.('satellites', true, { origin: 'user' });
+        Promise.resolve(
+          dataManager?.setEnabled?.('satellites', true, { origin: 'user' }),
+        ).catch((error) =>
+          console.warn('[overhead] satellites', error?.message || error),
+        );
         state.at = 0;
         paint(state, Date.now());
       });
-      state.element.replaceChildren(
+      replace(
+        state,
         head,
         line('Switch on the Satellites layer to see passes here'),
         button,
       );
       return;
     }
-    state.shown = 'passes';
-    const rows = OVERHEAD_SATELLITES.map(({ name }, i) => {
+    // The lines are made once and only their text changes, so a screen
+    // reader going through them does not lose its place every second.
+    if (state.shown !== 'passes') {
+      state.shown = 'passes';
+      state.rows = OVERHEAD_SATELLITES.map(() => line(''));
+      replace(state, head, ...state.rows);
+    }
+    OVERHEAD_SATELLITES.forEach(({ name }, i) => {
       const result = state.results[i];
-      return line(
-        passLine(name, result, nowMs),
+      const text = passLine(name, result, nowMs);
+      const className =
         result?.status === 'ok' && isOverheadNow(result.pass, nowMs)
           ? 'zo-now'
-          : '',
-      );
+          : '';
+      const row = state.rows[i];
+      if (row.textContent !== text) row.textContent = text;
+      if (row.className !== className) row.className = className;
     });
-    state.element.replaceChildren(head, ...rows);
   };
 
   let ticker = null;

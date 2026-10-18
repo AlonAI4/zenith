@@ -61,6 +61,14 @@ test('OVERHEAD NOW from rising to setting, not before or after', () => {
   );
 });
 
+test('a pass already under way when it was worked out says when it sets, not where it rose', () => {
+  const joined = { ...pass(-2), joined: true };
+  assert.equal(
+    passLine('ISS', joined, 0),
+    'ISS · OVERHEAD NOW · sets in 4 min',
+  );
+});
+
 test('rising and setting are where the satellite crosses 10° above the horizon', () => {
   // A published ISS orbit and a place it passes over (Austin, 20 September 2008).
   const satrec = twoline2satrec(
