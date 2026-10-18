@@ -12,6 +12,7 @@ import {
   installWatchZones,
   isPickingZone,
   isZone,
+  longestStep,
   MAX_ZONE_NAME,
   MAX_ZONES,
   nextZoneName,
@@ -133,6 +134,64 @@ test('an arrival is one alert, and the same thing back within 10 minutes is not 
     ),
     ['baw1'],
   );
+});
+
+test('something missing from the data has not left: back in view, it is not a new arrival', () => {
+  const alerter = createAlerter();
+  const t0 = 1_000_000;
+  // A ship already in the port when watching starts, and one that arrives.
+  alerter.sweep('port', 'ships', new Set(['old']), t0, new Set(['old', 'far']));
+  assert.deepEqual(
+    alerter.sweep(
+      'port',
+      'ships',
+      new Set(['old', 'new']),
+      t0 + 2000,
+      new Set(['old', 'new', 'far']),
+    ),
+    ['new'],
+  );
+  // The camera pans away: neither is in the data any more.
+  alerter.sweep('port', 'ships', new Set(), t0 + 4000, new Set(['far']));
+  // Back five minutes later, both still in the port: no alerts.
+  assert.deepEqual(
+    alerter.sweep(
+      'port',
+      'ships',
+      new Set(['old', 'new']),
+      t0 + 5 * 60_000,
+      new Set(['old', 'new']),
+    ),
+    [],
+  );
+  // Missing for more than 10 minutes, it is forgotten: back inside is an arrival.
+  alerter.sweep('port', 'ships', new Set(), t0 + 6 * 60_000, new Set(['far']));
+  assert.deepEqual(
+    alerter.sweep(
+      'port',
+      'ships',
+      new Set(['old']),
+      t0 + 17 * 60_000,
+      new Set(['old']),
+    ),
+    ['old'],
+  );
+});
+
+test('a page checked less often still catches a satellite crossing a zone', () => {
+  assert.equal(longestStep('satellites', 2000), 100_000);
+  // A minute between checks in a background tab: about 8 km a second.
+  assert.equal(longestStep('satellites', 60_000), 600_000);
+  assert.equal(longestStep('satellites', 10 * 60_000), 1_000_000);
+  assert.equal(longestStep('ships', 60_000), 100_000);
+  const small = zone({ radiusM: 500 });
+  const from = { lat: north(small.lat, -240_000), lon: small.lon };
+  const to = { lat: north(small.lat, 240_000), lon: small.lon };
+  assert.ok(
+    !passedThrough(small, from, to),
+    'a 480 km step is a jump at the usual pace',
+  );
+  assert.ok(passedThrough(small, from, to, longestStep('satellites', 60_000)));
 });
 
 test('zones and kinds are remembered apart, and a reset starts a zone afresh', () => {

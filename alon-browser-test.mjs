@@ -885,17 +885,19 @@ const checks = [
     },
   ],
   [
-    'watch zones: a made-up plane flying into a zone gives exactly one alert, in a notice and the log',
+    'watch zones: a plane already inside when its layer comes on is no alert; flying back in gives exactly one, in a notice and the log',
     async (page) => {
-      // The centre of the view, and a made-up flights feed: one plane, first
-      // 8 km north of the zone, then inside it.
+      // The centre of the view, and a made-up flights feed: one plane, inside
+      // the zone when the layer comes on, then 8 km north of it, then back in.
       const centre = await page.evaluate(() => {
         const viewer = window.__zt.viewer();
         const spot = viewer.camera.pickEllipsoid({ x: viewer.canvas.clientWidth / 2, y: viewer.canvas.clientHeight * 0.62 });
         const where = viewer.scene.globe.ellipsoid.cartesianToCartographic(spot);
         return [(where.longitude * 180) / Math.PI, (where.latitude * 180) / Math.PI];
       });
-      let plane = [centre[0], centre[1] + 8000 / 111_320];
+      const inside = [centre[0], centre[1] + 300 / 111_320];
+      const outside = [centre[0], centre[1] + 8000 / 111_320];
+      let plane = inside;
       const answer = (request) => {
         const url = new URL(request.url());
         if (url.pathname === '/api/flights') {
@@ -939,9 +941,16 @@ const checks = [
         } catch {
           throw new Skip('the flights layer did not take the made-up feed');
         }
-        await sleep(4500); // two checks with the plane outside: the starting point
-        expect((await alertLines()).length === 0, `an alert came while the plane was outside: ${(await alertLines()).join(' | ')}`);
-        plane = [centre[0], centre[1] + 300 / 111_320];
+        await sleep(4500); // two checks with the plane inside since the layer came on: the starting point
+        expect((await alertLines()).length === 0, `the plane already inside when its layer came on gave an alert: ${(await alertLines()).join(' | ')}`);
+        plane = outside;
+        await until(page, (lat) => {
+          const record = (window.__godsEyeView.dataManager.layers.get('flights').module.getAnalystRecords(1e6) || []).find((one) => one.icao24 === '7c0001');
+          return record && Math.abs(record.lat - lat) < 1e-4;
+        }, 60_000, 'the plane never moved out of the zone', plane[1]);
+        await sleep(2500);
+        expect((await alertLines()).length === 0, `an alert came as the plane left: ${(await alertLines()).join(' | ')}`);
+        plane = inside;
         await until(page, (lat) => {
           const record = (window.__godsEyeView.dataManager.layers.get('flights').module.getAnalystRecords(1e6) || []).find((one) => one.icao24 === '7c0001');
           return record && Math.abs(record.lat - lat) < 1e-4;

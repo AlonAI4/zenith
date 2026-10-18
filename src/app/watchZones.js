@@ -5,6 +5,7 @@ import {
 } from '../overlays/worldOverlay.js';
 import { blip } from './classified.js';
 import { closeOnEscape } from './escapeKey.js';
+import { claimPointer, releasePointer } from '../data/inputOwnership.js';
 import { showNotice } from './notice.js';
 
 /**
@@ -50,8 +51,12 @@ export const MAX_ZONE_NAME = 24;
 const CYAN = '#00f6ff';
 const OVERLAY = 'alon-watch-zones';
 const EARTH_M = 6_371_000;
-/** A step longer than this between two checks is a jump in the data, not a journey. */
+/** A step longer than this between two checks is a jump in the data, not a journey... */
 const MAX_STEP_M = 100_000;
+/** ...unless the checks were far apart (a page in the background is checked less). */
+const TOP_SPEED_MPS = { planes: 350, ships: 30, satellites: 8000 };
+/** Further than this, a straight line is too far from a satellite's real path. */
+const LONGEST_STEP_M = 1_000_000;
 /** Satellites are worked out one by one, so only the main catalogue is checked. */
 const SATELLITE_LIMIT = 2000;
 const RING_POINTS = 72;
@@ -152,10 +157,11 @@ function fromMiddle(zone, lat, lon) {
  * where it was at the last check.
  * @param {{ lat: number, lon: number } | undefined} from
  * @param {{ lat: number, lon: number }} to
+ * @param {number} [longest] The longest step that is a journey, not a jump.
  */
-export function passedThrough(zone, from, to) {
+export function passedThrough(zone, from, to, longest = MAX_STEP_M) {
   if (insideZone(zone, to.lat, to.lon)) return true;
-  if (!from || distanceM(from.lat, from.lon, to.lat, to.lon) > MAX_STEP_M)
+  if (!from || distanceM(from.lat, from.lon, to.lat, to.lon) > longest)
     return false;
   const a = fromMiddle(zone, from.lat, from.lon);
   const b = fromMiddle(zone, to.lat, to.lon);
@@ -168,21 +174,32 @@ export function passedThrough(zone, from, to) {
   return Math.hypot(a.x + t * dx, a.y + t * dy) <= zone.radiusM;
 }
 
+/** The longest step a kind of thing can make between checks this far apart. */
+export const longestStep = (kind, gapMs) =>
+  Math.min(
+    LONGEST_STEP_M,
+    Math.max(MAX_STEP_M, (TOP_SPEED_MPS[kind] ?? 0) * (gapMs / 1000) * 1.25),
+  );
+
 /**
  * Remembers what is inside each zone, so only arrivals become alerts.
  * @param {number} [repeatMs] How long the same thing in the same zone stays
  *   quiet after an alert.
  */
 export function createAlerter(repeatMs = REPEAT_MS) {
-  // `${zone}|${kind}` → (thing → { inside, at: time of its last alert }).
+  // `${zone}|${kind}` → (thing → { inside, at: its last alert, seen: last in the data }).
   const groups = new Map();
   return {
     /**
      * One check of one zone for one kind.
      * @param {Set<string>} inside The things inside now.
+     * @param {Set<string> | null} [present] Everything in the data now. A
+     *   thing missing from it (a ship off the edge of the area fetched) has
+     *   not left: it keeps its place until it has been missing 10 minutes.
+     *   Null when the data holds everything.
      * @returns {string[]} The things that are new alerts.
      */
-    sweep(zoneId, kind, inside, nowMs) {
+    sweep(zoneId, kind, inside, nowMs, present = null) {
       const group = `${zoneId}|${kind}`;
       let seen = groups.get(group);
       // The first check is the starting point: what is there already is not an arrival.
@@ -190,19 +207,29 @@ export function createAlerter(repeatMs = REPEAT_MS) {
       if (!seen) groups.set(group, (seen = new Map()));
       const fresh = [];
       for (const key of inside) {
-        const was = seen.get(key);
-        if (was?.inside) continue;
+        let was = seen.get(key);
+        // Missing from the data for 10 minutes: forgotten.
+        if (was && nowMs - was.seen >= repeatMs) was = undefined;
+        if (was?.inside) {
+          was.seen = nowMs;
+          continue;
+        }
         const alert = !quiet && (!was || nowMs - was.at >= repeatMs);
         seen.set(key, {
           inside: true,
           at: alert ? nowMs : (was?.at ?? Number.NEGATIVE_INFINITY),
+          seen: nowMs,
         });
         if (alert) fresh.push(key);
       }
       for (const [key, was] of seen) {
         if (inside.has(key)) continue;
-        if (nowMs - was.at >= repeatMs) seen.delete(key);
-        else was.inside = false;
+        if (!present || present.has(key)) {
+          // In the data and outside the zone: it has left.
+          was.seen = nowMs;
+          if (nowMs - was.at >= repeatMs) seen.delete(key);
+          else was.inside = false;
+        } else if (nowMs - was.seen >= repeatMs) seen.delete(key);
       }
       return fresh;
     },
@@ -348,7 +375,10 @@ export function installWatchZones(
     color: lineColor.withAlpha(0.45),
     dashLength: 18,
   });
-  /** The ground's height at the zone's middle, on whichever map shows. */
+  /**
+   * The ground's height at the zone's middle, on whichever map shows, or
+   * undefined while that part of the map has not loaded.
+   */
   const groundAt = (zone) => {
     const where = Cesium.Cartographic.fromDegrees(zone.lon, zone.lat);
     const height = scene.globe?.show
@@ -356,8 +386,10 @@ export function installWatchZones(
       : scene.sampleHeightSupported
         ? scene.sampleHeight(where, [rings])
         : undefined;
-    return Number.isFinite(height) ? height : 0;
+    return Number.isFinite(height) ? height : undefined;
   };
+  /** What the rings were drawn with: drawn again when the map changes or loads. */
+  let drawnOn = { globe: null, unknown: [] };
   const draw = () => {
     rings.entities.removeAll();
     const shown = [
@@ -365,8 +397,11 @@ export function installWatchZones(
       ...(draft ? [draft] : []),
     ];
     const labels = [];
+    drawnOn = { globe: Boolean(scene.globe?.show), unknown: [] };
     for (const zone of shown) {
-      const height = groundAt(zone) + 25;
+      const ground = groundAt(zone);
+      if (ground === undefined) drawnOn.unknown.push(zone);
+      const height = (ground ?? 0) + 25;
       const positions = [];
       for (let i = 0; i <= RING_POINTS; i += 1) {
         const angle = (i / RING_POINTS) * 2 * Math.PI;
@@ -510,14 +545,19 @@ export function installWatchZones(
     });
   };
 
+  let warned = null;
   const renderWarnings = () => {
     const wanted = new Set(
       zones.filter((zone) => zone.on).flatMap((zone) => zone.watch),
     );
+    const off = KINDS.filter(
+      (kind) => wanted.has(kind) && !dataManager?.isEnabled?.(LAYER_OF[kind]),
+    );
+    // Made again only when it changes, so a button keeps the focus and its click.
+    if (off.join() === warned) return;
+    warned = off.join();
     warnings.replaceChildren(
-      ...KINDS.filter(
-        (kind) => wanted.has(kind) && !dataManager?.isEnabled?.(LAYER_OF[kind]),
-      ).map((kind) => {
+      ...off.map((kind) => {
         const row = element(
           'p',
           'wz-note wz-warn',
@@ -639,6 +679,7 @@ export function installWatchZones(
     });
     blip('lock', win);
   };
+  const lastSweep = {};
   const sweep = () => {
     const nowMs = Date.now();
     let raised = 0;
@@ -647,17 +688,23 @@ export function installWatchZones(
         (zone) => zone.on && zone.watch.includes(kind),
       );
       const layerOn = Boolean(dataManager?.isEnabled?.(LAYER_OF[kind]));
-      if (!watchers.length || !layerOn) {
+      const records = layerOn
+        ? (dataManager.layers
+            ?.get?.(LAYER_OF[kind])
+            ?.module?.getAnalystRecords?.(
+              kind === 'satellites' ? SATELLITE_LIMIT : 1_000_000,
+            ) ?? [])
+        : [];
+      // A layer just switched on has no data for a moment: the starting
+      // point waits for it, or everything already inside would be an alert.
+      if (!watchers.length || records.length === 0) {
         last[kind].clear();
+        delete lastSweep[kind];
         for (const zone of zones) alerter.reset(zone.id, kind);
         continue;
       }
-      const records =
-        dataManager.layers
-          ?.get?.(LAYER_OF[kind])
-          ?.module?.getAnalystRecords?.(
-            kind === 'satellites' ? SATELLITE_LIMIT : 1_000_000,
-          ) ?? [];
+      const step = longestStep(kind, nowMs - (lastSweep[kind] ?? nowMs));
+      lastSweep[kind] = nowMs;
       const found = new Map(watchers.map((zone) => [zone.id, new Map()]));
       const now = new Map();
       for (const record of records) {
@@ -673,9 +720,9 @@ export function installWatchZones(
         now.set(key, to);
         for (const zone of watchers) {
           // Most things are nowhere near: a cheap test first.
-          if (Math.abs(to.lat - zone.lat) * 111_000 > zone.radiusM + MAX_STEP_M)
+          if (Math.abs(to.lat - zone.lat) * 111_000 > zone.radiusM + step)
             continue;
-          if (passedThrough(zone, from, to))
+          if (passedThrough(zone, from, to, step))
             found.get(zone.id).set(key, record);
         }
       }
@@ -691,6 +738,7 @@ export function installWatchZones(
           kind,
           new Set(inside.keys()),
           nowMs,
+          new Set(now.keys()),
         )) {
           raise(zone, inside.get(key), nowMs);
           raised += 1;
@@ -701,6 +749,12 @@ export function installWatchZones(
       renderWarnings();
       if (raised) renderAlerts();
     }
+    // The other map now shows, or the ground under a ring has loaded.
+    if (
+      Boolean(scene.globe?.show) !== drawnOn.globe ||
+      drawnOn.unknown.some((zone) => groundAt(zone) !== undefined)
+    )
+      draw();
   };
 
   let timer = null;
@@ -738,9 +792,14 @@ export function installWatchZones(
   const onSet = (event) => setWatching(Boolean(event.detail?.set));
   win.addEventListener('zenith:set-watching', onSet);
 
-  // Adding a zone: the next click on the map is its middle.
+  // Adding a zone: the next click on the map is its middle. The original's
+  // planes, ships and satellites leave a click alone while a tool holds the
+  // pointer, so that click does not also start following one.
+  let lease = null;
   const stopPicking = () => {
     picking = false;
+    releasePointer(lease);
+    lease = null;
     doc.body.style.cursor = '';
   };
   const cancelDraft = () => {
@@ -750,10 +809,19 @@ export function installWatchZones(
     changed();
   };
   add.addEventListener('click', () => {
-    if (zones.length >= MAX_ZONES) return;
+    if (zones.length >= MAX_ZONES || picking) return;
+    lease = claimPointer('watch-zone');
+    if (!lease) {
+      note.textContent =
+        'Another tool is using map clicks. Finish with it, then press Add zone.';
+      return;
+    }
     picking = true;
     doc.body.style.cursor = 'crosshair';
     render();
+    // Add zone is now off: the focus waits on the instruction, in the panel.
+    note.tabIndex = -1;
+    note.focus();
   });
   const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
   handler.setInputAction((click) => {
