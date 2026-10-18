@@ -145,17 +145,30 @@ function tileTextures(tileset) {
   return textures;
 }
 
+/** Mipmaps can be made for this picture: not compressed, and on WebGL 1 only with power-of-two sides. */
+function canMakeMipmaps(texture) {
+  if (Cesium.PixelFormat.isCompressedFormat(texture.pixelFormat)) return false;
+  if (texture._context?.webgl2) return true;
+  return (
+    Cesium.Math.isPowerOfTwo(texture.width) &&
+    Cesium.Math.isPowerOfTwo(texture.height)
+  );
+}
+
 function sharpenTexture(texture, anisotropy) {
   const sampler = texture.sampler;
   if (!sampler || plainOf.has(sampler)) return;
+  // Checked first: Cesium's smaller build leaves out the error a compressed
+  // picture would throw, and a mipmap filter without mipmaps draws black.
   if (
     sampler.minificationFilter === Cesium.TextureMinificationFilter.LINEAR &&
-    !texture._hasMipmap
+    !texture._hasMipmap &&
+    canMakeMipmaps(texture)
   ) {
     try {
       texture.generateMipmap();
     } catch {
-      // A compressed picture cannot make mipmaps: it gets the anisotropy only.
+      // Left without mipmaps: it gets the anisotropy only.
     }
   }
   texture.sampler = sharperSampler(

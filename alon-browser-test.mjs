@@ -882,6 +882,8 @@ const checks = [
           const uniforms = window.__godsEyeView.viewer.scene.moon?._ellipsoidPrimitive?.material?.uniforms;
           if (!uniforms || !('earthshine' in uniforms)) return null;
           const was = uniforms.earthshine;
+          // Strong for a moment, so it shows whatever the Moon's phase.
+          uniforms.earthshine = 3;
           const lit = window.__zt.frame();
           uniforms.earthshine = 0;
           const dark = window.__zt.frame();

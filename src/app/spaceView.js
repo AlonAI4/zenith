@@ -48,7 +48,9 @@ export const EARTHSHINE_SOURCE = `czm_material czm_getMaterial(czm_materialInput
   czm_material material = czm_getDefaultMaterial(materialInput);
   vec3 colour = texture(image, materialInput.st).rgb;
   material.diffuse = colour;
-  material.emission = colour * earthshine;
+  // Only where the Sun does not reach: the day side keeps its own light.
+  float day = clamp(dot(normalize(materialInput.normalEC), czm_sunDirectionEC), 0.0, 1.0);
+  material.emission = colour * earthshine * (1.0 - day);
   return material;
 }`;
 /** Space view's camera: this far behind the Earth, away from the Moon... */
@@ -708,6 +710,8 @@ export function installSpaceView(
   // Cesium's Moon keeps its picture in a material; the earthshine one keeps
   // the same `image` setting, which Cesium updates on every frame.
   let ownMoonMaterial = null;
+  // The Moon map can still be on its way when space view is removed.
+  let removed = false;
   const lightNightSide = () => {
     const primitive = scene.moon?._ellipsoidPrimitive;
     if (!primitive || ownMoonMaterial) return;
@@ -766,7 +770,7 @@ export function installSpaceView(
         };
       }
     })().then((result) => {
-      if (result.kind !== 'terrain') lightNightSide();
+      if (result.kind !== 'terrain' && !removed) lightNightSide();
       surfaceNote.textContent = result.said;
       doc.body.dataset.moonSurface = result.kind;
       return result;
@@ -1186,6 +1190,7 @@ export function installSpaceView(
   queueMicrotask(paint);
 
   return () => {
+    removed = true;
     if (flight) win.cancelAnimationFrame(flight.frame);
     flight = null;
     if (trip.where !== 'earth') trip.earth();

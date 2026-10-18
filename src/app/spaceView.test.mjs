@@ -326,5 +326,7 @@ test("earthshine lights the Moon's night side faintly and keeps Cesium's picture
   assert.ok(EARTHSHINE > 0.05 && EARTHSHINE < 0.5, `earthshine ${EARTHSHINE}`);
   // Cesium's Moon sets `uniforms.image` on every frame, so the material must have it.
   assert.match(EARTHSHINE_SOURCE, /texture\(image, materialInput\.st\)/);
-  assert.match(EARTHSHINE_SOURCE, /material\.emission = colour \* earthshine;/);
+  // Only on the night side: where the Sun shines, nothing is added.
+  assert.match(EARTHSHINE_SOURCE, /material\.emission = colour \* earthshine \* \(1\.0 - day\);/);
+  assert.match(EARTHSHINE_SOURCE, /dot\(normalize\(materialInput\.normalEC\), czm_sunDirectionEC\)/);
 });

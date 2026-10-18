@@ -129,6 +129,9 @@ test('HD: extra pixels only while still with nothing moving, sharp tile pictures
   const texture = {
     _sampler: plain,
     _hasMipmap: false,
+    pixelFormat: Cesium.PixelFormat.RGBA,
+    width: 256,
+    height: 512,
     get sampler() {
       return this._sampler;
     },
@@ -198,4 +201,44 @@ test('HD: extra pixels only while still with nothing moving, sharp tile pictures
   assert.ok(Cesium.GltfLoaderUtil.createSampler === own, 'remove puts Cesium back');
   assert.ok(texture.sampler === plain);
   assert.equal(frames.length, 0, 'remove stops listening');
+});
+
+test('a compressed picture gets no mipmaps, so it never draws black, but it gets the anisotropy', async () => {
+  const Cesium = await import('cesium');
+  const { installHdDetail } = await import('./hdDetail.js');
+  const { fakeDocument } = await import('./fakeDom.mjs');
+  const doc = fakeDocument();
+  const plain = new Cesium.Sampler({ minificationFilter: Cesium.TextureMinificationFilter.LINEAR });
+  const texture = {
+    _sampler: plain,
+    _hasMipmap: false,
+    pixelFormat: Cesium.PixelFormat.RGBA_DXT5,
+    width: 256,
+    height: 256,
+    get sampler() {
+      return this._sampler;
+    },
+    set sampler(value) {
+      this._sampler = value;
+    },
+    generateMipmap() {
+      // Cesium's smaller build does not throw here: it marks mipmaps it never made.
+      this._hasMipmap = true;
+    },
+  };
+  const material = { metallicRoughness: { baseColorTexture: { texture } } };
+  const tileset = { root: { content: { _model: { _sceneGraph: { _components: { nodes: [{ primitives: [{ material }] }] } } } } }, isDestroyed: () => false };
+  const viewer = { isDestroyed: () => false, camera: {}, scene: { requestRender() {} } };
+  const before = globalThis.localStorage;
+  globalThis.localStorage = { getItem: () => '1', setItem() {} };
+  const remove = installHdDetail({ viewer, tileset }, doc);
+  try {
+    assert.equal(texture._hasMipmap, false, 'no mipmaps asked for');
+    assert.equal(texture.sampler.minificationFilter, Cesium.TextureMinificationFilter.LINEAR);
+    assert.ok(texture.sampler.maximumAnisotropy >= 1);
+  } finally {
+    remove();
+    globalThis.localStorage = before;
+  }
+  assert.ok(texture.sampler === plain);
 });
