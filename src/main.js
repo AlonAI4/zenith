@@ -14,6 +14,7 @@ import { installHelpCard } from './app/helpCard.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
 import { installMeasureTool } from './app/measureTool.js';
+import { installOverhead } from './app/overhead.js';
 import { installPanelGuard } from './app/panelGuard.js';
 import { installRotateGestures } from './app/rotateGestures.js';
 import { installSavedPlaces } from './app/savedPlaces.js';
@@ -105,6 +106,10 @@ application
           'Address search',
           () =>
             installAddressSearch(scene, document, { navigation: styleManager }),
+        ],
+        [
+          'Satellites overhead',
+          () => installOverhead({ dataManager: data?.dataManager }),
         ],
         ['Measure', () => installMeasureTool(scene)],
         [

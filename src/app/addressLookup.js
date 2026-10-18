@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import { sunLine } from './dayNight.js';
 import { closeOnEscape } from './escapeKey.js';
 import { isMeasuring } from './measureTool.js';
+import { announceSpot } from './overhead.js';
 import {
   isTimeZonePick,
   loadTimeZones,
@@ -431,6 +432,7 @@ export function installAddressLookup({ viewer }, doc = document) {
     request += 1;
     stopClock();
     card.style.display = 'none';
+    announceSpot(doc.defaultView ?? window, 'pin', null);
     pins?.removeAll();
     scene.requestRender();
   };
@@ -536,6 +538,10 @@ export function installAddressLookup({ viewer }, doc = document) {
     });
     scene.requestRender();
     startClock(lat, lon, mine);
+    // The satellites overhead (overhead.js), under the clock.
+    announceSpot(doc.defaultView ?? window, 'pin', { lat, lon }, (section) =>
+      card.insertBefore(section, card.querySelector('#address-card-target')),
+    );
 
     if (!closeEnoughForAddress(camera.positionCartographic?.height)) {
       show([['Zoom in closer to look up an address', STRONG], coordinates]);

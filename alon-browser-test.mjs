@@ -789,6 +789,54 @@ const checks = [
     },
   ],
   [
+    'a target box shows the satellites overhead: the switch-on line, then the ISS, Tiangong and Hubble, worked out once a minute',
+    async (page) => {
+      const section = () => page.evaluate(() => document.querySelector('#target-box-panel .zenith-overhead')?.textContent ?? '');
+      const satellites = () => page.evaluate(() => window.__zt.viewer() && window.__godsEyeView.dataManager.isEnabled('satellites'));
+      const wasOn = await satellites();
+      try {
+        const [x, y] = spot(page, 0.5, 0.5);
+        await page.mouse.click(x, y, { button: 'right' });
+        await until(page, () => /OVERHEAD/.test(document.querySelector('#target-box-panel .zenith-overhead')?.textContent ?? ''), 5000, 'the target box has no OVERHEAD section');
+        const first = await section();
+        // The catalogue may have loaded earlier in this run; otherwise the switch-on line.
+        if (!/ISS · /.test(first)) {
+          expect(/Switch on the Satellites layer/.test(first), `the section says: ${first}`);
+          await page.click('#target-box-panel .zo-switch');
+        }
+        try {
+          await until(page, () => /ISS · /.test(document.querySelector('#target-box-panel .zenith-overhead')?.textContent ?? ''), 40_000, 'the passes never showed');
+        } catch {
+          throw new Skip(`the satellites catalogue did not load: ${await section()}`);
+        }
+        const text = await section();
+        for (const name of ['ISS', 'Tiangong', 'Hubble'])
+          expect(new RegExp(`${name} · (in \\d+ (s|min)|in \\d+ h \\d\\d min|OVERHEAD NOW|no pass above 10°)`).test(text), `the ${name} line reads: ${text}`);
+        expect(/up to \d+° · from the (N|NE|E|SE|S|SW|W|NW)/.test(text), `no peak and direction: ${text}`);
+        // The countdown runs from the stored times: no pass is worked out again for a while.
+        const asked = await page.evaluate(async () => {
+          const module = window.__godsEyeView.dataManager.layers.get('satellites').module;
+          const real = module.getNextSatellitePass;
+          let count = 0;
+          module.getNextSatellitePass = (...args) => {
+            count += 1;
+            return real(...args);
+          };
+          await new Promise((done) => setTimeout(done, 4000));
+          module.getNextSatellitePass = real;
+          return count;
+        });
+        expect(asked === 0, `passes were worked out ${asked} times in 4 seconds`);
+        await page.keyboard.press('Escape');
+        await sleep(300);
+        expect(!(await section()), 'the section stayed after the box closed');
+      } finally {
+        if (!wasOn) await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('satellites', false));
+        await sleep(300);
+      }
+    },
+  ],
+  [
     'searching a street address flies to the house, looking down, with the map pin card on it',
     async (page) => {
       await page.evaluate(() => {

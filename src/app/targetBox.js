@@ -4,6 +4,7 @@ import { blip, classifiedOn, decrypt } from './classified.js';
 import { closeOnEscape } from './escapeKey.js';
 import { gridReference } from './gridRef.js';
 import { isMeasuring } from './measureTool.js';
+import { announceSpot } from './overhead.js';
 
 /**
  * Right-click a house or building: Zenith highlights it and shows a
@@ -306,6 +307,7 @@ export function installTargetBox({ viewer }, doc = document) {
     spot = null;
     highlight.entities.removeAll();
     layer.classList.remove('open');
+    announceSpot(win, 'target', null);
     scene.requestRender();
   };
   let opener = null;
@@ -466,6 +468,10 @@ export function installTargetBox({ viewer }, doc = document) {
     hide();
     const mine = request;
     spot = { lat, lon, height };
+    // The satellites overhead (overhead.js), under the facts.
+    announceSpot(win, 'target', spot, (section) =>
+      panel.insertBefore(section, saveCase),
+    );
     if ((camera.positionCartographic?.height ?? 0) > TARGET_MAX_HEIGHT_M) {
       show({
         header: 'TARGET // OUT OF RANGE',
