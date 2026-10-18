@@ -7,13 +7,13 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.3.1',
-  date: '17 October 2026',
+  number: '1.3.2',
+  date: '18 October 2026',
   changes: Object.freeze([
-    'Fixed: the Mac app could stop responding when it opened. The microphone is now only touched while you hold V.',
-    "From God's Eye View: nine Spanish city bike systems, better satellite matching, and launches with an unknown pad no longer drawn at 0,0.",
-    'Security updates to three of the packages Zenith is built with.',
-    'Still here from 1.3: target boxes, address search, the classified look (TS switch) and free voice (hold V).',
+    'Target boxes are for houses and buildings. Parks are left out: their only free source is one Zenith does not use.',
+    'Fixed: the Mac app could stop responding when it opened, and updates that change packages now install.',
+    "From God's Eye View: nine Spanish city bike systems, better satellite matching, and launches with an unknown pad kept off the map.",
+    'Still here from 1.3: address search, the classified look (TS switch) and free voice (hold V).',
   ]),
 });
 
