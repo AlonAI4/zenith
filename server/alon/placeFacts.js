@@ -52,6 +52,8 @@ const TILE_LIST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // The start of a PMTiles file: its header and its first directory.
 const PMTILES_HEAD_BYTES = 16384;
 const UNZIPPED_MAX_BYTES = 32 * 1024 * 1024;
+// Real directories unzip to about 30 KB; a hostile one could fill memory.
+const DIRECTORY_MAX_BYTES = 1024 * 1024;
 const LEAF_CACHE_MAX = 4;
 // Photon's main tags that are never a building, so not worth a lookup.
 const NOT_BUILDINGS = new Set([
@@ -322,14 +324,20 @@ export function factsFromLookup(answers, lat, lon) {
   return bestPlace(places, lat, lon);
 }
 
+/** Where a spot is among the tiles at `z`, counted in tiles from the corner. */
+function tilePoint(lat, lon, z) {
+  const n = 2 ** z;
+  const rad = (lat * Math.PI) / 180;
+  return [
+    ((lon + 180) / 360) * n,
+    ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n,
+  ];
+}
+
 /** The tile at `z` that holds a spot. */
 export function tileFor(lat, lon, z = TILE_ZOOM) {
   const n = 2 ** z;
-  const rad = (lat * Math.PI) / 180;
-  const across = Math.floor(((lon + 180) / 360) * n);
-  const down = Math.floor(
-    ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n,
-  );
+  const [across, down] = tilePoint(lat, lon, z).map(Math.floor);
   const fit = (value) => Math.max(0, Math.min(n - 1, value));
   return { z, x: fit(across), y: fit(down) };
 }
@@ -351,8 +359,17 @@ export function factsFromTile(
   const places = [];
   try {
     const layer = new VectorTile(new PbfReader(bytes)).layers.building;
+    // The spot in the tile's own units. A building whose box is far from it
+    // is skipped before its outline is worked out: a tile holds thousands.
+    const extent = layer?.extent ?? 4096;
+    const [across, down] = tilePoint(lat, lon, z);
+    const [px, py] = [(across - x) * extent, (down - y) * extent];
+    const pad = extent / 32; // tens of metres: well past the 4 m margin
     for (let i = 0; i < (layer?.length ?? 0); i++) {
       const feature = layer.feature(i);
+      const [left, top, right, bottom] = feature.bbox();
+      if (px < left - pad || px > right + pad) continue;
+      if (py < top - pad || py > bottom + pad) continue;
       const { geometry } = feature.toGeoJSON(x, y, z);
       const polygons =
         geometry.type === 'Polygon'
@@ -471,7 +488,8 @@ export function pmtilesDirectory(bytes) {
     throw new Error('A damaged PMTiles directory');
   };
   const count = next();
-  if (count > bytes.length) throw new Error('A damaged PMTiles directory');
+  // Each entry takes at least four bytes.
+  if (count * 4 > bytes.length) throw new Error('A damaged PMTiles directory');
   const entries = [];
   let id = 0;
   for (let i = 0; i < count; i++) entries.push({ id: (id += next()) });
@@ -509,10 +527,8 @@ export function pmtilesFind(entries, id) {
 }
 
 const gunzipAsync = promisify(gunzip);
-const unzip = (bytes, zip) =>
-  zip === 2
-    ? gunzipAsync(bytes, { maxOutputLength: UNZIPPED_MAX_BYTES })
-    : bytes;
+const unzip = (bytes, zip, max = UNZIPPED_MAX_BYTES) =>
+  zip === 2 ? gunzipAsync(bytes, { maxOutputLength: max }) : bytes;
 
 /**
  * A tile found building with the address the reverse lookup gave: its town
@@ -529,14 +545,21 @@ function withAddress(facts, reverse) {
 
 /**
  * One capped binary download (a map tile), with no redirects. `range`
- * ([start, length]) asks for only that part of a file.
+ * ([start, length]) asks for only that part of a file; `signal` calls it
+ * off. Exported for its tests.
  */
-async function fetchBytes(url, { headers, range, timeoutMs = 9000 } = {}) {
+export async function fetchBytes(
+  url,
+  { headers, range, signal, timeoutMs = 9000 } = {},
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const stop = signal
+    ? AbortSignal.any([controller.signal, signal])
+    : controller.signal;
   try {
     const response = await fetch(url, {
-      signal: controller.signal,
+      signal: stop,
       headers: range
         ? { ...headers, Range: `bytes=${range[0]}-${range[0] + range[1] - 1}` }
         : headers,
@@ -546,13 +569,10 @@ async function fetchBytes(url, { headers, range, timeoutMs = 9000 } = {}) {
     // A server that ignores the range sends the whole file.
     if (range && response.status !== 206)
       throw new Error('The map file server ignored the range');
-    return await readResponseBytesCapped(
-      response,
-      TILE_MAX_BYTES,
-      controller.signal,
-    );
+    return await readResponseBytesCapped(response, TILE_MAX_BYTES, stop);
   } finally {
     clearTimeout(timeout);
+    controller.abort(); // a body left unread (an error) holds its connection
   }
 }
 
@@ -602,21 +622,23 @@ export function createPlaceFacts({
   };
 
   let overture = null;
-  const leaves = new Map();
-  const part = async (url, start, length) => {
+  const part = async (url, start, length, signal) => {
     if (!(start >= 0 && length > 0 && length <= TILE_MAX_BYTES))
       throw new Error('A map file part out of bounds');
-    return requestBytes(url, { ...options, range: [start, length] });
+    signal.throwIfAborted();
+    return requestBytes(url, { ...options, range: [start, length], signal });
   };
 
   /**
    * Overture's newest buildings file, a PMTiles file of about 180 GB read in
    * small parts: its address changes with each release, and old ones go.
+   * Its further directories are kept with it, so a new release starts empty.
    */
-  const overtureFile = async () => {
+  const overtureFile = async (signal) => {
     if (overture && Date.now() - overture.at < TILE_LIST_MAX_AGE_MS)
       return overture;
     const release = (await requestJson(OVERTURE_RELEASES, options))?.latest;
+    signal.throwIfAborted();
     if (
       typeof release !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}\.\d+$/.test(release)
@@ -627,22 +649,22 @@ export function createPlaceFacts({
       overture.at = Date.now();
       return overture;
     }
-    const head = await part(url, 0, PMTILES_HEAD_BYTES);
+    const head = await part(url, 0, PMTILES_HEAD_BYTES, signal);
     const header = pmtilesHeader(head);
     const root = pmtilesDirectory(
       await unzip(
         head.subarray(header.rootOffset, header.rootOffset + header.rootLength),
         header.directoryZip,
+        DIRECTORY_MAX_BYTES,
       ),
     );
-    leaves.clear();
-    overture = { url, at: Date.now(), header, root };
+    overture = { url, at: Date.now(), header, root, leaves: new Map() };
     return overture;
   };
 
   /** Overture's unzipped building tile holding a spot, or null for none. */
-  const overtureTile = async (lat, lon) => {
-    const { url, header, root } = await overtureFile();
+  const overtureTile = async (lat, lon, signal) => {
+    const { url, header, root, leaves } = await overtureFile(signal);
     const tile = tileFor(lat, lon, Math.min(TILE_ZOOM, header.maxZoom));
     const key = `${url} ${tile.z}/${tile.x}/${tile.y}`;
     if (tiles.has(key)) return { tile, bytes: tiles.get(key) };
@@ -654,7 +676,12 @@ export function createPlaceFacts({
       if (!found) return null;
       if (found.tile) {
         const { offset, length } = found.tile;
-        const zipped = await part(url, header.dataOffset + offset, length);
+        const zipped = await part(
+          url,
+          header.dataOffset + offset,
+          length,
+          signal,
+        );
         const bytes = await unzip(zipped, header.tileZip);
         if (tiles.size >= TILE_CACHE_MAX)
           tiles.delete(tiles.keys().next().value);
@@ -664,8 +691,15 @@ export function createPlaceFacts({
       const { offset, length } = found.leaf;
       entries = leaves.get(offset);
       if (!entries) {
-        const zipped = await part(url, header.leafOffset + offset, length);
-        entries = pmtilesDirectory(await unzip(zipped, header.directoryZip));
+        const zipped = await part(
+          url,
+          header.leafOffset + offset,
+          length,
+          signal,
+        );
+        entries = pmtilesDirectory(
+          await unzip(zipped, header.directoryZip, DIRECTORY_MAX_BYTES),
+        );
         if (leaves.size >= LEAF_CACHE_MAX)
           leaves.delete(leaves.keys().next().value);
         leaves.set(offset, entries);
@@ -731,15 +765,23 @@ export function createPlaceFacts({
       bytes && withAddress(factsFromTile(bytes, tile, lat, lon), reverse);
     if (found) return { found, failed };
     // A building OpenStreetMap has no outline for: Overture's traced ones.
-    const more = await attempt(() => overtureTile(lat, lon));
-    signal.throwIfAborted();
+    // Only a last try: when Overture fails, the box says NO MATCH (not a
+    // lookup error), and the spot is asked again next time.
+    let more = null;
+    let unsure = false;
+    try {
+      more = await overtureTile(lat, lon, signal);
+    } catch {
+      signal.throwIfAborted();
+      unsure = true;
+    }
     const traced =
       more &&
       withAddress(
         factsFromTile(more.bytes, more.tile, lat, lon, overtureCredit),
         reverse,
       );
-    return { found: traced || null, failed };
+    return { found: traced || null, failed, unsure };
   };
 
   const lookUp = async (lat, lon, key, signal) => {
@@ -760,11 +802,12 @@ export function createPlaceFacts({
     );
     const building = factsFromNominatim(reverse, lat, lon);
     if (building) return remember(key, building);
-    const { found, failed } = await fallBack(lat, lon, reverse, signal);
-    if (!failed) return remember(key, found);
-    if (!found) throw failed;
+    const { found, failed, unsure } = await fallBack(lat, lon, reverse, signal);
+    if (!failed && !unsure) return remember(key, found);
+    if (!found && failed) throw failed;
     // Found while another source failed: maybe not the best answer (the
     // flats' tile outline instead of the named stadium), so not remembered.
+    // Nor is a NO MATCH Overture could not check.
     return found;
   };
 

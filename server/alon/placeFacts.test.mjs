@@ -17,6 +17,7 @@ import {
   factsFromLookup,
   factsFromNominatim,
   factsFromTile,
+  fetchBytes,
   insideOrNear,
   overtureCredit,
   photonIds,
@@ -415,8 +416,7 @@ function directoryBytes(entries) {
 
 /**
  * A small PMTiles file in Overture's form (gzip, vector tiles, zooms 0 to 14)
- * holding the given tiles, listed in a further directory as in the real
- * 180 GB file, whose first directory points to its further ones.
+ * holding the given tiles.
  */
 function pmtilesFile(tiles) {
   const sorted = tiles
@@ -428,8 +428,16 @@ function pmtilesFile(tiles) {
     at += zipped.length;
     return entry;
   });
-  const leaf = gzipSync(directoryBytes(entries));
-  const root = gzipSync(directoryBytes([{ id: entries[0].id, run: 0, offset: 0, length: leaf.length }]));
+  // One further directory for each tile, so they sit at different places,
+  // and a first directory pointing to them, as in the real file.
+  const leaves = entries.map((entry) => gzipSync(directoryBytes([entry])));
+  let leafAt = 0;
+  const pointers = entries.map(({ id }, i) => {
+    const pointer = { id, run: 0, offset: leafAt, length: leaves[i].length };
+    leafAt += leaves[i].length;
+    return pointer;
+  });
+  const root = gzipSync(directoryBytes(pointers));
   const header = new Uint8Array(127);
   const view = new DataView(header.buffer);
   header.set(new TextEncoder().encode('PMTiles'));
@@ -438,11 +446,11 @@ function pmtilesFile(tiles) {
   put(8, 127);
   put(16, root.length);
   put(40, 127 + root.length);
-  put(48, leaf.length);
-  put(56, 127 + root.length + leaf.length);
+  put(48, leafAt);
+  put(56, 127 + root.length + leafAt);
   put(64, at);
   Object.assign(header, { 97: 2, 98: 2, 99: 1, 100: 0, 101: 14 });
-  return Buffer.concat([header, root, leaf, ...sorted.map(({ zipped }) => zipped)]);
+  return Buffer.concat([header, root, ...leaves, ...sorted.map(({ zipped }) => zipped)]);
 }
 
 /** The part of a file a range read asks for, as a server sends it. */
@@ -669,6 +677,12 @@ test('the tile holding a spot, and the whole building in it, not one of its part
   assert.equal(facts.kind, 'Building');
   assert.match(facts.source, /OpenStreetMap.*OpenFreeMap/);
   assert.equal(factsFromTile(bytes, tile, LAT + 0.01, LON), null);
+  // 3 m outside a building's edge counts, 6 m does not: buildings far from
+  // the spot are skipped by their box first, which must not drop this one.
+  const metresWest = (m) => [inside[0], LON - m / (111_320 * Math.cos((LAT * Math.PI) / 180))];
+  const alone = buildingTile([{ rings: [SQUARE] }], tile);
+  assert.ok(factsFromTile(alone, tile, ...metresWest(3)));
+  assert.equal(factsFromTile(alone, tile, ...metresWest(6)), null);
   assert.equal(factsFromTile(new Uint8Array([255, 1, 2]), tile, ...inside), null);
   assert.equal(factsFromTile(new PbfWriter().finish(), tile, ...inside), null);
 });
@@ -846,9 +860,17 @@ test('PMTiles: tile numbers, directories and further directories are read as the
   assert.throws(() => pmtilesHeader(new TextEncoder().encode('{"tiles":[]}')), /Not a PMTiles/);
 });
 
-test('Overture is read only from its own address, in parts, and its file is opened once a day', async () => {
+test('Overture is read only from its own address, in parts, and its file is opened once a day', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.UTC(2026, 9, 18) });
   const tile = tileFor(...inside);
-  const file = pmtilesFile([{ tile, bytes: buildingTile([{ rings: [SQUARE], properties: { sources: '[{"dataset":"Google Open Buildings"}]' } }], tile) }]);
+  // A second tile 5 km east, listed in a further directory of its own.
+  const east = [inside[0], inside[1] + 0.07];
+  const traced = (sources, ring) => ({ rings: [ring], properties: { sources } });
+  const shifted = SQUARE.map(([lon, lat]) => [lon + 0.07, lat]);
+  const file = pmtilesFile([
+    { tile, bytes: buildingTile([traced('[{"dataset":"Google Open Buildings"}]', SQUARE)], tile) },
+    { tile: tileFor(...east), bytes: buildingTile([traced('[{"dataset":"Microsoft ML Buildings"}]', shifted)], tileFor(...east)) },
+  ]);
   const reads = [];
   let release = { latest: '../../evil.example/x' };
   let releases = 0;
@@ -862,25 +884,103 @@ test('Overture is read only from its own address, in parts, and its file is open
       return url.startsWith(NOMINATIM_REVERSE) ? { category: 'place' } : { features: [] };
     },
     requestBytes: async (url, options) => {
-      if (!url.startsWith(OPENFREEMAP_TILES)) reads.push(url);
-      return url.startsWith(OPENFREEMAP_TILES) ? buildingTile([], tile) : served(file, options);
+      if (url.startsWith(OPENFREEMAP_TILES)) return buildingTile([], tileFor(LAT, LON));
+      reads.push(url);
+      return served(file, options);
     },
     nominatimTurn: (work) => work(),
   });
-  // A release name that is not a date would make another address: refused.
-  await assert.rejects(look(...inside), /no release/);
+  // A release name that is not a date would make another address: refused,
+  // nothing read, and the box says NO MATCH, not remembered.
+  assert.equal(await look(...inside), null);
   assert.deepEqual(reads, []);
 
   release = RELEASE;
   const found = await look(...inside);
   assert.match(found.source, /Overture Maps Foundation; Google Open Buildings$/);
   assert.ok(reads.every((url) => url === `${OVERTURE_TILES}/2026-09-23.1/buildings.pmtiles`));
+  assert.equal(reads.length, 3, 'the header, a further directory, the tile');
+  // A second spot in the same tile: nothing read again.
+  assert.ok(await look(inside[0] + dLat / 4, inside[1]));
   assert.equal(reads.length, 3);
-  // A second spot in the same tile: the file and the tile are not read again.
-  const next = await look(inside[0] + dLat / 4, inside[1]);
-  assert.ok(next);
-  assert.equal(reads.length, 3);
-  assert.equal(releases, 2, 'the release list was asked again');
+  // The other tile is in another further directory, read from its own place.
+  const other = await look(...east);
+  assert.match(other.source, /Microsoft ML Buildings$/);
+  assert.equal(reads.length, 5);
+  assert.equal(releases, 2);
+
+  // A day later a new release: its header and directories are read afresh.
+  t.mock.timers.tick(25 * 60 * 60 * 1000);
+  release = { latest: '2026-10-21.0' };
+  assert.ok(await look(east[0] + dLat / 4, east[1]));
+  assert.equal(releases, 3);
+  assert.deepEqual(reads.slice(5).map((url) => url.split('/')[3]), ['2026-10-21.0', '2026-10-21.0', '2026-10-21.0']);
+});
+
+test('a lookup called off while Overture is asked reads none of its file', async () => {
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  const reads = [];
+  const look = createPlaceFacts({
+    requestJson: async (url) => {
+      if (url === OVERTURE_RELEASES) {
+        await held;
+        return RELEASE;
+      }
+      if (url === OPENFREEMAP_TILES) return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
+      return url.startsWith(NOMINATIM_REVERSE) ? { category: 'place' } : { features: [] };
+    },
+    requestBytes: async (url, options) => {
+      if (url.startsWith(OPENFREEMAP_TILES)) return buildingTile([], tileFor(...inside));
+      reads.push(options.signal);
+      return served(pmtilesFile([{ tile: tileFor(...inside), bytes: buildingTile([], tileFor(...inside)) }]), options);
+    },
+    nominatimTurn: (work) => work(),
+  });
+  const leaving = new AbortController();
+  const asking = look(...inside, { signal: leaving.signal });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  leaving.abort(); // the page moved on while Overture's release list was asked
+  release();
+  await assert.rejects(asking, { name: 'AbortError' });
+  assert.equal(reads.length, 0);
+  // A lookup that goes on hands its signal to every read, to stop a download.
+  assert.equal(await look(...inside), null);
+  assert.ok(reads.length > 0 && reads.every((signal) => signal instanceof AbortSignal));
+});
+
+test('a part of a file is asked for exactly, and a server that ignores the range is refused', async () => {
+  const { createServer } = await import('node:http');
+  const seen = [];
+  const server = createServer((req, res) => {
+    seen.push(req.headers.range);
+    if (req.url === '/moved') {
+      res.writeHead(302, { Location: '/whole' });
+      res.end();
+    } else if (req.url === '/whole') {
+      res.writeHead(200);
+      res.end('the whole file');
+    } else {
+      const [, start, end] = /bytes=(\d+)-(\d+)/.exec(req.headers.range);
+      res.writeHead(206);
+      res.end('0123456789abcdef'.slice(Number(start), Number(end) + 1));
+    }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const bytes = await fetchBytes(`${base}/part`, { range: [10, 4] });
+    assert.equal(new TextDecoder().decode(bytes), 'abcd');
+    assert.equal(seen[0], 'bytes=10-13');
+    await assert.rejects(fetchBytes(`${base}/whole`, { range: [0, 4] }), /ignored the range/);
+    await assert.rejects(fetchBytes(`${base}/moved`, { range: [0, 4] }));
+    assert.equal(seen.length, 3, 'a redirect was followed');
+    const gone = new AbortController();
+    gone.abort();
+    await assert.rejects(fetchBytes(`${base}/part`, { range: [0, 4], signal: gone.signal }), { name: 'AbortError' });
+  } finally {
+    server.close();
+  }
 });
 
 test("Overture's source line names OpenStreetMap once, and each tracing company once", () => {
