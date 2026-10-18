@@ -1,3 +1,6 @@
+import { promisify } from 'node:util';
+import { gunzip } from 'node:zlib';
+
 import { VectorTile } from '@mapbox/vector-tile';
 import { PbfReader } from 'pbf';
 
@@ -21,7 +24,9 @@ import { enqueueNominatim } from '../providers/regional/place.js';
  * two more free sources are asked: Photon names the stadiums and buildings
  * near the spot and one Nominatim lookup gives their outlines; and
  * OpenFreeMap's building tile has the unnamed buildings neither of them can
- * find. Only an outline that holds the spot is ever shown.
+ * find. Where OpenStreetMap has no outline at all (many houses), Overture's
+ * buildings, which add Microsoft's and Google's machine-traced footprints,
+ * are read last. Only an outline that holds the spot is ever shown.
  *
  * Parks are not looked up: Nominatim names the nearest bench instead, and
  * Overpass (which could) is not used by this app.
@@ -31,6 +36,8 @@ export const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 export const NOMINATIM_LOOKUP = 'https://nominatim.openstreetmap.org/lookup';
 export const PHOTON_REVERSE = 'https://photon.komoot.io/reverse';
 export const OPENFREEMAP_TILES = 'https://tiles.openfreemap.org/planet';
+export const OVERTURE_RELEASES = 'https://stac.overturemaps.org/catalog.json';
+export const OVERTURE_TILES = 'https://tiles.overturemaps.org';
 const HEADERS = Object.freeze({
   'User-Agent': 'Zenith/1.2 (+https://github.com/AlonAI4/zenith)',
   Referer: 'https://github.com/AlonAI4/zenith',
@@ -42,6 +49,10 @@ const TILE_ZOOM = 14;
 const TILE_MAX_BYTES = 4 * 1024 * 1024;
 const TILE_CACHE_MAX = 6;
 const TILE_LIST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// The start of a PMTiles file: its header and its first directory.
+const PMTILES_HEAD_BYTES = 16384;
+const UNZIPPED_MAX_BYTES = 32 * 1024 * 1024;
+const LEAF_CACHE_MAX = 4;
 // Photon's main tags that are never a building, so not worth a lookup.
 const NOT_BUILDINGS = new Set([
   'highway',
@@ -327,14 +338,22 @@ export function tileFor(lat, lon, z = TILE_ZOOM) {
  * The box's facts from an OpenFreeMap building tile: the building outline
  * holding the spot. The tile knows no names, addresses or floors, and its
  * heights are often a stand-in, so those stay empty. A building across the
- * tile's edge is cut a little beyond it.
+ * tile's edge is cut a little beyond it. `credit` gives a building's source
+ * line from its tile tags.
  */
-export function factsFromTile(bytes, { z, x, y }, lat, lon) {
+export function factsFromTile(
+  bytes,
+  { z, x, y },
+  lat,
+  lon,
+  credit = () => `${SOURCE}, via OpenFreeMap © OpenMapTiles`,
+) {
   const places = [];
   try {
     const layer = new VectorTile(new PbfReader(bytes)).layers.building;
     for (let i = 0; i < (layer?.length ?? 0); i++) {
-      const { geometry } = layer.feature(i).toGeoJSON(x, y, z);
+      const feature = layer.feature(i);
+      const { geometry } = feature.toGeoJSON(x, y, z);
       const polygons =
         geometry.type === 'Polygon'
           ? [geometry.coordinates]
@@ -353,7 +372,7 @@ export function factsFromTile(bytes, { z, x, y }, lat, lon) {
             floors: null,
             heightM: null,
             outline: thinRing(ring),
-            source: `${SOURCE}, via OpenFreeMap © OpenMapTiles`,
+            source: credit(feature.properties),
           },
         });
       }
@@ -363,6 +382,137 @@ export function factsFromTile(bytes, { z, x, y }, lat, lon) {
   }
   return bestPlace(places, lat, lon);
 }
+
+/**
+ * An Overture building's source line: OpenStreetMap and Overture, and the
+ * company whose traced footprint it is (its `sources` tag names them).
+ */
+export function overtureCredit(properties = {}) {
+  let sources = [];
+  try {
+    sources = JSON.parse(properties.sources);
+  } catch {
+    // no sources tag: the plain line
+  }
+  const datasets = (Array.isArray(sources) ? sources : [])
+    .map((source) => source?.dataset)
+    .filter(
+      (name) =>
+        typeof name === 'string' &&
+        name !== 'OpenStreetMap' &&
+        /^[\w .,()&'-]{1,60}$/.test(name),
+    );
+  return [`${SOURCE}, Overture Maps Foundation`, ...new Set(datasets)].join(
+    '; ',
+  );
+}
+
+/**
+ * PMTiles' number for a tile: all the tiles of lower zooms come first, then
+ * this zoom's tiles in the order a Hilbert curve visits them.
+ */
+export function pmtilesTileId(z, x, y) {
+  let id = (4 ** z - 1) / 3;
+  const at = [x, y];
+  for (let size = 2 ** (z - 1); size >= 1; size /= 2) {
+    const right = at[0] & size ? 1 : 0;
+    const down = at[1] & size ? 1 : 0;
+    id += size * size * ((3 * right) ^ down);
+    if (down === 0) {
+      if (right === 1) {
+        at[0] = size - 1 - at[0];
+        at[1] = size - 1 - at[1];
+      }
+      at.reverse();
+    }
+  }
+  return id;
+}
+
+/** The parts of a PMTiles v3 header this lookup reads. */
+export function pmtilesHeader(bytes) {
+  const magic = new TextDecoder().decode(bytes.subarray(0, 7));
+  if (bytes.length < 127 || magic !== 'PMTiles' || bytes[7] !== 3)
+    throw new Error('Not a PMTiles v3 file');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const number = (at) => Number(view.getBigUint64(at, true));
+  const header = {
+    rootOffset: number(8),
+    rootLength: number(16),
+    leafOffset: number(40),
+    dataOffset: number(56),
+    directoryZip: bytes[97],
+    tileZip: bytes[98],
+    maxZoom: bytes[101],
+  };
+  // Vector tiles, with no compression or gzip: what node can open alone.
+  const known = (zip) => zip === 1 || zip === 2;
+  if (
+    bytes[99] !== 1 ||
+    !known(header.directoryZip) ||
+    !known(header.tileZip) ||
+    header.rootOffset + header.rootLength > bytes.length
+  )
+    throw new Error('A PMTiles file this lookup cannot read');
+  return header;
+}
+
+/** A PMTiles directory, unzipped: its entries in tile-number order. */
+export function pmtilesDirectory(bytes) {
+  let at = 0;
+  const next = () => {
+    let value = 0;
+    for (let scale = 1; scale <= 2 ** 49; scale *= 128) {
+      if (at >= bytes.length) break;
+      const byte = bytes[at++];
+      value += (byte & 0x7f) * scale;
+      if (byte < 0x80) return value;
+    }
+    throw new Error('A damaged PMTiles directory');
+  };
+  const count = next();
+  if (count > bytes.length) throw new Error('A damaged PMTiles directory');
+  const entries = [];
+  let id = 0;
+  for (let i = 0; i < count; i++) entries.push({ id: (id += next()) });
+  for (const entry of entries) entry.run = next();
+  for (const entry of entries) entry.length = next();
+  entries.forEach((entry, i) => {
+    const value = next();
+    // 0: right after the entry before it.
+    entry.offset =
+      value === 0 && i > 0
+        ? entries[i - 1].offset + entries[i - 1].length
+        : value - 1;
+  });
+  return entries;
+}
+
+/**
+ * Where a directory says a tile is: `{ tile }` (its bytes), `{ leaf }` (a
+ * further directory that may list it) or null (no buildings in that tile).
+ */
+export function pmtilesFind(entries, id) {
+  let low = 0;
+  let high = entries.length - 1;
+  let hit = null;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    if (entries[middle].id <= id) {
+      hit = entries[middle];
+      low = middle + 1;
+    } else high = middle - 1;
+  }
+  if (!hit) return null;
+  if (hit.run === 0) return { leaf: hit };
+  return id < hit.id + hit.run ? { tile: hit } : null;
+}
+
+const gunzipAsync = promisify(gunzip);
+const unzip = (bytes, zip) =>
+  zip === 2
+    ? gunzipAsync(bytes, { maxOutputLength: UNZIPPED_MAX_BYTES })
+    : bytes;
 
 /**
  * A tile found building with the address the reverse lookup gave: its town
@@ -377,17 +527,25 @@ function withAddress(facts, reverse) {
   return { ...facts, place, address: here ? address : '' };
 }
 
-/** One capped binary download (a map tile), with no redirects. */
-async function fetchBytes(url, { headers, timeoutMs = 9000 } = {}) {
+/**
+ * One capped binary download (a map tile), with no redirects. `range`
+ * ([start, length]) asks for only that part of a file.
+ */
+async function fetchBytes(url, { headers, range, timeoutMs = 9000 } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       signal: controller.signal,
-      headers,
+      headers: range
+        ? { ...headers, Range: `bytes=${range[0]}-${range[0] + range[1] - 1}` }
+        : headers,
       redirect: 'error',
     });
     if (!response.ok) throw new Error(`Upstream returned ${response.status}`);
+    // A server that ignores the range sends the whole file.
+    if (range && response.status !== 206)
+      throw new Error('The map file server ignored the range');
     return await readResponseBytesCapped(
       response,
       TILE_MAX_BYTES,
@@ -441,6 +599,79 @@ export function createPlaceFacts({
     if (tiles.size >= TILE_CACHE_MAX) tiles.delete(tiles.keys().next().value);
     tiles.set(key, bytes);
     return bytes;
+  };
+
+  let overture = null;
+  const leaves = new Map();
+  const part = async (url, start, length) => {
+    if (!(start >= 0 && length > 0 && length <= TILE_MAX_BYTES))
+      throw new Error('A map file part out of bounds');
+    return requestBytes(url, { ...options, range: [start, length] });
+  };
+
+  /**
+   * Overture's newest buildings file, a PMTiles file of about 180 GB read in
+   * small parts: its address changes with each release, and old ones go.
+   */
+  const overtureFile = async () => {
+    if (overture && Date.now() - overture.at < TILE_LIST_MAX_AGE_MS)
+      return overture;
+    const release = (await requestJson(OVERTURE_RELEASES, options))?.latest;
+    if (
+      typeof release !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}\.\d+$/.test(release)
+    )
+      throw new Error('Overture gave no release');
+    const url = `${OVERTURE_TILES}/${release}/buildings.pmtiles`;
+    if (overture?.url === url) {
+      overture.at = Date.now();
+      return overture;
+    }
+    const head = await part(url, 0, PMTILES_HEAD_BYTES);
+    const header = pmtilesHeader(head);
+    const root = pmtilesDirectory(
+      await unzip(
+        head.subarray(header.rootOffset, header.rootOffset + header.rootLength),
+        header.directoryZip,
+      ),
+    );
+    leaves.clear();
+    overture = { url, at: Date.now(), header, root };
+    return overture;
+  };
+
+  /** Overture's unzipped building tile holding a spot, or null for none. */
+  const overtureTile = async (lat, lon) => {
+    const { url, header, root } = await overtureFile();
+    const tile = tileFor(lat, lon, Math.min(TILE_ZOOM, header.maxZoom));
+    const key = `${url} ${tile.z}/${tile.x}/${tile.y}`;
+    if (tiles.has(key)) return { tile, bytes: tiles.get(key) };
+    const id = pmtilesTileId(tile.z, tile.x, tile.y);
+    let entries = root;
+    // The format allows directories three deep under the first.
+    for (let depth = 0; depth < 4; depth++) {
+      const found = pmtilesFind(entries, id);
+      if (!found) return null;
+      if (found.tile) {
+        const { offset, length } = found.tile;
+        const zipped = await part(url, header.dataOffset + offset, length);
+        const bytes = await unzip(zipped, header.tileZip);
+        if (tiles.size >= TILE_CACHE_MAX)
+          tiles.delete(tiles.keys().next().value);
+        tiles.set(key, bytes);
+        return { tile, bytes };
+      }
+      const { offset, length } = found.leaf;
+      entries = leaves.get(offset);
+      if (!entries) {
+        const zipped = await part(url, header.leafOffset + offset, length);
+        entries = pmtilesDirectory(await unzip(zipped, header.directoryZip));
+        if (leaves.size >= LEAF_CACHE_MAX)
+          leaves.delete(leaves.keys().next().value);
+        leaves.set(offset, entries);
+      }
+    }
+    throw new Error('A PMTiles file nested too deep');
   };
 
   /**
@@ -498,7 +729,17 @@ export function createPlaceFacts({
     signal.throwIfAborted();
     const found =
       bytes && withAddress(factsFromTile(bytes, tile, lat, lon), reverse);
-    return { found: found || null, failed };
+    if (found) return { found, failed };
+    // A building OpenStreetMap has no outline for: Overture's traced ones.
+    const more = await attempt(() => overtureTile(lat, lon));
+    signal.throwIfAborted();
+    const traced =
+      more &&
+      withAddress(
+        factsFromTile(more.bytes, more.tile, lat, lon, overtureCredit),
+        reverse,
+      );
+    return { found: traced || null, failed };
   };
 
   const lookUp = async (lat, lon, key, signal) => {

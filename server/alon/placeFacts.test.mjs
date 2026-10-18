@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { gzipSync } from 'node:zlib';
 
 import { PbfWriter } from 'pbf';
 
@@ -8,6 +9,8 @@ import {
   NOMINATIM_LOOKUP,
   NOMINATIM_REVERSE,
   OPENFREEMAP_TILES,
+  OVERTURE_RELEASES,
+  OVERTURE_TILES,
   PHOTON_REVERSE,
   createPlaceFacts,
   describeKind,
@@ -15,8 +18,13 @@ import {
   factsFromNominatim,
   factsFromTile,
   insideOrNear,
+  overtureCredit,
   photonIds,
   placeFactsHandler,
+  pmtilesDirectory,
+  pmtilesFind,
+  pmtilesHeader,
+  pmtilesTileId,
   ringAreaM2,
   tagNumber,
   thinRing,
@@ -36,6 +44,8 @@ const SQUARE = [
   [LON, LAT],
 ];
 const inside = [LAT + dLat / 2, LON + dLon / 2];
+// Overture's release list, as much of it as the lookup reads.
+const RELEASE = { latest: '2026-09-23.1' };
 
 const nominatimHouse = {
   category: 'building',
@@ -186,33 +196,41 @@ test('answers are remembered: the same spot is asked once', async () => {
   assert.match(asked[0], /polygon_geojson=1/);
 });
 
-test('with no building at the spot nothing is found, after Photon and the building tile are asked', async () => {
+test('with no building at the spot nothing is found, after Photon, the building tile and Overture are asked', async () => {
   const asked = [];
+  const overture = pmtilesFile([{ tile: tileFor(...inside), bytes: buildingTile([], tileFor(...inside)) }]);
   const look = createPlaceFacts({
     requestJson: async (url) => {
       asked.push(new URL(url).host);
       if (url === OPENFREEMAP_TILES)
         return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
+      if (url === OVERTURE_RELEASES) return RELEASE;
       return {
         category: 'amenity',
         type: 'bench',
         geojson: { type: 'Point', coordinates: [LON, LAT] },
       };
     },
-    requestBytes: async (url) => {
+    requestBytes: async (url, options) => {
       asked.push(new URL(url).host);
+      if (url.startsWith(OVERTURE_TILES)) return served(overture, options);
       return buildingTile([], tileFor(...inside));
     },
     nominatimTurn: (work) => work(),
   });
   assert.equal(await look(...inside), null);
-  // No way or relation was named, so no Nominatim lookup.
+  // No way or relation was named, so no Nominatim lookup. Overture: its
+  // release, then its file's header, a further directory and the tile.
   assert.deepEqual(asked, [
     'nominatim.openstreetmap.org',
     'photon.komoot.io',
     'photon.komoot.io',
     'tiles.openfreemap.org',
     'tiles.openfreemap.org',
+    'stac.overturemaps.org',
+    'tiles.overturemaps.org',
+    'tiles.overturemaps.org',
+    'tiles.overturemaps.org',
   ]);
 });
 
@@ -338,8 +356,16 @@ function buildingTile(buildings, { z, x, y }) {
   pbf.writeMessage(3, (_, layer) => {
     layer.writeVarintField(15, 2);
     layer.writeStringField(1, 'building');
-    for (const { rings } of buildings)
+    // Tags (Overture's sources): every name and value once, in two lists.
+    const keys = [];
+    const values = [];
+    const index = (list, item) => {
+      if (!list.includes(item)) list.push(item);
+      return list.indexOf(item);
+    };
+    for (const { rings, properties = {} } of buildings)
       layer.writeMessage(2, (_, feature) => {
+        feature.writePackedVarint(2, Object.entries(properties).flatMap(([key, value]) => [index(keys, key), index(values, String(value))]));
         const geometry = [];
         let [cx, cy] = [0, 0];
         for (const ring of rings) {
@@ -355,10 +381,83 @@ function buildingTile(buildings, { z, x, y }) {
         feature.writeVarintField(3, 3); // a polygon
         feature.writePackedVarint(4, geometry);
       });
+    for (const key of keys) layer.writeStringField(3, key);
+    for (const value of values) layer.writeMessage(4, (_, v) => v.writeStringField(1, value));
     layer.writeVarintField(5, 4096);
   });
   return pbf.finish();
 }
+
+/** Numbers as PMTiles writes them: 7 bits a byte, the lowest first. */
+function varints(numbers) {
+  const out = [];
+  for (let value of numbers) {
+    while (value >= 128) {
+      out.push((value % 128) | 128);
+      value = Math.floor(value / 128);
+    }
+    out.push(value);
+  }
+  return out;
+}
+
+/** A PMTiles directory, before gzip, from its entries ({ id, run, offset, length }). */
+function directoryBytes(entries) {
+  return Uint8Array.from([
+    ...varints([entries.length]),
+    ...varints(entries.map((e, i) => e.id - (entries[i - 1]?.id ?? 0))),
+    ...varints(entries.map((e) => e.run)),
+    ...varints(entries.map((e) => e.length)),
+    // 0 means "right after the one before", as the real files write it.
+    ...varints(entries.map((e, i) => (i > 0 && e.offset === entries[i - 1].offset + entries[i - 1].length ? 0 : e.offset + 1))),
+  ]);
+}
+
+/**
+ * A small PMTiles file in Overture's form (gzip, vector tiles, zooms 0 to 14)
+ * holding the given tiles, listed in a further directory as in the real
+ * 180 GB file, whose first directory points to its further ones.
+ */
+function pmtilesFile(tiles) {
+  const sorted = tiles
+    .map(({ tile: { z, x, y }, bytes }) => ({ id: pmtilesTileId(z, x, y), zipped: gzipSync(bytes) }))
+    .sort((a, b) => a.id - b.id);
+  let at = 0;
+  const entries = sorted.map(({ id, zipped }) => {
+    const entry = { id, run: 1, offset: at, length: zipped.length };
+    at += zipped.length;
+    return entry;
+  });
+  const leaf = gzipSync(directoryBytes(entries));
+  const root = gzipSync(directoryBytes([{ id: entries[0].id, run: 0, offset: 0, length: leaf.length }]));
+  const header = new Uint8Array(127);
+  const view = new DataView(header.buffer);
+  header.set(new TextEncoder().encode('PMTiles'));
+  header[7] = 3;
+  const put = (where, value) => view.setBigUint64(where, BigInt(value), true);
+  put(8, 127);
+  put(16, root.length);
+  put(40, 127 + root.length);
+  put(48, leaf.length);
+  put(56, 127 + root.length + leaf.length);
+  put(64, at);
+  Object.assign(header, { 97: 2, 98: 2, 99: 1, 100: 0, 101: 14 });
+  return Buffer.concat([header, root, leaf, ...sorted.map(({ zipped }) => zipped)]);
+}
+
+/** The part of a file a range read asks for, as a server sends it. */
+function served(file, { range } = {}) {
+  assert.ok(range, 'Overture was read without a range');
+  return new Uint8Array(file.subarray(range[0], range[0] + range[1]));
+}
+
+// Overture's buildings around the recorded spots, as one small file.
+const OVERTURE_FILE = pmtilesFile(
+  Object.entries(FIXTURES.overtureTiles).map(([key, buildings]) => {
+    const [z, x, y] = key.split('/').map(Number);
+    return { tile: { z, x, y }, bytes: buildingTile(buildings, { z, x, y }) };
+  }),
+);
 
 /** A lookup that answers only from the recorded answers, and lists its asks. */
 function recorded() {
@@ -376,13 +475,20 @@ function recorded() {
               : 'photonAny'
             : url === OPENFREEMAP_TILES
               ? 'tileList'
-              : url;
+              : url === OVERTURE_RELEASES
+                ? 'overtureRelease'
+                : url;
       asked.push(kind);
-      const answer = kind === 'tileList' ? FIXTURES.tileList : spot[kind];
+      const answer = { tileList: FIXTURES.tileList, overtureRelease: FIXTURES.overtureRelease }[kind] ?? spot[kind];
       if (!answer) throw new Error(`nothing recorded for ${kind}`);
       return structuredClone(answer);
     },
-    requestBytes: async (url) => {
+    requestBytes: async (url, options) => {
+      if (url.startsWith(OVERTURE_TILES)) {
+        asked.push('overture');
+        assert.equal(url, `${OVERTURE_TILES}/${FIXTURES.overtureRelease.latest}/buildings.pmtiles`);
+        return served(OVERTURE_FILE, options);
+      }
       asked.push('tile');
       const [z, x, y] = /(\d+)\/(\d+)\/(\d+)\.pbf$/
         .exec(url)
@@ -452,6 +558,21 @@ test('Spotify Camp Nou stays NO MATCH: the click is outside the stadium as mappe
   assert.equal(stadium.properties.name, 'Spotify Camp Nou');
   assert.deepEqual(asked, [
     ...['reverse', 'photonAny', 'photonStadium', 'tileList', 'tile'],
+    ...['overtureRelease', 'overture', 'overture', 'overture'],
+  ]);
+});
+
+test('a house OpenStreetMap has no outline for (Soweto) is found in Overture, with its makers named', async () => {
+  const { asked, look } = recorded();
+  const facts = await look('soweto');
+  assertFound(facts, 'soweto');
+  assert.match(facts.source, /OpenStreetMap contributors, Overture Maps Foundation; Microsoft ML Buildings$/);
+  // The reverse lookup's address point is the street, not in the house.
+  assert.equal(facts.address, '');
+  assert.deepEqual(asked, [
+    ...['reverse', 'photonAny', 'photonStadium', 'tileList', 'tile'],
+    // Overture's release, its file's start, a further directory, the tile.
+    ...['overtureRelease', 'overture', 'overture', 'overture'],
   ]);
 });
 
@@ -595,6 +716,7 @@ test('a failing source is skipped; when nothing is found the failure is passed o
   // Nothing remembered after a failure: the next ask tries again.
   let listDown = true;
   let fetches = 0;
+  const empty = pmtilesFile([{ tile: tileFor(...inside), bytes: buildingTile([], tileFor(...inside)) }]);
   const flaky = createPlaceFacts({
     requestJson: async (url) => {
       if (url.startsWith(NOMINATIM_REVERSE)) return { category: 'place' };
@@ -602,9 +724,11 @@ test('a failing source is skipped; when nothing is found the failure is passed o
         if (listDown) throw new Error('OpenFreeMap is down');
         return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
       }
+      if (url === OVERTURE_RELEASES) return RELEASE;
       return { features: [] };
     },
-    requestBytes: async () => {
+    requestBytes: async (url, options) => {
+      if (url.startsWith(OVERTURE_TILES)) return served(empty, options);
       fetches += 1;
       return buildingTile([], tileFor(...inside));
     },
@@ -691,4 +815,81 @@ test('a lookup everyone left stops before its next source, and a new ask starts 
   // stopped before them.
   assert.equal(asked.filter((host) => host.startsWith('nominatim')).length, 2);
   assert.equal(asked.filter((host) => host === 'tile').length, 1);
+});
+
+test('PMTiles: tile numbers, directories and further directories are read as the format says', () => {
+  // The format's own examples: zoom 0, the four tiles of zoom 1, and one deep tile.
+  const ids = [[0, 0, 0], [1, 0, 0], [1, 0, 1], [1, 1, 1], [1, 1, 0], [2, 0, 0], [12, 3423, 1763]];
+  assert.deepEqual(ids.map((zxy) => pmtilesTileId(...zxy)), [0, 1, 2, 3, 4, 5, 19_078_479]);
+  const entries = [
+    { id: 5, run: 1, offset: 0, length: 300 },
+    { id: 6, run: 3, offset: 300, length: 200 }, // right after the one before
+    { id: 200, run: 0, offset: 70_000, length: 1000 }, // a further directory
+    { id: 300_000_000, run: 1, offset: 2 ** 40, length: 5 }, // big numbers
+  ];
+  assert.deepEqual(pmtilesDirectory(directoryBytes(entries)), entries);
+  assert.equal(pmtilesFind(entries, 4), null);
+  assert.equal(pmtilesFind(entries, 8).tile, entries[1]);
+  assert.equal(pmtilesFind(entries, 9), null, 'past the run of the same tile');
+  assert.equal(pmtilesFind(entries, 250).leaf, entries[2]);
+  assert.equal(pmtilesFind([], 1), null);
+  assert.throws(() => pmtilesDirectory(Uint8Array.from([3, 1, 0x80])), /damaged/);
+  assert.throws(() => pmtilesDirectory(Uint8Array.from([200, 1])), /damaged/);
+
+  const file = pmtilesFile([{ tile: { z: 14, x: 1, y: 2 }, bytes: new Uint8Array(3) }]);
+  const header = pmtilesHeader(file);
+  assert.equal(header.maxZoom, 14);
+  assert.equal(header.rootOffset, 127);
+  const brotli = Uint8Array.from(file);
+  brotli[98] = 3;
+  assert.throws(() => pmtilesHeader(brotli), /cannot read/);
+  assert.throws(() => pmtilesHeader(new TextEncoder().encode('{"tiles":[]}')), /Not a PMTiles/);
+});
+
+test('Overture is read only from its own address, in parts, and its file is opened once a day', async () => {
+  const tile = tileFor(...inside);
+  const file = pmtilesFile([{ tile, bytes: buildingTile([{ rings: [SQUARE], properties: { sources: '[{"dataset":"Google Open Buildings"}]' } }], tile) }]);
+  const reads = [];
+  let release = { latest: '../../evil.example/x' };
+  let releases = 0;
+  const look = createPlaceFacts({
+    requestJson: async (url) => {
+      if (url === OVERTURE_RELEASES) {
+        releases += 1;
+        return release;
+      }
+      if (url === OPENFREEMAP_TILES) return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
+      return url.startsWith(NOMINATIM_REVERSE) ? { category: 'place' } : { features: [] };
+    },
+    requestBytes: async (url, options) => {
+      if (!url.startsWith(OPENFREEMAP_TILES)) reads.push(url);
+      return url.startsWith(OPENFREEMAP_TILES) ? buildingTile([], tile) : served(file, options);
+    },
+    nominatimTurn: (work) => work(),
+  });
+  // A release name that is not a date would make another address: refused.
+  await assert.rejects(look(...inside), /no release/);
+  assert.deepEqual(reads, []);
+
+  release = RELEASE;
+  const found = await look(...inside);
+  assert.match(found.source, /Overture Maps Foundation; Google Open Buildings$/);
+  assert.ok(reads.every((url) => url === `${OVERTURE_TILES}/2026-09-23.1/buildings.pmtiles`));
+  assert.equal(reads.length, 3);
+  // A second spot in the same tile: the file and the tile are not read again.
+  const next = await look(inside[0] + dLat / 4, inside[1]);
+  assert.ok(next);
+  assert.equal(reads.length, 3);
+  assert.equal(releases, 2, 'the release list was asked again');
+});
+
+test("Overture's source line names OpenStreetMap once, and each tracing company once", () => {
+  const sources = (...datasets) => ({ sources: JSON.stringify(datasets.map((dataset) => ({ dataset }))) });
+  const plain = 'Map data © OpenStreetMap contributors, Overture Maps Foundation';
+  assert.equal(overtureCredit(sources('OpenStreetMap')), plain);
+  assert.equal(overtureCredit(sources('Microsoft ML Buildings', 'Microsoft ML Buildings', 'OpenStreetMap')), `${plain}; Microsoft ML Buildings`);
+  assert.equal(overtureCredit(sources('Esri Community Maps', 'Google Open Buildings')), `${plain}; Esri Community Maps; Google Open Buildings`);
+  assert.equal(overtureCredit({ sources: 'not json' }), plain);
+  assert.equal(overtureCredit({}), plain);
+  assert.equal(overtureCredit(sources('<img src=x>', 'x'.repeat(90))), plain);
 });
