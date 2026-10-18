@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { matchCommand, onOff, switchNames } from './freeVoice.js';
+import { fakeDocument } from './fakeDom.mjs';
+import {
+  installFreeVoice,
+  matchCommand,
+  onOff,
+  switchNames,
+} from './freeVoice.js';
 
 const layers = new Map([
   ['flights', 'flights'],
@@ -100,4 +106,65 @@ test('panels are not switches you can say', () => {
   const switches = switchNames();
   assert.ok(switches.has('map pin'));
   assert.ok(!switches.has('help'));
+});
+
+/** The add-on on a fake page, with or without an OpenAI key set. */
+async function micPage(openaiSet) {
+  const doc = fakeDocument();
+  const win = doc.defaultView;
+  win.setTimeout = () => 0;
+  const heard = { started: 0, stopped: 0 };
+  win.SpeechRecognition = class {
+    start() {
+      heard.started++;
+    }
+    stop() {
+      heard.stopped++;
+    }
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({ keys: [{ id: 'openai', set: openaiSet }] }),
+  });
+  let stop;
+  try {
+    stop = installFreeVoice({ viewer: {} }, {}, doc);
+    await new Promise((done) => setImmediate(done));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+  const button = doc.createElement('button');
+  button.id = 'gev-voice-button';
+  doc.body.appendChild(button);
+  // The fake page does not pass events up: hand the page the click itself.
+  const click = () => {
+    const event = new Event('click', { cancelable: true });
+    Object.defineProperty(event, 'target', { value: button });
+    doc.dispatchEvent(event);
+    return event;
+  };
+  return { heard, click, stop };
+}
+
+test('with no OpenAI key the mic button starts and stops the free voice, not the paid one', async () => {
+  const { heard, click, stop } = await micPage(false);
+  try {
+    assert.ok(click().defaultPrevented, 'the paid voice never saw the click');
+    assert.equal(heard.started, 1);
+    click();
+    assert.equal(heard.stopped, 1);
+  } finally {
+    stop();
+  }
+});
+
+test('with an OpenAI key the mic button is left to the paid voice', async () => {
+  const { heard, click, stop } = await micPage(true);
+  try {
+    assert.ok(!click().defaultPrevented);
+    assert.equal(heard.started, 0);
+  } finally {
+    stop();
+  }
 });

@@ -1364,6 +1364,52 @@ const checks = [
     },
   ],
   [
+    'select all paints nothing blue: only typed fields and the info panels can be selected',
+    async (page) => {
+      const picked = await page.evaluate(() => {
+        document.activeElement?.blur?.();
+        document.execCommand('selectAll');
+        const text = getSelection().toString().replace(/\s+/g, ' ').trim();
+        getSelection().removeAllRanges();
+        return text;
+      });
+      expect(picked.length === 0, `select all took ${picked.length} characters: ${picked.slice(0, 80)}`);
+      const field = await page.evaluate(() => {
+        const input = document.getElementById('location-search');
+        if (!input) return null;
+        const was = input.value;
+        input.value = 'Kilburn High Road';
+        input.select();
+        const result = { selected: input.selectionEnd - input.selectionStart, length: input.value.length };
+        input.value = was;
+        input.blur();
+        return result;
+      });
+      expect(field && field.selected === field.length, `the search box could not select its own text: ${JSON.stringify(field)}`);
+    },
+  ],
+  [
+    'with no OpenAI key the mic button starts the free voice, never VOICE SYSTEM ERROR',
+    async (page) => {
+      const keySet = await page.evaluate(async () => {
+        const status = await (await fetch('/api/setup/status', { cache: 'no-store' })).json();
+        return status?.keys?.find?.((key) => key.id === 'openai')?.set === true;
+      });
+      if (keySet) throw new Skip('an OpenAI key is set, so the mic is the paid voice');
+      await page.evaluate(() => document.getElementById('gev-voice-button')?.click());
+      await sleep(1500);
+      const state = await page.evaluate(() => ({
+        error: window.__zt.shown(document.querySelector('.gev-voice-error-tray')),
+        heard: document.getElementById('zenith-heard')?.textContent ?? '',
+      }));
+      // A second click stops it again.
+      await page.evaluate(() => document.getElementById('gev-voice-button')?.click());
+      await sleep(500);
+      expect(!state.error, 'the mic button showed VOICE SYSTEM ERROR');
+      expect(/LISTENING|VOICE OFF|NOTHING HEARD/.test(state.heard), `the free voice did not answer: ${state.heard || 'nothing shown'}`);
+    },
+  ],
+  [
     'no emojis on screen',
     async (page) => {
       const seen = new Set();

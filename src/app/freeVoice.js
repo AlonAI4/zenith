@@ -135,6 +135,8 @@ export function installFreeVoice(
   let ready = false;
   let holdTimer = null;
   let listening = false;
+  // Started from the mic button rather than by holding V.
+  let byMic = false;
   let passing = false;
   let browserRecognition = null;
   let lastHeard = '';
@@ -236,7 +238,11 @@ export function installFreeVoice(
   // The words, from the Mac app or from the browser.
   const onSpeech = (event) => {
     const { kind, text } = event.detail || {};
-    if (kind === 'listening') say('LISTENING', 'Speak, then let go of V');
+    if (kind === 'listening')
+      say(
+        'LISTENING',
+        byMic ? 'Speak, then click the mic again' : 'Speak, then let go of V',
+      );
     else if (kind === 'partial') {
       lastHeard = text;
       say('LISTENING', text);
@@ -244,6 +250,7 @@ export function installFreeVoice(
       lastHeard = '';
       run(text);
     } else if (kind === 'done') {
+      listening = false;
       if (lastHeard) {
         const heard = lastHeard;
         lastHeard = '';
@@ -316,6 +323,7 @@ export function installFreeVoice(
     if (event.repeat || holdTimer || listening) return;
     holdTimer = win.setTimeout(() => {
       holdTimer = null;
+      byMic = false;
       startListening();
     }, HOLD_MS);
   };
@@ -351,6 +359,25 @@ export function installFreeVoice(
   };
   win.addEventListener('keydown', onDown, true);
   win.addEventListener('keyup', onUp, true);
+
+  // The mic button starts the paid voice, which with no key only shows
+  // "VOICE SYSTEM ERROR": with no key, a click starts or stops this one.
+  const onMic = (event) => {
+    const target = event.target;
+    const mic =
+      target?.id === 'gev-voice-button' ||
+      Boolean(target?.closest?.('#gev-voice-button'));
+    if (!ready || !mic) return;
+    event.stopImmediatePropagation();
+    event.preventDefault();
+    if (listening) {
+      stopListening();
+      return;
+    }
+    byMic = true;
+    startListening();
+  };
+  doc.addEventListener('click', onMic, true);
   win.addEventListener('blur', letGo);
   win.addEventListener('pagehide', letGo);
 
@@ -374,6 +401,7 @@ export function installFreeVoice(
     win.removeEventListener('zenith:saved-view', onSaved);
     win.removeEventListener('keydown', onDown, true);
     win.removeEventListener('keyup', onUp, true);
+    doc.removeEventListener('click', onMic, true);
     win.removeEventListener('blur', letGo);
     win.removeEventListener('pagehide', letGo);
     if (listening) stopListening();
