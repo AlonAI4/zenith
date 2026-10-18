@@ -606,6 +606,29 @@ const checks = [
     },
   ],
   [
+    "with the HUD on, its bottom corners clear the two-line map credits",
+    async (page) => {
+      await page.evaluate(() => document.activeElement?.blur?.());
+      await page.keyboard.press('h');
+      await sleep(700);
+      try {
+        const clash = await page.evaluate(() => {
+          const shown = (el) => el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+          const corners = [...document.querySelectorAll('#intel-hud .hud-bottom-left, #intel-hud .hud-bottom-right')].filter(shown);
+          const credits = [...document.querySelectorAll('#cesium-credits .cesium-credit-logoContainer, #cesium-credits .cesium-credit-textContainer')].filter(shown);
+          const hit = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+          if (corners.length === 0) return null;
+          return corners.some((c) => credits.some((k) => hit(c.getBoundingClientRect(), k.getBoundingClientRect())));
+        });
+        if (clash === null) throw new Skip('the HUD did not show');
+        expect(!clash, 'the HUD sits on the map credits');
+      } finally {
+        await page.keyboard.press('h');
+        await sleep(400);
+      }
+    },
+  ],
+  [
     'a switch that is on looks on (blue)',
     async (page) => {
       await press(page, 'time-zones-toggle');
