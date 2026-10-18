@@ -51,6 +51,9 @@ export function installFocusTips(doc = document) {
     if (!bar || !button || button === bar || !bar.contains(button))
       return hide();
     if (!words || !byKeyboard) return hide();
+    // Rows in the LAYERS menu and the tray print their own names; a tip
+    // under one would cover the next row.
+    if (button.closest?.('#zenith-layers-menu, #zenith-tray')) return hide();
     tip.textContent = words;
     const box = button.getBoundingClientRect();
     const width = doc.defaultView?.innerWidth ?? TIP_WIDTH;

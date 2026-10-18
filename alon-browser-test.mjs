@@ -538,6 +538,22 @@ const checks = [
       // Back to the LAYERS button, or on a narrow window to the closed tray's button.
       const back = where === 'tray' ? 'zenith-more-toggle' : 'zenith-layers-toggle';
       expect((await page.evaluate(() => document.activeElement?.id)) === back, `Escape did not give the focus back to #${back}`);
+      // Over the help card (which opens by itself the first time), a row can still be clicked.
+      await press(page, 'zenith-help-toggle');
+      await press(page, 'zenith-layers-toggle');
+      const row = await page.evaluate((id) => {
+        const r = document.getElementById(id).getBoundingClientRect();
+        return [r.left + r.width / 2, r.top + r.height / 2];
+      }, LAYERS[3]);
+      const wasOn = await pressed(page, LAYERS[3]);
+      await page.mouse.click(row[0], row[1]);
+      await sleep(400);
+      expect((await pressed(page, LAYERS[3])) !== wasOn, 'a LAYERS row could not be clicked over the help card');
+      expect(await menuOpen(), 'clicking a LAYERS row over the help card closed the menu');
+      await page.mouse.click(row[0], row[1]);
+      await sleep(300);
+      await page.evaluate(() => document.getElementById('zenith-layers-toggle').click());
+      await press(page, 'zenith-help-toggle');
       // A click on the map closes it too.
       await press(page, 'zenith-layers-toggle');
       expect(await menuOpen(), 'a click did not open the LAYERS menu');

@@ -37,6 +37,9 @@ const ICON =
 const STYLE = `
 #tilt-map-view, #north-up-view { display: none !important; }
 #zenith-layers-toggle { position: relative; }
+/* The bar is its own layer at 100: raised while the menu is open, so the
+   menu draws over the help card and the other panels. */
+#top-center-actions.zl-menu-open { z-index: 190; }
 #zenith-layers-toggle[data-on]::after {
   content: attr(data-on);
   position: absolute; top: -5px; right: -5px;
@@ -169,6 +172,7 @@ export function installToolbarLayout(doc = document, win = window) {
   const setOpen = (open) => {
     menu.dataset.open = String(open);
     toggle.setAttribute('aria-expanded', String(open));
+    bar.classList.toggle('zl-menu-open', open);
   };
   // Under the button, kept inside the window, measured from the bar (the
   // menu sits in it). Worked out on the click, while the button is still
@@ -193,8 +197,9 @@ export function installToolbarLayout(doc = document, win = window) {
     }
     setOpen(true);
     place();
-    // Opened from the keyboard (a click with no pointer): straight to the first row.
-    if (event.detail === 0) buttons()[0]?.focus();
+    // Straight to the first row, so Tab and screen readers go through the
+    // menu before what follows (the menu sits before its button in the bar).
+    buttons()[0]?.focus();
   };
   toggle.addEventListener('click', onToggle);
 
@@ -207,6 +212,13 @@ export function installToolbarLayout(doc = document, win = window) {
     list[next].focus();
   };
   menu.addEventListener('keydown', onMenuKey);
+  // Focus moved on to something else: the menu closes behind it. (A click on
+  // a row's name moves focus nowhere, and keeps it open.)
+  const onFocusOut = (event) => {
+    const to = event.relatedTarget;
+    if (to && !menu.contains(to) && to !== toggle) setOpen(false);
+  };
+  menu.addEventListener('focusout', onFocusOut);
 
   const onOutside = (event) => {
     if (
@@ -237,7 +249,8 @@ export function installToolbarLayout(doc = document, win = window) {
     offEscape();
     win.removeEventListener('resize', close);
     doc.removeEventListener('pointerdown', onOutside, true);
-    for (const button of buttons()) bar.insertBefore(button, toggle);
+    for (const button of buttons()) bar.appendChild(button);
+    bar.classList.remove('zl-menu-open');
     toggle.remove();
     menu.remove();
     style.remove();

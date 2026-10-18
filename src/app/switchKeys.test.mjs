@@ -35,7 +35,7 @@ test('a key finds its switch, in either case', () => {
     switchForKey(press('?', { shiftKey: true })),
     'zenith-help-toggle',
   );
-  assert.equal(switchForKey(press('x')), null);
+  assert.equal(switchForKey(press('j')), null);
   assert.equal(switchForKey(press('1')), null);
 });
 
@@ -50,6 +50,29 @@ test('keys do nothing while typing, with Cmd, Ctrl or Option held, held down, or
   assert.equal(switchForKey(press('p', { repeat: true })), null);
   assert.equal(switchForKey(press('p'), { cockpit: true }), null);
   assert.equal(switchForKey(null), null);
+});
+
+test('keys something else took, dialogs, full screen, keys switched off and other layouts', () => {
+  assert.equal(switchForKey(press('a', { defaultPrevented: true })), null);
+  assert.equal(switchForKey(press('p'), { blocked: true }), null);
+  assert.equal(switchForKey(press('p'), { off: true }), null);
+  // AltGr: Ctrl and Alt together, on layouts where that types '?'.
+  const altGr = press('?', {
+    ctrlKey: true,
+    altKey: true,
+    getModifierState: (name) => name === 'AltGraph',
+  });
+  assert.equal(switchForKey(altGr), 'zenith-help-toggle');
+  // A Hebrew layout: the letter is Hebrew, the key's place is P.
+  assert.equal(
+    switchForKey(press('פ', { code: 'KeyP' })),
+    'address-lookup-toggle',
+  );
+});
+
+test('a city landmark key is not a switch key', () => {
+  for (const key of ['q', 'w', 'e', 'r', 't'])
+    assert.equal(switchForKey(press(key)), null, key);
 });
 
 test('a tooltip names its key once', () => {

@@ -10,17 +10,19 @@ import { ZENITH_SWITCHES } from './zenithSwitches.js';
  * or in cockpit mode, which has keys of its own.
  */
 
+const STORAGE_KEY = 'gev.switchKeys';
+
 /** Each switch's key. */
 export const SWITCH_KEYS = Object.freeze({
   'zenith-layers-toggle': 'a',
   'map-labels-toggle': 'l',
-  'train-stations-toggle': 'r',
+  'train-stations-toggle': 'u',
   'earthquakes-toggle': 'k',
   'time-zones-toggle': 'z',
   'day-night-toggle': 'n',
   'address-lookup-toggle': 'p',
   'hd-detail-toggle': 'b',
-  'classified-toggle': 't',
+  'classified-toggle': 'x',
   'measure-toggle': 'm',
   'saved-places-toggle': 's',
   'video-mode-toggle': 'g',
@@ -30,8 +32,9 @@ export const SWITCH_KEYS = Object.freeze({
 /**
  * Keys the original app and other add-ons already use: visual presets 1 to
  * 7, the HUD (h), orbit (o), clean view and free voice (v), the layers
- * panel (f), detection (d), cameras and cockpit (c), turning (q, e) and the
- * frame-rate meter (`).
+ * panel (f), detection (d), cameras and cockpit (c), turning (q, e), the
+ * frame-rate meter (`), and a city's five landmarks (q, w, e, r, t, in
+ * src/ui/locationControls.js).
  */
 export const TAKEN_KEYS = Object.freeze([
   '1',
@@ -49,6 +52,9 @@ export const TAKEN_KEYS = Object.freeze([
   'c',
   'q',
   'e',
+  'w',
+  'r',
+  't',
   '`',
 ]);
 
@@ -62,6 +68,7 @@ export const OTHER_KEYS = Object.freeze([
   ['O', 'Orbit the place in view'],
   ['D', 'Detection labels'],
   ['Q, E', 'Turn the view'],
+  ['Q W E R T', "A chosen city's five landmarks"],
   ['Esc', 'Close the panel on top'],
 ]);
 
@@ -70,11 +77,19 @@ export const keyLabel = (key) => key.toUpperCase();
 
 /**
  * The switch a key press is for, or null when it is not one, or the press
- * should go elsewhere (typing, a modifier held, cockpit mode, a repeat).
+ * should go elsewhere: typing, a modifier held, a repeat, a key something
+ * else already took (defaultPrevented), cockpit mode, a dialog or full
+ * screen in front, or the keys switched off.
  */
-export function switchForKey(event, { cockpit = false } = {}) {
-  if (!event || cockpit || event.repeat || event.isComposing) return null;
-  if (event.metaKey || event.ctrlKey || event.altKey) return null;
+export function switchForKey(
+  event,
+  { cockpit = false, blocked = false, off = false } = {},
+) {
+  if (!event || cockpit || blocked || off) return null;
+  if (event.repeat || event.isComposing || event.defaultPrevented) return null;
+  // AltGr (Ctrl and Alt on some keyboards) is how '?' is typed on a few layouts.
+  const altGr = event.getModifierState?.('AltGraph') === true;
+  if (event.metaKey || (!altGr && (event.ctrlKey || event.altKey))) return null;
   const target = event.target;
   if (
     target?.closest?.(
@@ -82,7 +97,13 @@ export function switchForKey(event, { cockpit = false } = {}) {
     )
   )
     return null;
-  const key = String(event.key || '').toLowerCase();
+  // A non-Latin layout (Hebrew, say) gives its own letter: the key's
+  // place on the keyboard is used instead.
+  let key = String(event.key || '').toLowerCase();
+  if (!/^[\x20-\x7e]$/.test(key)) {
+    const place = /^Key([A-Z])$/.exec(String(event.code || ''));
+    key = place ? place[1].toLowerCase() : key;
+  }
   for (const [id, wanted] of Object.entries(SWITCH_KEYS)) {
     if (wanted === key) return id;
   }
@@ -102,14 +123,32 @@ export function withKey(title, key) {
  * @returns {() => void}
  */
 export function installSwitchKeys(doc = document, win = window) {
+  const read = () => {
+    try {
+      return win.localStorage?.getItem(STORAGE_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  };
+  let on = read();
   const onKey = (event) => {
     const id = switchForKey(event, {
       cockpit: doc.body.classList.contains('cockpit-mode'),
+      blocked: Boolean(
+        doc.fullscreenElement ||
+        doc.querySelector('dialog:modal, [aria-modal="true"]'),
+      ),
+      off: !on,
     });
     const button = id && doc.getElementById(id);
     if (!button || button.disabled) return;
     event.preventDefault();
     button.click();
+    // A second press closes a panel the first one focused inside: the focus
+    // comes back to its switch instead of falling to the top of the page.
+    const now = doc.activeElement;
+    if (now && now !== doc.body && now.checkVisibility?.() === false)
+      button.focus();
   };
   doc.addEventListener('keydown', onKey);
 
@@ -166,7 +205,23 @@ export function installSwitchKeys(doc = document, win = window) {
   for (const [id, key] of Object.entries(SWITCH_KEYS))
     row(keyLabel(key), names.get(id));
   for (const [key, what] of OTHER_KEYS) row(key, what);
-  list.append(heading, table);
+  // Single keys can be switched off (for speech input or a screen reader).
+  const choice = doc.createElement('label');
+  choice.style.cssText = 'display:block;margin:0 0 8px';
+  const box = doc.createElement('input');
+  box.type = 'checkbox';
+  box.id = 'zenith-switch-keys-on';
+  box.checked = on;
+  box.addEventListener('change', () => {
+    on = box.checked;
+    try {
+      win.localStorage?.setItem(STORAGE_KEY, on ? '1' : '0');
+    } catch {
+      // Private windows may refuse storage; the choice still holds this visit.
+    }
+  });
+  choice.append(box, ' Single-letter keys for the switches');
+  list.append(heading, choice, table);
   // The help card is made a moment later.
   queueMicrotask(() => doc.getElementById('zenith-help')?.appendChild(list));
 
