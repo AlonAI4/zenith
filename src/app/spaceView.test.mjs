@@ -5,9 +5,11 @@ import { SWITCH_KEYS, TAKEN_KEYS } from './switchKeys.js';
 import {
   APOLLO_SITES,
   ARRIVE,
+  clearOf,
   createTrip,
   dragMove,
   EARTH_RADIUS_M,
+  flightMs,
   flightPoint,
   meansEarth,
   meansMoon,
@@ -23,6 +25,9 @@ import {
 } from './spaceView.js';
 
 const length = (v) => Math.hypot(v.x, v.y, v.z);
+const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+const scale = (a, k) => ({ x: a.x * k, y: a.y * k, z: a.z * k });
+const unitOf = (a) => scale(a, 1 / length(a));
 const RAD = Math.PI / 180;
 /** The Moon 384,400 km away at a declination and a longitude, Earth-centred. */
 const moonAt = (decDeg, lonDeg, km = 384_400) => ({
@@ -176,6 +181,38 @@ test('the flight between the Earth and the Moon goes round the Earth, never thro
   assert.ok(
     Math.hypot(end.x - london.x, end.y - london.y, end.z - london.z) < 1,
   );
+});
+
+test('a long flight takes about 4 seconds; one turned round just after it started, well under one', () => {
+  const london = { x: 3_978_000, y: -5_000, z: 4_968_000 };
+  assert.equal(
+    flightMs(london, spaceViewCamera(moonAt(10, 40)).position),
+    4000,
+  );
+  assert.equal(flightMs(moonAt(10, 40), london), 4000);
+  const nearly = { x: london.x * 1.001, y: london.y, z: london.z * 1.001 };
+  assert.ok(flightMs(nearly, london) < 600);
+});
+
+test('a flight from the far side of the Moon is kept out of it', () => {
+  const moon = moonAt(5, 30);
+  const out = unitOf(moon);
+  const farSide = add(moon, scale(out, MOON_RADIUS_M + 100_000));
+  const london = { x: 3_978_000, y: -5_000, z: 4_968_000 };
+  for (let i = 0; i <= 200; i += 1) {
+    const at = clearOf(
+      flightPoint(farSide, london, i / 200),
+      moon,
+      MOON_RADIUS_M + 100_000,
+    );
+    const fromMoon = Math.hypot(at.x - moon.x, at.y - moon.y, at.z - moon.z);
+    assert.ok(
+      fromMoon >= MOON_RADIUS_M + 100_000 - 1,
+      `inside the Moon at step ${i}`,
+    );
+  }
+  // A point already clear is left alone.
+  assert.deepEqual(clearOf(london, moon, MOON_RADIUS_M), london);
 });
 
 test('going back puts the view and both switches back as they were', () => {

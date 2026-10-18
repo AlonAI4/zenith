@@ -69,8 +69,13 @@ export async function launchBrowser() {
  * ion's asset for Google's 3D tiles, and Google's tile server. The app asks
  * for them on every page load, even with the satellite map chosen.
  */
-// Cesium Moon Terrain (asset 2684829) too: loading it uses Alon's ion allowance, so tests ask first.
-export const PAID_3D = ['*://tile.googleapis.com/*', '*://api.cesium.com/v1/assets/2275207/*', '*://api.cesium.com/v1/assets/2684829/*'];
+export const PAID_3D = ['*://tile.googleapis.com/*', '*://api.cesium.com/v1/assets/2275207/*'];
+/**
+ * Cesium Moon Terrain (ion asset 2684829): loading it uses Alon's ion
+ * allowance, so it is blocked in every run, the 3D-map runs included, until
+ * he says yes to one.
+ */
+export const ASK_FIRST = ['*://api.cesium.com/v1/assets/2684829/*'];
 
 /**
  * Returns a switch that blocks the metered 3D map for this page, or lets it
@@ -85,5 +90,5 @@ export async function paid3dBlocker(page) {
   // `extra`: more addresses to block for a while, such as a feed a check
   // wants to see failing.
   return (blocked, extra = []) =>
-    client.send('Network.setBlockedURLs', { urls: [...(blocked ? PAID_3D : []), ...extra] });
+    client.send('Network.setBlockedURLs', { urls: [...(blocked ? PAID_3D : []), ...ASK_FIRST, ...extra] });
 }

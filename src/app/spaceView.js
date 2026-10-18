@@ -277,6 +277,26 @@ export function flightPoint(from, to, t) {
   return scale(unit(way), r0 * (r1 / r0) ** eased);
 }
 
+/**
+ * How long a flight takes: a long trip about 4 seconds, a short one (a flight
+ * turned round just after it started) well under one.
+ */
+export function flightMs(from, to) {
+  const far =
+    Math.abs(Math.log(length(to) / length(from))) +
+    Math.acos(Math.max(-1, Math.min(1, dot(unit(from), unit(to)))));
+  return Math.round(500 + (FLY_MS - 500) * Math.min(1, far / 2));
+}
+
+/** A point pushed out of a sphere (the Moon) onto its surface, if inside. */
+export function clearOf(point, centre, radius) {
+  const out = sub(point, centre);
+  const far = length(out);
+  return far >= radius || far === 0
+    ? point
+    : add(centre, scale(out, radius / far));
+}
+
 /** Text typed in the search box that means the Moon, or the Earth. */
 export const meansMoon = (text) =>
   /^\s*(the\s+)?moon\s*$/i.test(String(text ?? ''));
@@ -330,16 +350,11 @@ export function createTrip(app) {
       const back = saved;
       saved = null;
       where = 'earth';
-      if (
-        typeof back.satellites === 'boolean' &&
-        back.satellites !== app.getSatellites()
-      )
+      // Always set, not only when they look different: a layer still loading
+      // reads as off, and would otherwise be left on.
+      if (typeof back.satellites === 'boolean')
         app.setSatellites(back.satellites);
-      if (
-        typeof back.celestial === 'boolean' &&
-        back.celestial !== app.getCelestial()
-      )
-        app.setCelestial(back.celestial);
+      if (typeof back.celestial === 'boolean') app.setCelestial(back.celestial);
       return back.view;
     },
   };
@@ -491,19 +506,37 @@ export function installSpaceView(
   const plain = (c) => vec(c.x, c.y, c.z);
   const cartesian = (p) => new Cesium.Cartesian3(p.x, p.y, p.z);
 
-  const readView = () => ({
-    position: plain(camera.positionWC),
-    direction: plain(camera.directionWC),
-    up: plain(camera.upWC),
-  });
+  /** Where a flight home will end, while it is under way. */
+  let landing = null;
+  // Where the view is: on the way home, where it is going, so a trip started
+  // again mid-flight comes back to the right place.
+  const readView = () =>
+    landing ?? {
+      position: plain(camera.positionWC),
+      direction: plain(camera.directionWC),
+      up: plain(camera.upWC),
+    };
+  /** Where this add-on last put the camera: anything else moving it shows. */
+  let placed = null;
+  // Set directly: Cesium's setView goes through heading, pitch and roll, and
+  // loses the roll when the view looks along the Earth's up.
   const setView = (view) => {
-    camera.setView({
-      destination: cartesian(view.position),
-      orientation: {
-        direction: cartesian(view.direction),
-        up: cartesian(view.up),
-      },
-    });
+    const direction = Cesium.Cartesian3.normalize(
+      cartesian(view.direction),
+      new Cesium.Cartesian3(),
+    );
+    const up = Cesium.Cartesian3.normalize(
+      cartesian(view.up),
+      new Cesium.Cartesian3(),
+    );
+    camera.position = cartesian(view.position);
+    camera.direction = direction;
+    camera.up = up;
+    camera.right = Cesium.Cartesian3.normalize(
+      Cesium.Cartesian3.cross(direction, up, new Cesium.Cartesian3()),
+      new Cesium.Cartesian3(),
+    );
+    placed = Cesium.Cartesian3.clone(camera.position);
     scene.requestRender();
   };
 
@@ -538,27 +571,52 @@ export function installSpaceView(
     camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
     if (flight) win.cancelAnimationFrame(flight.frame);
     holdInputs();
-    const from = readView();
+    const from = {
+      position: plain(camera.positionWC),
+      direction: plain(camera.directionWC),
+      up: plain(camera.upWC),
+    };
     const still = win.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const ms = flightMs(from.position, to.position);
+    // Round the Moon as well as the Earth: a flight from its far side would
+    // otherwise go through it. Never lower than either end of the flight.
+    const moon = plain(moonCentre());
+    const above = (p) => length(sub(p, moon)) - MOON_RADIUS_M;
+    const low = Math.min(above(from.position), above(to.position));
+    const keep =
+      low < 20 * MOON_RADIUS_M
+        ? MOON_RADIUS_M + Math.max(0, Math.min(500_000, low))
+        : 0;
     const started = performance.now();
     const step = () => {
-      const t = still ? 1 : Math.min(1, (performance.now() - started) / FLY_MS);
-      const eased = t * t * (3 - 2 * t);
-      const blend = (a, b) => unit(add(scale(a, 1 - eased), scale(b, eased)));
-      const direction = blend(from.direction, to.direction);
-      let up = blend(from.up, to.up);
-      up = unit(sub(up, scale(direction, dot(up, direction))));
-      setView({
-        position: flightPoint(from.position, to.position, t),
-        direction,
-        up,
-      });
-      if (t < 1) {
-        flight.frame = win.requestAnimationFrame(guard('Space view', step));
-        return;
+      try {
+        const t = still ? 1 : Math.min(1, (performance.now() - started) / ms);
+        const eased = t * t * (3 - 2 * t);
+        const blend = (a, b) => unit(add(scale(a, 1 - eased), scale(b, eased)));
+        const direction = blend(from.direction, to.direction);
+        let up = blend(from.up, to.up);
+        up = unit(sub(up, scale(direction, dot(up, direction))));
+        setView({
+          position: clearOf(
+            flightPoint(from.position, to.position, t),
+            moon,
+            keep,
+          ),
+          direction,
+          up,
+        });
+        if (t < 1) {
+          flight.frame = win.requestAnimationFrame(guard('Space view', step));
+          return;
+        }
+        flight = null;
+        done();
+      } catch (error) {
+        // A flight that breaks must not leave the Earth's controls off.
+        flight = null;
+        freeInputs();
+        throw error;
       }
-      flight = null;
-      done();
     };
     flight = { frame: 0 };
     step();
@@ -650,6 +708,8 @@ export function installSpaceView(
           const tileset = await Cesium.Cesium3DTileset.fromUrl(resource);
           tileset.modelMatrix = Cesium.Matrix4.clone(moonFrame());
           terrain = scene.primitives.add(tileset);
+          // Only drawn (and only loading tiles) while over the Moon.
+          terrain.show = trip.where === 'moon';
           return { kind: 'terrain', said: 'Surface: Cesium Moon Terrain (3D)' };
         } catch (error) {
           reason = terrainReason(error, true);
@@ -750,10 +810,16 @@ export function installSpaceView(
     );
   };
 
-  const toSpace = () => {
+  const offMoon = () => {
     closeSiteBox();
     showSites(false);
+    moonInput(false);
+    if (terrain) terrain.show = false;
+  };
+  const toSpace = () => {
+    offMoon();
     trip.space();
+    landing = null;
     paint();
     nameMoon(true);
     const view = spaceViewCamera(plain(moonCentre()));
@@ -764,8 +830,9 @@ export function installSpaceView(
     });
   };
   const toMoon = () => {
-    if (flight) return;
+    if (trip.where === 'moon') return;
     trip.moon();
+    landing = null;
     moonView = { ...ARRIVE };
     paint();
     nameMoon(false);
@@ -781,6 +848,8 @@ export function installSpaceView(
         // Over the Moon, this add-on moves the camera: the Earth's own
         // controls would turn it round the Earth instead.
         holdInputs();
+        moonInput(true);
+        if (terrain) terrain.show = true;
         placeOverMoon();
       },
     );
@@ -788,27 +857,26 @@ export function installSpaceView(
   const toEarth = () => {
     const view = trip.earth();
     if (!view) return;
-    closeSiteBox();
-    showSites(false);
+    offMoon();
     nameMoon(false);
     paint();
+    landing = view;
     fly(view, () => {
+      landing = null;
       freeInputs();
       scene.requestRender();
     });
   };
 
-  toggle.addEventListener('click', () => {
-    if (flight) return;
-    if (trip.where === 'earth') toSpace();
-    else toEarth();
-  });
+  // Every button works mid-flight too: the flight turns round from where it is.
+  toggle.addEventListener('click', () =>
+    trip.where === 'earth' ? toSpace() : toEarth(),
+  );
   toMoonButton.addEventListener('click', toMoon);
   rowMoon.addEventListener('click', toMoon);
-  toEarthButton.addEventListener('click', () => !flight && toEarth());
+  toEarthButton.addEventListener('click', toEarth);
   const onAsk = (event) => {
     const to = event.detail?.to;
-    if (flight) return;
     if (to === 'moon') toMoon();
     else if (to === 'earth') toEarth();
     else if (to === 'space' && trip.where === 'earth') toSpace();
@@ -956,18 +1024,41 @@ export function installSpaceView(
       event.preventDefault();
     }
   };
-  win.addEventListener('pointerdown', onDown, true);
-  win.addEventListener('pointermove', onMove, true);
-  win.addEventListener('pointerup', onUp, true);
-  win.addEventListener('wheel', onWheel, { capture: true, passive: false });
-  win.addEventListener('contextmenu', onContextMenu, true);
-  win.addEventListener('gesturestart', onGesture, true);
-  win.addEventListener('gesturechange', onGesture, true);
+  // Listened for only while over the Moon: a page-wide wheel listener that
+  // can stop scrolling slows every scroll on the page.
+  let listening = false;
+  const moonInput = (on) => {
+    if (on === listening) return;
+    listening = on;
+    drag = null;
+    const how = on ? 'addEventListener' : 'removeEventListener';
+    win[how]('pointerdown', onDown, true);
+    win[how]('pointermove', onMove, true);
+    win[how]('pointerup', onUp, true);
+    win[how]('wheel', onWheel, { capture: true, passive: false });
+    win[how]('contextmenu', onContextMenu, true);
+    win[how]('gesturestart', onGesture, true);
+    win[how]('gesturechange', onGesture, true);
+  };
 
   // Anything that changes the map's clock moves the Moon: everything
   // placed on it follows.
   const offClock = scene.preRender.addEventListener(
     guard('Space view', () => {
+      // Something else moved the camera while over the Moon (a place search,
+      // a saved place, voice "zoom in"): the Moon is left where it is, with
+      // the Earth's controls and both switches back.
+      if (
+        onMoon() &&
+        placed &&
+        Cesium.Cartesian3.distance(camera.positionWC, placed) > 1
+      ) {
+        trip.earth();
+        offMoon();
+        paint();
+        freeInputs();
+        return;
+      }
       if (
         frame &&
         (rough ||
@@ -1065,20 +1156,13 @@ export function installSpaceView(
   queueMicrotask(paint);
 
   return () => {
-    if (trip.where !== 'earth') {
-      trip.earth();
-      freeInputs();
-    }
     if (flight) win.cancelAnimationFrame(flight.frame);
+    flight = null;
+    if (trip.where !== 'earth') trip.earth();
+    moonInput(false);
+    freeInputs();
     win.removeEventListener('zenith:space', onAsk);
     win.removeEventListener('keydown', onSearch, true);
-    win.removeEventListener('pointerdown', onDown, true);
-    win.removeEventListener('pointermove', onMove, true);
-    win.removeEventListener('pointerup', onUp, true);
-    win.removeEventListener('wheel', onWheel, { capture: true });
-    win.removeEventListener('contextmenu', onContextMenu, true);
-    win.removeEventListener('gesturestart', onGesture, true);
-    win.removeEventListener('gesturechange', onGesture, true);
     offClock();
     offEscape();
     handler.destroy();

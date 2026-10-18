@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { Writable } from 'node:stream';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -56,13 +57,61 @@ test('without a way to convert the TIFF, the 2k JPEG is used', async () => {
   }
 });
 
-/** A request and a response good enough for the handler. */
+test('a failed 8k attempt is remembered for an hour, and leaves no half-written files', async () => {
+  const cacheDir = await mkdtemp(path.join(tmpdir(), 'moon-'));
+  try {
+    const asked = [];
+    let clock = 0;
+    const getMap = createMoonMap({
+      cacheDir,
+      now: () => clock,
+      fetchImpl: async (url) => {
+        asked.push(url);
+        return answer(url === MAP_2K ? 'SMALL JPEG' : 'TIFF');
+      },
+      convert: async (from, to) => {
+        await writeFile(to, 'half');
+        throw new Error('no sips here');
+      },
+    });
+    await getMap();
+    await getMap();
+    assert.deepEqual(
+      asked,
+      [MAP_8K, MAP_2K],
+      'the 8k map is not tried again at once',
+    );
+    const { readdir } = await import('node:fs/promises');
+    assert.deepEqual(await readdir(cacheDir), ['lroc-color-2k.jpg']);
+    clock = 3_600_000;
+    await getMap();
+    assert.deepEqual(
+      asked,
+      [MAP_8K, MAP_2K, MAP_8K],
+      'tried again after an hour',
+    );
+  } finally {
+    await rm(cacheDir, { recursive: true, force: true });
+  }
+});
+
+/** A request, and a response that collects what is written to it. */
 function exchange(headers = {}) {
-  const sent = { headers: {} };
-  const response = {
-    statusCode: 0,
-    setHeader: (name, value) => (sent.headers[name.toLowerCase()] = value),
-    end: (body) => (sent.body = body),
+  const sent = { headers: {}, chunks: [] };
+  const response = new Writable({
+    write(chunk, encoding, done) {
+      sent.chunks.push(Buffer.from(chunk));
+      done();
+    },
+  });
+  response.statusCode = 0;
+  response.setHeader = (name, value) =>
+    (sent.headers[name.toLowerCase()] = value);
+  const end = response.end.bind(response);
+  response.end = (body, ...rest) => {
+    if (typeof body === 'string' || Buffer.isBuffer(body))
+      sent.chunks.push(Buffer.from(body));
+    return end(...rest);
   };
   const request = {
     method: 'GET',
@@ -72,8 +121,11 @@ function exchange(headers = {}) {
   return {
     request,
     response,
-    sent,
-    done: () => ({ ...sent, status: response.statusCode }),
+    done: () => ({
+      headers: sent.headers,
+      body: Buffer.concat(sent.chunks).toString(),
+      status: response.statusCode,
+    }),
   };
 }
 

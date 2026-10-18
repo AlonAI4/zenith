@@ -188,7 +188,7 @@ const provider = { pending: new Map(), events: [] };
 let block3d = async () => {};
 /** Answers that came back from the metered 3D map, so far, and when the page was last opened. */
 const paid3d = { answers: 0, atOpen: 0 };
-const isPaid3d = (url) => /^https?:\/\/(tile\.googleapis\.com\/|api\.cesium\.com\/v1\/assets\/2275207\/)/.test(url);
+const isPaid3d = (url) => /^https?:\/\/(tile\.googleapis\.com\/|api\.cesium\.com\/v1\/assets\/(2275207|2684829)\/)/.test(url);
 function watchProvider(page) {
   const isProvider = (url) => {
     try {
@@ -941,7 +941,7 @@ const checks = [
     },
   ],
   [
-    'a search for "Moon" flies to the Moon and one for "Earth" flies back; in space view, a click on the Moon flies there',
+    'a search for "Moon" flies to the Moon and one for "Earth" flies back; in space view, a click on the Moon flies there; moving the camera another way leaves the Moon',
     async (page) => {
       const search = (text) =>
         page.evaluate((words) => {
@@ -971,9 +971,11 @@ const checks = [
         expect(moon, 'the Moon is not in the window in space view');
         await page.mouse.click(moon.x + 4, moon.y + 3);
         await until(page, () => document.body.dataset.space === 'moon' && document.body.dataset.moonHeight, 8000, 'a click on the Moon did not fly there');
-        await page.click('#space-view-earth');
-        await until(page, () => !document.body.dataset.space, 3000, 'Back to Earth did not start');
-        await sleep(5000);
+        // Something else moving the camera (here the original's own fly home)
+        // leaves the Moon, with the Earth's controls back.
+        await page.evaluate(() => window.__godsEyeView.viewer.camera.flyHome(0));
+        await until(page, () => !document.body.dataset.space && window.__godsEyeView.viewer.scene.screenSpaceCameraController.enableInputs, 3000, 'moving the camera another way did not leave the Moon');
+        expect(!(await page.evaluate(() => window.__godsEyeView.dataManager.isEnabled('satellites'))), 'leaving the Moon that way left the satellites on');
       } finally {
         if (await page.evaluate(() => Boolean(document.body.dataset.space))) {
           await page.evaluate(() => window.dispatchEvent(new CustomEvent('zenith:space', { detail: { to: 'earth' } })));
