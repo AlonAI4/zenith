@@ -7,13 +7,13 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.3.2',
+  number: '1.3.3',
   date: '18 October 2026',
   changes: Object.freeze([
-    'Target boxes are for houses and buildings. Parks are left out: their only free source is one Zenith does not use.',
-    'Fixed: the Mac app could stop responding when it opened, and updates that change packages now install.',
-    "From God's Eye View: nine Spanish city bike systems, better satellite matching, and launches with an unknown pad kept off the map.",
-    'Still here from 1.3: address search, the classified look (TS switch) and free voice (hold V).',
+    'A shorter top bar: the map overlays live in one LAYERS menu, with a number for how many are on.',
+    'Every switch has a key, shown in its tooltip and the help card: P map pin, M measure, A layers and more.',
+    'The tilt and north buttons are gone from the bar: the compass does both (drag its arc, click its N).',
+    'Single-letter keys can be switched off in the help card, and they never fire while you type.',
   ]),
 });
 
