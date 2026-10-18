@@ -27,8 +27,16 @@ export function initBranding(doc = document) {
   // Cesium sets each part inline itself, so this needs !important.
   const credits = doc.createElement('style');
   credits.id = 'zenith-credit-lines';
-  credits.textContent =
-    '#cesium-credits .cesium-credit-logoContainer { display: block !important; margin-bottom: 4px; }';
+  // The second line makes the credits taller, so the HUD's bottom corners,
+  // which the original set one line above them, go up by a line too: the
+  // Cesium logo sat on the HUD's coordinates.
+  credits.textContent = [
+    '#cesium-credits .cesium-credit-logoContainer { display: block !important; margin-bottom: 4px; }',
+    "#intel-hud[data-variant='tactical'] .hud-bottom-left, #intel-hud[data-variant='tactical'] .hud-bottom-right," +
+      " #intel-hud[data-variant='operator'] .hud-bottom-left, #intel-hud[data-variant='operator'] .hud-bottom-right" +
+      ' { bottom: calc(2vh + 8.4rem); }',
+    "#intel-hud[data-variant='minimal'] .hud-bottom-left { bottom: calc(2vh + 7.3rem); }",
+  ].join('\n');
   doc.head?.appendChild(credits);
   const jobs = new Map([
     ['#title-bar h1 > span:not(.title-logo)', (el) => paintTitle(el, doc)],
