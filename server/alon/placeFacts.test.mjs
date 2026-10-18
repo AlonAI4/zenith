@@ -5,12 +5,9 @@ import {
   createPlaceFacts,
   describeKind,
   factsFromNominatim,
-  factsFromOverpass,
   insideOrNear,
-  pacer,
   placeFactsHandler,
   ringAreaM2,
-  stitchOuter,
   tagNumber,
   thinRing,
 } from './placeFacts.js';
@@ -161,56 +158,6 @@ test('the box gets only the public facts of the building at the spot', () => {
   );
 });
 
-test('the smallest named park around the spot wins, and relations are joined into one ring', () => {
-  const big = SQUARE.map(([x, y]) => [x * 1.0001, y * 1.0001]);
-  const answer = {
-    elements: [
-      {
-        type: 'way',
-        tags: { leisure: 'park', name: 'Big Park' },
-        geometry: big.map(([lon, lat]) => ({ lon, lat })),
-      },
-      {
-        type: 'way',
-        tags: { leisure: 'garden' },
-        geometry: SQUARE.map(([lon, lat]) => ({ lon, lat })),
-      },
-    ],
-  };
-  const facts = factsFromOverpass(answer);
-  assert.equal(facts.name, 'Big Park');
-  assert.equal(facts.kind, 'Park');
-
-  const [a, b, c, d] = SQUARE;
-  const ring = stitchOuter([
-    { role: 'outer', geometry: [a, b].map(([lon, lat]) => ({ lon, lat })) },
-    { role: 'outer', geometry: [d, c].map(([lon, lat]) => ({ lon, lat })) },
-    { role: 'inner', geometry: [a, c].map(([lon, lat]) => ({ lon, lat })) },
-    { role: 'outer', geometry: [b, c].map(([lon, lat]) => ({ lon, lat })) },
-    { role: 'outer', geometry: [d, a].map(([lon, lat]) => ({ lon, lat })) },
-  ]);
-  assert.equal(ring.length, 5);
-  assert.deepEqual(ring[0], ring[4]);
-  assert.equal(factsFromOverpass({ elements: [] }), null);
-});
-
-test('requests to one service go out at most once a second, and a crowd is refused', async () => {
-  let clock = 0;
-  const sent = [];
-  const turn = pacer(1100, {
-    now: () => clock,
-    sleep: async (ms) => {
-      clock += ms;
-    },
-    maxWaiting: 3,
-  });
-  const work = () => sent.push(clock);
-  const all = [turn(work), turn(work), turn(work)];
-  await assert.rejects(turn(work), { code: 'BUSY' });
-  await Promise.all(all);
-  assert.deepEqual(sent, [0, 1100, 2200]);
-});
-
 test('answers are remembered: the same spot is asked once', async () => {
   const asked = [];
   const look = createPlaceFacts({
@@ -219,7 +166,6 @@ test('answers are remembered: the same spot is asked once', async () => {
       return nominatimHouse;
     },
     nominatimTurn: (work) => work(),
-    overpassTurn: (work) => work(),
   });
   const first = await look(...inside);
   const again = await look(...inside);
@@ -229,39 +175,22 @@ test('answers are remembered: the same spot is asked once', async () => {
   assert.match(asked[0], /polygon_geojson=1/);
 });
 
-test('with no building at the spot, the park around it is asked of Overpass, with a backup server', async () => {
+test('with no building at the spot nothing is found, and only Nominatim is asked', async () => {
   const asked = [];
   const look = createPlaceFacts({
     requestJson: async (url) => {
       asked.push(url);
-      if (url.includes('nominatim'))
-        return {
-          category: 'amenity',
-          type: 'bench',
-          geojson: { type: 'Point', coordinates: [LON, LAT] },
-        };
-      if (url.includes('overpass-api.de'))
-        throw new Error('Upstream returned 502');
       return {
-        elements: [
-          {
-            type: 'way',
-            tags: { leisure: 'park', name: 'Example Park' },
-            geometry: SQUARE.map(([lon, lat]) => ({ lon, lat })),
-          },
-        ],
+        category: 'amenity',
+        type: 'bench',
+        geojson: { type: 'Point', coordinates: [LON, LAT] },
       };
     },
     nominatimTurn: (work) => work(),
-    overpassTurn: (work) => work(),
   });
-  const facts = await look(...inside);
-  assert.equal(facts.name, 'Example Park');
-  assert.equal(asked.length, 3);
-  assert.ok(
-    !asked[1].includes('+'),
-    'spaces in the query are %20, which Overpass reads as spaces',
-  );
+  assert.equal(await look(...inside), null);
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], /^https:\/\/nominatim\.openstreetmap\.org\//);
 });
 
 test('the route answers this page only, checks the spot, and refuses other websites', async () => {
@@ -313,16 +242,6 @@ test('the route answers this page only, checks the spot, and refuses other websi
   )(fakeRequest('/?lat=51.5&lon=-0.1'), busy);
   assert.equal(busy.status, 429);
 
-  const parksDown = fakeResponse();
-  await placeFactsHandler(
-    async () => {
-      throw Object.assign(new Error('x'), { code: 'PARKS_DOWN' });
-    },
-    () => true,
-  )(fakeRequest('/?lat=51.5&lon=-0.1'), parksDown);
-  assert.equal(parksDown.status, 502);
-  assert.match(JSON.parse(parksDown.body).error, /park service/);
-
   const limited = fakeResponse();
   await placeFactsHandler(
     async () => null,
@@ -344,7 +263,6 @@ test('two asks for the same spot share one lookup, and a lookup nobody waits for
       signal?.throwIfAborted();
       return work();
     },
-    overpassTurn: (work) => work(),
   });
   const [a, b] = [look(...inside), look(...inside)];
   await new Promise((resolve) => setImmediate(resolve));
@@ -370,16 +288,4 @@ test('two asks for the same spot share one lookup, and a lookup nobody waits for
   leaving.abort();
   await assert.rejects(answer);
   assert.equal(sent, 0);
-});
-
-test('a turn whose asker has gone is skipped', async () => {
-  const turn = pacer(1100, { now: () => 0, sleep: async () => {} });
-  const gone = new AbortController();
-  gone.abort();
-  let ran = false;
-  await assert.rejects(
-    turn(() => (ran = true), gone.signal),
-    { name: 'AbortError' },
-  );
-  assert.equal(ran, false);
 });

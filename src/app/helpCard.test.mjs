@@ -28,7 +28,7 @@ test('the pin line says whether a click on empty map does anything', () => {
 
 test('the card has something to say about clicking and about moving', () => {
   assert.ok(MAP_CLICKS.length >= 3 && MOVING.length >= 3);
-  assert.ok(MAP_CLICKS.some((line) => /Right-click a building or park/.test(line)));
+  assert.ok(MAP_CLICKS.some((line) => /Right-click a building for its target box/.test(line)));
   for (const line of [...MAP_CLICKS, ...MOVING]) assert.ok(line.length > 15, line);
 });
 

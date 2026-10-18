@@ -4,35 +4,26 @@ import { fetchRegionalJson } from '../providers/regional/http.js';
 import { enqueueNominatim } from '../providers/regional/place.js';
 
 /**
- * Public map facts about the building or park at a spot, for the target box
- * a right-click opens: what it is, its name and address, its size, its
- * floors and height, and its outline. All from OpenStreetMap.
+ * Public map facts about the building at a spot, for the target box a
+ * right-click opens: what it is, its name and address, its size, its floors
+ * and height, and its outline. From OpenStreetMap, through Nominatim's
+ * reverse lookup on its address layer, which answers with the building at
+ * the spot and its outline: at most one request a second (the app's shared
+ * Nominatim queue), answers remembered, and only the facts listed above
+ * passed on, never who lives or works there.
  *
- * Buildings come from Nominatim's reverse lookup on its address layer, which
- * answers with the building at the spot and its outline. Nominatim has no
- * good answer for parks (it names the nearest bench or post box), so when no
- * building is found the park around the spot is asked of Overpass. Each
- * service gets at most one request a second, answers are remembered, and only
- * the facts listed above are passed on: never who lives or works there.
+ * Parks are not looked up: Nominatim names the nearest bench instead, and
+ * Overpass (which could) is not used by this app.
  */
 
 export const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
-/** The main Overpass server, then a second public one for when it is down. */
-export const OVERPASS = Object.freeze([
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-]);
 const HEADERS = Object.freeze({
   'User-Agent': 'Zenith/1.2 (+https://github.com/AlonAI4/zenith)',
   Referer: 'https://github.com/AlonAI4/zenith',
 });
-const GAP_MS = 1100;
-const MAX_WAITING = 4;
 const CACHE_MAX = 200;
 const MAX_POINTS = 500;
 const SOURCE = 'Map data © OpenStreetMap contributors';
-const PARKS =
-  '^(park|garden|playground|pitch|nature_reserve|common|recreation_ground|dog_park|golf_course)$';
 
 /** Plain names for the kinds of place a box can show. */
 const KINDS = Object.freeze({
@@ -156,43 +147,6 @@ export function outerRing(geometry) {
 }
 
 /**
- * Join an Overpass relation's outer ways into one closed ring (the biggest,
- * if there are several). Ways can run either way round, so each next piece is
- * the one that starts or ends where the ring so far ends.
- */
-export function stitchOuter(members = []) {
-  const pieces = members
-    .filter(
-      (member) => member?.role === 'outer' && Array.isArray(member.geometry),
-    )
-    .map((member) => member.geometry.map(({ lon, lat }) => [lon, lat]))
-    .filter((piece) => piece.length >= 2 && piece.every(isPoint));
-  const same = (a, b) => a[0] === b[0] && a[1] === b[1];
-  const rings = [];
-  while (pieces.length) {
-    let ring = pieces.shift();
-    let grew = true;
-    while (!same(ring[0], ring[ring.length - 1]) && grew) {
-      grew = false;
-      const end = ring[ring.length - 1];
-      const next = pieces.findIndex(
-        (piece) => same(piece[0], end) || same(piece[piece.length - 1], end),
-      );
-      if (next >= 0) {
-        const [piece] = pieces.splice(next, 1);
-        const forward = same(piece[0], end) ? piece : [...piece].reverse();
-        ring = ring.concat(forward.slice(1));
-        grew = true;
-      }
-    }
-    if (ring.length >= 4 && same(ring[0], ring[ring.length - 1]))
-      rings.push(ring);
-  }
-  if (rings.length === 0) return null;
-  return rings.reduce((a, b) => (ringAreaM2(b) > ringAreaM2(a) ? b : a));
-}
-
-/**
  * Whether a spot is inside a ring of [lon, lat] points, or within `marginM`
  * metres of its edge (a click on a wall or a roof edge still counts).
  */
@@ -259,88 +213,13 @@ export function factsFromNominatim(answer, lat, lon) {
 }
 
 /**
- * The box's facts for the smallest park around the spot in an Overpass
- * answer, preferring a named one (a park's name says more than an unnamed
- * flower bed inside it).
- */
-export function factsFromOverpass(answer) {
-  const found = (answer?.elements || [])
-    .map((element) => {
-      const ring =
-        element.type === 'way' && Array.isArray(element.geometry)
-          ? element.geometry.map(({ lon, lat }) => [lon, lat])
-          : element.type === 'relation'
-            ? stitchOuter(element.members)
-            : null;
-      if (!ring || ring.length < 4 || !ring.every(isPoint)) return null;
-      return { tags: element.tags || {}, ring, area: ringAreaM2(ring) };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a.area - b.area);
-  const best = found.find((park) => park.tags.name) || found[0];
-  if (!best) return null;
-  const { tags } = best;
-  return {
-    kind: describeKind({ type: tags.leisure }),
-    name: String(tags.name || '').trim(),
-    address: '',
-    place: '',
-    areaM2: Math.round(best.area),
-    floors: null,
-    heightM: null,
-    outline: thinRing(best.ring),
-    source: `${SOURCE}, via Overpass`,
-  };
-}
-
-/**
- * Keeps one service's requests at least `gapMs` apart, with at most
- * `maxWaiting` waiting: past that a request is refused at once.
- */
-export function pacer(
-  gapMs = GAP_MS,
-  {
-    now = () => Date.now(),
-    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
-    maxWaiting = MAX_WAITING,
-  } = {},
-) {
-  let queue = Promise.resolve();
-  let last = -Infinity;
-  let waiting = 0;
-  return (work, signal) => {
-    if (waiting >= maxWaiting) {
-      return Promise.reject(
-        Object.assign(new Error('Too many lookups waiting'), { code: 'BUSY' }),
-      );
-    }
-    waiting += 1;
-    const turn = queue.then(async () => {
-      try {
-        const wait = last + gapMs - now();
-        if (wait > 0) await sleep(wait);
-        // Nobody is waiting for the answer any more: keep the turn for someone who is.
-        signal?.throwIfAborted();
-        last = now();
-        return await work();
-      } finally {
-        waiting -= 1;
-      }
-    });
-    queue = turn.catch(() => null);
-    return turn;
-  };
-}
-
-/**
- * @param {{ requestJson?: Function, nominatimTurn?: Function, overpassTurn?: Function }} [options]
+ * @param {{ requestJson?: Function, nominatimTurn?: Function }} [options]
  * @returns {(lat: number, lon: number) => Promise<object | null>}
  */
 export function createPlaceFacts({
   requestJson = fetchRegionalJson,
   nominatimTurn = (work, signal) =>
     enqueueNominatim(work, { bounded: true, signal }),
-  overpassTurn = pacer(),
 } = {}) {
   const cache = new Map();
   const asking = new Map();
@@ -371,40 +250,7 @@ export function createPlaceFacts({
       lat,
       lon,
     );
-    if (building) return remember(key, building);
-    signal?.throwIfAborted();
-    const at = `${lat.toFixed(6)},${lon.toFixed(6)}`;
-    const query =
-      `[out:json][timeout:8];is_in(${at})->.a;` +
-      `(way(pivot.a)[leisure~"${PARKS}"];rel(pivot.a)[leisure~"${PARKS}"];);out tags geom 8;`;
-    const ask = async () => {
-      let failed;
-      for (const server of OVERPASS) {
-        signal?.throwIfAborted();
-        try {
-          // encodeURIComponent, not URLSearchParams: Overpass reads a + as a plus, not a space.
-          return await requestJson(
-            `${server}?data=${encodeURIComponent(query)}`,
-            {
-              ...options,
-              // One Overpass server fails on the newer compressions Node offers.
-              headers: { ...HEADERS, 'Accept-Encoding': 'gzip' },
-              timeoutMs: 6000,
-            },
-          );
-        } catch (error) {
-          // A park too big to send is too big on the other server too.
-          if (error?.code === 'RESPONSE_TOO_LARGE') throw error;
-          failed = error;
-        }
-      }
-      throw Object.assign(
-        new Error(failed?.message || 'Overpass did not answer'),
-        { code: 'PARKS_DOWN' },
-      );
-    };
-    const park = factsFromOverpass(await overpassTurn(ask, signal));
-    return remember(key, park);
+    return remember(key, building);
   };
 
   /**
@@ -488,11 +334,7 @@ export function placeFactsHandler(
       send(res, busy ? 429 : 502, {
         error: busy
           ? 'Too many lookups: wait a moment'
-          : error?.code === 'RESPONSE_TOO_LARGE'
-            ? 'This area is too big to outline here'
-            : error?.code === 'PARKS_DOWN'
-              ? 'No building here, and the park service (Overpass) is not answering. Try again later'
-              : 'The map facts service did not answer',
+          : 'The map facts service did not answer',
       });
     }
   });

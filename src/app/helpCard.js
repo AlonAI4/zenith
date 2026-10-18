@@ -33,7 +33,7 @@ export const MAP_CLICKS = Object.freeze([
   'Click a camera marker to fly to it. Its picture shows within about 1 km.',
   'Hover or click a station dot for its name.',
   'With Measure on, each click on the map adds a measuring point instead.',
-  'Right-click a building or park for its target box. Escape clears it.',
+  'Right-click a building for its target box. Escape clears it.',
 ]);
 
 export const MOVING = Object.freeze([

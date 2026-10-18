@@ -6,7 +6,7 @@ import { gridReference } from './gridRef.js';
 import { isMeasuring } from './measureTool.js';
 
 /**
- * Right-click a house, building or park: Zenith highlights it and shows a
+ * Right-click a house or building: Zenith highlights it and shows a
  * target box beside it, in Zenith MC's style: cyan bracket corners around the
  * place and a small panel with its public map facts (what it is, its name and
  * address, its size, floors and height). The outline is painted on the 3D
@@ -53,7 +53,7 @@ export function targetRows(facts, lat, lon) {
     return {
       header: 'TARGET // NO MATCH',
       rows: [
-        { text: 'No building or park is mapped at this spot', kind: 'title' },
+        { text: 'No building is mapped at this spot', kind: 'title' },
         coordinates,
       ],
     };
@@ -471,7 +471,7 @@ export function installTargetBox({ viewer }, doc = document) {
         header: 'TARGET // OUT OF RANGE',
         rows: [
           {
-            text: 'Zoom in closer to target a building or park',
+            text: 'Zoom in closer to target a building',
             kind: 'title',
           },
         ],

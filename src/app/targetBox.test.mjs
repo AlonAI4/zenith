@@ -73,7 +73,7 @@ test('a house with no name leads with its address, and missing facts are left ou
 test('nothing mapped at the spot says so', () => {
   const { header, rows } = targetRows({ found: false }, 51.5, -0.1);
   assert.equal(header, 'TARGET // NO MATCH');
-  assert.match(rows[0].text, /No building or park/);
+  assert.match(rows[0].text, /No building is mapped/);
 });
 
 test('a second right-click inside the shown place is recognised', () => {
