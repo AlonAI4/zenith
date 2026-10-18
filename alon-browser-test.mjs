@@ -80,6 +80,15 @@ const turn = (from, to) => ((to - from + 540) % 360) - 180;
 /** Helpers that live in the page, so each check stays short. */
 function pageHelpers() {
   const app = () => window.__godsEyeView;
+  const EMOJI = /\p{RGI_Emoji}|(?=[\u{1F000}-\u{1FAFF}])\p{Extended_Pictographic}/v;
+  const drawnEmojis = new Set();
+  for (const name of ['fillText', 'strokeText']) {
+    const own = CanvasRenderingContext2D.prototype[name];
+    CanvasRenderingContext2D.prototype[name] = function (text, ...rest) {
+      if (typeof text === 'string' && EMOJI.test(text)) drawnEmojis.add(text.slice(0, 60));
+      return own.call(this, text, ...rest);
+    };
+  }
   const deg = (radians) => (radians * 180) / Math.PI;
   window.__zt = {
     viewer: () => app().viewer,
@@ -136,6 +145,32 @@ function pageHelpers() {
       const grid = [];
       for (let i = 0; i < data.length; i += 4) grid.push(Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]));
       return grid;
+    },
+    // Emojis anywhere in the page, in CSS-drawn text, or drawn on a canvas
+    // (the map's labels). An emoji is what a browser draws in colour; the
+    // drawn icons keep the emoji only in a hidden span for screen readers.
+    emojis: () => {
+      const found = new Set();
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!EMOJI.test(node.data)) continue;
+        const holder = node.parentElement;
+        if (!holder || holder.closest('.zenith-glyph-text, script, style, template, option')) continue;
+        found.add(`${holder.id || holder.className || holder.tagName}: ${node.data.trim().slice(0, 50)}`);
+      }
+      for (const element of document.querySelectorAll('body *')) {
+        for (const part of ['::before', '::after']) {
+          const content = getComputedStyle(element, part).content;
+          if (content && content !== 'none' && EMOJI.test(content)) found.add(`${element.id || element.className} ${part}: ${content}`);
+        }
+      }
+      // Tooltips and menu choices cannot hold a drawn icon, so they must have none.
+      for (const element of document.querySelectorAll('[title], option')) {
+        const text = element.tagName === 'OPTION' ? element.textContent : element.title;
+        if (EMOJI.test(text)) found.add(`${element.tagName.toLowerCase()} ${element.id || element.className}: ${text.slice(0, 50)}`);
+      }
+      for (const text of drawnEmojis) found.add(`drawn on a canvas: ${text}`);
+      return [...found];
     },
     // Is the map still drawing, and has any add-on been switched off?
     alive: async () => {
@@ -1302,6 +1337,55 @@ const checks = [
       }
       await sleep(600);
       expect(after > before, `zooming out left the scale at ${after} m (was ${before} m)`);
+    },
+  ],
+  [
+    'no emojis on screen',
+    async (page) => {
+      const seen = new Set();
+      const look = async (where) => {
+        await sleep(700);
+        for (const found of await page.evaluate(() => window.__zt.emojis())) seen.add(`${where}: ${found}`);
+      };
+      await look('at start');
+      // Every panel, opened the way the app opens it.
+      const panels = ['control-panel', 'location-bar', 'data-panel', 'cctv-panel', 'recent-imagery-panel', 'street-level-panel', 'radio-panel', 'scene-panel', 'global-context-panel', 'pp-toggles', 'param-slider-panel'];
+      const opened = await page.evaluate((ids) => {
+        const styles = window.__godsEyeView.styleManager;
+        return ids.filter((id) => {
+          if (!document.getElementById(id)) return false;
+          styles.setPanelCollapsed(id, false);
+          return true;
+        });
+      }, panels);
+      await look('all panels open');
+      // The menus and cards of the top bar and the corners.
+      for (const [id, name] of [['key-setup-chip', 'key setup'], ['zenith-layers-toggle', 'layers menu'], ['zenith-help-toggle', 'help card']]) {
+        if (!(await page.$(`#${id}`))) continue;
+        if (id.startsWith('zenith-')) await press(page, id, { leaveTray: true });
+        else await page.click(`#${id}`);
+        await look(name);
+        await page.keyboard.press('Escape');
+        if (id === 'zenith-layers-toggle' && (await page.evaluate(() => document.getElementById('zenith-layers-menu')?.dataset.open === 'true'))) {
+          await page.evaluate(() => document.getElementById('zenith-layers-toggle').click());
+        }
+      }
+      // Layers that put names on the map: rocket names, bike docks.
+      const layers = ['rocket-launches', 'bikeshare'];
+      const toggle = (ids) =>
+        page.evaluate((list) => {
+          for (const id of list) document.querySelector(`.data-toggle-row[data-layer-id="${id}"] .data-toggle-btn`)?.click();
+        }, ids);
+      await toggle(layers);
+      await sleep(8000);
+      await look('rockets and bikes on');
+      await toggle(layers);
+      await page.evaluate((ids) => {
+        for (const id of ids) window.__godsEyeView.styleManager.setPanelCollapsed(id, true);
+      }, opened);
+      await sleep(400);
+      const list = [...seen];
+      expect(list.length === 0, `${list.length} emoji places, first: ${list.slice(0, 3).join(' | ')}`);
     },
   ],
   [

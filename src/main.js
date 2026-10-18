@@ -10,6 +10,7 @@ import { installFocusTips } from './app/focusTips.js';
 import { installFreeVoice } from './app/freeVoice.js';
 import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
+import { installDrawnIcons } from './app/drawnIcons.js';
 import { installHelpCard } from './app/helpCard.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
@@ -70,6 +71,7 @@ startMine([
   ['Full-screen panels', () => initPanelFullscreen()],
   ['Blue switches', () => initToggleLook()],
   ['Shortcut guard', () => initShortcutGuard()],
+  ['Drawn icons', () => installDrawnIcons()],
 ]);
 application
   .start()
