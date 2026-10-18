@@ -1418,6 +1418,12 @@ const checks = [
         for (const found of await page.evaluate(() => window.__zt.emojis())) seen.add(`${where}: ${found}`);
       };
       await look('at start');
+      // The rocket switch flies out to space, and switching it off leaves the
+      // view there: kept here and put back at the end for the next check.
+      await page.evaluate(() => {
+        const { camera } = window.__godsEyeView.viewer;
+        window.__emojiView = { destination: camera.positionWC.clone(), orientation: { heading: camera.heading, pitch: camera.pitch, roll: camera.roll } };
+      });
       // Every panel, opened the way the app opens it.
       const panels = ['control-panel', 'location-bar', 'data-panel', 'cctv-panel', 'recent-imagery-panel', 'street-level-panel', 'radio-panel', 'scene-panel', 'global-context-panel', 'pp-toggles', 'param-slider-panel'];
       const opened = await page.evaluate((ids) => {
@@ -1452,8 +1458,11 @@ const checks = [
       await toggle(layers);
       await page.evaluate((ids) => {
         for (const id of ids) window.__godsEyeView.styleManager.setPanelCollapsed(id, true);
+        const { camera } = window.__godsEyeView.viewer;
+        camera.cancelFlight();
+        camera.setView(window.__emojiView);
       }, opened);
-      await sleep(400);
+      await sleep(1500);
       const list = [...seen];
       expect(list.length === 0, `${list.length} emoji places, first: ${list.slice(0, 3).join(' | ')}`);
     },
