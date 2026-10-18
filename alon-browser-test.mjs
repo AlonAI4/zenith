@@ -887,9 +887,11 @@ const checks = [
             for (let j = 0; j < collection.length; j += 1) {
               const point = collection.get(j);
               if (point?.id?.apolloSite === undefined || !point.show) continue;
-              const at = point.computeScreenSpacePosition(viewer.scene);
+              // Where it is drawn (computeScreenSpacePosition gives it upside down this far out).
+              const at = viewer.scene.cartesianToCanvasCoordinates(point.position);
               const rect = viewer.canvas.getBoundingClientRect();
-              if (at && at.x > 40 && at.y > 220 && at.x < rect.width - 300 && at.y < rect.height - 160) return { x: rect.left + at.x, y: rect.top + at.y, index: point.id.apolloSite };
+              // Well away from the middle line, so an upside-down sum would miss it.
+              if (at && Math.abs(at.y - rect.height / 2) > 60 && at.x > 40 && at.y > 220 && at.x < rect.width - 300 && at.y < rect.height - 160) return { x: rect.left + at.x, y: rect.top + at.y, index: point.id.apolloSite };
             }
           }
           return null;
