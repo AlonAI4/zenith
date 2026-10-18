@@ -5,13 +5,14 @@ import { closeOnEscape } from './escapeKey.js';
 import { gridReference } from './gridRef.js';
 import { isMeasuring } from './measureTool.js';
 import { announceSpot } from './overhead.js';
+import { createSpotlight } from './spotlight.js';
 
 /**
  * Right-click a house or building: Zenith highlights it and shows a
  * target box beside it, in Zenith MC's style: cyan bracket corners around the
  * place and a small panel with its public map facts (what it is, its name and
- * address, its size, floors and height). The outline is painted on the 3D
- * buildings and on the ground. Escape, a left click on the map or another
+ * address, its size, floors and height). The place itself is lit up (see
+ * spotlight.js). Escape, a left click on the map or another
  * right-click clears it. The map pin card has a Target box button that opens
  * the same box from the keyboard.
  *
@@ -151,15 +152,15 @@ const STYLE = `
 `;
 
 /**
- * @param {{ viewer: Cesium.Viewer }} scene
+ * @param {{ viewer: Cesium.Viewer, tileset?: Cesium.Cesium3DTileset }} scene
  * @param {Document} [doc]
  * @returns {() => void} Removes the box, the highlight and the listeners.
  */
-export function installTargetBox({ viewer }, doc = document) {
+export function installTargetBox({ viewer, tileset }, doc = document) {
   const { scene, camera } = viewer;
   const win = doc.defaultView ?? window;
   let request = 0;
-  let target = null; // { ring, lat, lon, height, low } while a place is shown
+  let target = null; // { ring, lat, lon, base, roof } while a place is shown
   let spot = null; // { lat, lon, height } while waiting for an answer
 
   const style = doc.createElement('style');
@@ -205,7 +206,10 @@ export function installTargetBox({ viewer }, doc = document) {
 
   const highlight = new Cesium.CustomDataSource('zenith-target-box');
   viewer.dataSources.add(highlight);
-  const color = Cesium.Color.fromCssColorString(CYAN);
+  const spotlight = createSpotlight({ viewer, tileset }, highlight, win);
+  const offLight = scene.preRender.addEventListener(
+    guard('Target box', spotlight.onFrame),
+  );
 
   let decrypting = [];
   let shown = null;
@@ -247,13 +251,15 @@ export function installTargetBox({ viewer }, doc = document) {
     if (!layer.classList.contains('open')) return;
     let box = null;
     if (target) {
+      // The measured top and ground, once the 3D map has been measured.
+      Object.assign(target, spotlight.span() ?? {});
       const step = Math.max(1, Math.floor(target.ring.length / CORNER_POINTS));
       const points = [];
       for (let i = 0; i < target.ring.length; i += step) {
         const [lon, lat] = target.ring[i];
-        points.push(toWindow(lon, lat, target.height));
-        if (target.low !== target.height)
-          points.push(toWindow(lon, lat, target.low));
+        points.push(toWindow(lon, lat, target.roof));
+        if (target.base !== target.roof)
+          points.push(toWindow(lon, lat, target.base));
       }
       box = screenBox(points);
     } else if (spot) {
@@ -305,7 +311,7 @@ export function installTargetBox({ viewer }, doc = document) {
     asking = null;
     target = null;
     spot = null;
-    highlight.entities.removeAll();
+    spotlight.hide();
     layer.classList.remove('open');
     announceSpot(win, 'target', null);
     scene.requestRender();
@@ -328,28 +334,6 @@ export function installTargetBox({ viewer }, doc = document) {
     hide,
     { panel, opener: { focus: giveBackFocus } },
   );
-
-  const paint = (ring) => {
-    highlight.entities.removeAll();
-    const flat = ring.flat();
-    highlight.entities.add({
-      polygon: {
-        hierarchy: Cesium.Cartesian3.fromDegreesArray(flat),
-        material: color.withAlpha(0.3),
-        classificationType: Cesium.ClassificationType.BOTH,
-      },
-    });
-    highlight.entities.add({
-      polyline: {
-        positions: Cesium.Cartesian3.fromDegreesArray(flat),
-        width: 3,
-        clampToGround: true,
-        material: color.withAlpha(0.95),
-        classificationType: Cesium.ClassificationType.BOTH,
-      },
-    });
-    scene.requestRender();
-  };
 
   /**
    * The case file: the view as drawn, the corners, the box with its real
@@ -511,10 +495,12 @@ export function installTargetBox({ viewer }, doc = document) {
         Array.isArray(answer.outline) &&
         answer.outline.length >= 4
       ) {
-        const tall = Number.isFinite(answer.heightM) ? answer.heightM : 0;
-        target = { ring: answer.outline, lat, lon, height, low: height - tall };
+        target = { ring: answer.outline, lat, lon };
         spot = null;
-        paint(answer.outline);
+        spotlight.show(answer.outline, {
+          spotHeight: height,
+          tallM: answer.heightM,
+        });
       }
       show(targetRows(answer, lat, lon), { found: Boolean(target) });
       blip('open', win);
@@ -606,6 +592,7 @@ export function installTargetBox({ viewer }, doc = document) {
     win.removeEventListener('zenith:save-view', onSaveView);
     offEscape();
     offFrame();
+    offLight();
     handler.destroy();
     if (!viewer.isDestroyed()) viewer.dataSources.remove(highlight, true);
     layer.remove();

@@ -172,6 +172,16 @@ function pageHelpers() {
       for (const text of drawnEmojis) found.add(`drawn on a canvas: ${text}`);
       return [...found];
     },
+    // The target box's light: what kind, the volumes lighting 3D buildings,
+    // and whether the rest of the map is dimmed.
+    spotlight: () => {
+      const { scene } = app().viewer;
+      let volumes = 0;
+      for (let i = 0; i < scene.primitives.length; i++) {
+        if (scene.primitives.get(i)?.constructor?.name === 'ClassificationPrimitive') volumes += 1;
+      }
+      return { mode: document.body.dataset.spotlight ?? '', volumes, dimmed: scene.invertClassification === true };
+    },
     // Is the map still drawing, and has any add-on been switched off?
     alive: async () => {
       const { scene } = app().viewer;
@@ -772,7 +782,7 @@ const checks = [
   ],
   [
     'a right-click on a building shows its target box and highlight, not the map pin card; Escape clears it',
-    async (page) => {
+    async (page, setup) => {
       await press(page, 'address-lookup-toggle');
       try {
         // Straight down over Buckingham Palace, so the middle of the window is the palace.
@@ -797,21 +807,35 @@ const checks = [
           text: document.getElementById('target-box-panel').textContent,
           corners: window.__zt.box('#target-box-corners'),
           highlight: window.__zt.entities('zenith-target-box'),
+          light: window.__zt.spotlight(),
           card: window.__zt.shown(document.getElementById('address-card')),
         }));
         if (/NO SIGNAL/.test(box.head)) throw new Skip(`the map facts service did not answer: ${box.text}`);
         expect(!box.card, 'a right-click opened the map pin card');
         expect(/PALACE|BUILDING|CASTLE/.test(box.head), `the box says ${box.head}`);
         expect(/Buckingham Palace/.test(box.text), `the box does not name the palace: ${box.text}`);
-        expect(box.highlight === 2, `the highlight has ${box.highlight} parts, not a fill and an outline`);
+        if (setup.map === 'esri-imagery') {
+          // No buildings to light: a fill and an outline on the ground, nothing dimmed.
+          expect(box.light.mode === 'ground', `the light is ${box.light.mode || 'missing'} on the satellite map`);
+          expect(box.highlight === 2, `the highlight has ${box.highlight} parts, not a fill and an outline`);
+          expect(box.light.volumes === 0 && !box.light.dimmed, 'the satellite map was dimmed or given a 3D light');
+        } else {
+          // The whole building lit, the rest dimmed, rings at the top and the base.
+          expect(box.light.mode === '3d', `the light is ${box.light.mode || 'missing'} on the 3D map`);
+          expect(box.light.volumes === 1, `${box.light.volumes} light volumes, not 1`);
+          expect(box.light.dimmed, 'the rest of the map was not dimmed');
+          expect(box.highlight >= 2, `the highlight has ${box.highlight} lines, not a top and a base ring`);
+        }
         expect(box.corners && box.corners.right - box.corners.left > 40, 'no corner brackets around the palace');
         await page.keyboard.press('Escape');
         await sleep(300);
         const cleared = await page.evaluate(() => ({
           open: window.__zt.shown(document.getElementById('target-box-panel')),
           highlight: window.__zt.entities('zenith-target-box'),
+          light: window.__zt.spotlight(),
         }));
         expect(!cleared.open && cleared.highlight === 0, 'Escape did not clear the target box');
+        expect(!cleared.light.mode && cleared.light.volumes === 0 && !cleared.light.dimmed, `Escape left the light on: ${JSON.stringify(cleared.light)}`);
       } finally {
         await press(page, 'address-lookup-toggle');
         await page.evaluate(() => {
