@@ -9,6 +9,8 @@ import {
   createTrip,
   dragMove,
   EARTH_RADIUS_M,
+  EARTHSHINE,
+  EARTHSHINE_SOURCE,
   flightMs,
   flightPoint,
   meansEarth,
@@ -318,4 +320,11 @@ test('the Space view key is free and its own', () => {
   assert.ok(!TAKEN_KEYS.includes('y'));
   const keys = Object.values(SWITCH_KEYS);
   assert.equal(new Set(keys).size, keys.length);
+});
+
+test("earthshine lights the Moon's night side faintly and keeps Cesium's picture setting", () => {
+  assert.ok(EARTHSHINE > 0.05 && EARTHSHINE < 0.5, `earthshine ${EARTHSHINE}`);
+  // Cesium's Moon sets `uniforms.image` on every frame, so the material must have it.
+  assert.match(EARTHSHINE_SOURCE, /texture\(image, materialInput\.st\)/);
+  assert.match(EARTHSHINE_SOURCE, /material\.emission = colour \* earthshine;/);
 });

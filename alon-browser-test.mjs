@@ -877,6 +877,21 @@ const checks = [
         const surface = await page.evaluate(() => ({ kind: document.body.dataset.moonSurface, said: document.querySelector('#space-view-bar .sv-surface')?.textContent }));
         expect(/^nasa-(8k|2k)$/.test(surface.kind), `the surface is ${surface.kind}: ${surface.said}`);
         expect(/NASA CGI Moon Kit map, \d+ pixels wide \(Cesium Moon Terrain: /.test(surface.said), `the bar says: ${surface.said}`);
+        // Earthshine: the night side is dim, not black. Its strength must change the picture.
+        const shine = await page.evaluate(() => {
+          const uniforms = window.__godsEyeView.viewer.scene.moon?._ellipsoidPrimitive?.material?.uniforms;
+          if (!uniforms || !('earthshine' in uniforms)) return null;
+          const was = uniforms.earthshine;
+          const lit = window.__zt.frame();
+          uniforms.earthshine = 0;
+          const dark = window.__zt.frame();
+          uniforms.earthshine = was;
+          let brighter = 0;
+          for (let i = 0; i < lit.length; i += 1) if (lit[i] > dark[i] + 2) brighter += 1;
+          return { was, brighter };
+        });
+        expect(shine, 'the Moon has no earthshine: its night side draws black');
+        expect(shine.was > 0 && shine.brighter > 20, `earthshine ${shine.was} lit only ${shine.brighter} spots of the picture`);
         // An Apollo site's box.
         const site = await page.evaluate(() => {
           const { viewer } = window.__godsEyeView;

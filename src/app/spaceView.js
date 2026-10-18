@@ -38,6 +38,19 @@ export const MOON_RADIUS_M = 1_737_400;
 export const EARTH_RADIUS_M = 6_371_000;
 export const MOON_TERRAIN_ASSET = 2684829;
 export const MOON_MAP_ROUTE = '/api/alon/moon-map';
+/**
+ * Earthshine: sunlight the Earth throws back onto the Moon. It lights the
+ * Moon's night side faintly, so close up the night side is dim instead of
+ * black. A share of the map's own colour, added wherever the Sun is.
+ */
+export const EARTHSHINE = 0.25;
+export const EARTHSHINE_SOURCE = `czm_material czm_getMaterial(czm_materialInput materialInput) {
+  czm_material material = czm_getDefaultMaterial(materialInput);
+  vec3 colour = texture(image, materialInput.st).rgb;
+  material.diffuse = colour;
+  material.emission = colour * earthshine;
+  return material;
+}`;
 /** Space view's camera: this far behind the Earth, away from the Moon... */
 const BACK_M = 120_000_000;
 /** ...and this far to one side, so the Moon is not hidden behind the Earth. */
@@ -692,6 +705,22 @@ export function installSpaceView(
     doc.body.dataset.moonHeight = String(Math.round(moonView.height));
   };
 
+  // Cesium's Moon keeps its picture in a material; the earthshine one keeps
+  // the same `image` setting, which Cesium updates on every frame.
+  let ownMoonMaterial = null;
+  const lightNightSide = () => {
+    const primitive = scene.moon?._ellipsoidPrimitive;
+    if (!primitive || ownMoonMaterial) return;
+    ownMoonMaterial = primitive.material;
+    primitive.material = new Cesium.Material({
+      translucent: false,
+      fabric: {
+        uniforms: { image: scene.moon.textureUrl, earthshine: EARTHSHINE },
+        source: EARTHSHINE_SOURCE,
+      },
+    });
+  };
+
   // The sharp surface: Cesium Moon Terrain, else NASA's map.
   let terrain = null;
   let surface = null;
@@ -737,6 +766,7 @@ export function installSpaceView(
         };
       }
     })().then((result) => {
+      if (result.kind !== 'terrain') lightNightSide();
       surfaceNote.textContent = result.said;
       doc.body.dataset.moonSurface = result.kind;
       return result;
@@ -1171,6 +1201,11 @@ export function installSpaceView(
     if (!scene.isDestroyed?.()) {
       scene.primitives.remove(sites);
       if (terrain) scene.primitives.remove(terrain);
+      const primitive = scene.moon?._ellipsoidPrimitive;
+      if (ownMoonMaterial && primitive) {
+        primitive.material.destroy?.();
+        primitive.material = ownMoonMaterial;
+      }
     }
     delete doc.body.dataset.space;
     toggle.remove();
