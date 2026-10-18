@@ -1,15 +1,26 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { PbfWriter } from 'pbf';
+
 import {
+  NOMINATIM_LOOKUP,
+  NOMINATIM_REVERSE,
+  OPENFREEMAP_TILES,
+  PHOTON_REVERSE,
   createPlaceFacts,
   describeKind,
+  factsFromLookup,
   factsFromNominatim,
+  factsFromTile,
   insideOrNear,
+  photonIds,
   placeFactsHandler,
   ringAreaM2,
   tagNumber,
   thinRing,
+  tileFor,
 } from './placeFacts.js';
 
 // A 20 m by 10 m building in London, about.
@@ -175,22 +186,34 @@ test('answers are remembered: the same spot is asked once', async () => {
   assert.match(asked[0], /polygon_geojson=1/);
 });
 
-test('with no building at the spot nothing is found, and only Nominatim is asked', async () => {
+test('with no building at the spot nothing is found, after Photon and the building tile are asked', async () => {
   const asked = [];
   const look = createPlaceFacts({
     requestJson: async (url) => {
-      asked.push(url);
+      asked.push(new URL(url).host);
+      if (url === OPENFREEMAP_TILES)
+        return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
       return {
         category: 'amenity',
         type: 'bench',
         geojson: { type: 'Point', coordinates: [LON, LAT] },
       };
     },
+    requestBytes: async (url) => {
+      asked.push(new URL(url).host);
+      return buildingTile([], tileFor(...inside));
+    },
     nominatimTurn: (work) => work(),
   });
   assert.equal(await look(...inside), null);
-  assert.equal(asked.length, 1);
-  assert.match(asked[0], /^https:\/\/nominatim\.openstreetmap\.org\//);
+  // No way or relation was named, so no Nominatim lookup.
+  assert.deepEqual(asked, [
+    'nominatim.openstreetmap.org',
+    'photon.komoot.io',
+    'photon.komoot.io',
+    'tiles.openfreemap.org',
+    'tiles.openfreemap.org',
+  ]);
 });
 
 test('the route answers this page only, checks the spot, and refuses other websites', async () => {
@@ -288,4 +311,384 @@ test('two asks for the same spot share one lookup, and a lookup nobody waits for
   leaving.abort();
   await assert.rejects(answer);
   assert.equal(sent, 0);
+});
+
+// The test spots from Alon's screenshots: what the free sources really
+// answered there (recorded 18 Oct 2026, trimmed to what the lookup reads).
+const FIXTURES = JSON.parse(
+  readFileSync(new URL('./placeFacts.fixtures.json', import.meta.url), 'utf8'),
+);
+
+const zigzag = (value) => (value << 1) ^ (value >> 31);
+
+/**
+ * A small OpenFreeMap-style tile with only a building layer, made again from
+ * the outlines kept in the fixtures: the real tiles are over half a megabyte.
+ */
+function buildingTile(buildings, { z, x, y }) {
+  const n = 2 ** z;
+  const local = ([lon, lat]) => {
+    const rad = (lat * Math.PI) / 180;
+    const across = ((lon + 180) / 360) * n;
+    const down =
+      ((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * n;
+    return [Math.round((across - x) * 4096), Math.round((down - y) * 4096)];
+  };
+  const pbf = new PbfWriter();
+  pbf.writeMessage(3, (_, layer) => {
+    layer.writeVarintField(15, 2);
+    layer.writeStringField(1, 'building');
+    for (const { rings } of buildings)
+      layer.writeMessage(2, (_, feature) => {
+        const geometry = [];
+        let [cx, cy] = [0, 0];
+        for (const ring of rings) {
+          const points = ring.slice(0, -1).map(local);
+          points.forEach(([px, py], i) => {
+            if (i === 0) geometry.push(9); // move to, once
+            if (i === 1) geometry.push(((points.length - 1) << 3) | 2); // lines
+            geometry.push(zigzag(px - cx), zigzag(py - cy));
+            [cx, cy] = [px, py];
+          });
+          geometry.push(15); // close the ring
+        }
+        feature.writeVarintField(3, 3); // a polygon
+        feature.writePackedVarint(4, geometry);
+      });
+    layer.writeVarintField(5, 4096);
+  });
+  return pbf.finish();
+}
+
+/** A lookup that answers only from the recorded answers, and lists its asks. */
+function recorded() {
+  const asked = [];
+  let spot = null;
+  const facts = createPlaceFacts({
+    requestJson: async (url) => {
+      const kind = url.startsWith(NOMINATIM_REVERSE)
+        ? 'reverse'
+        : url.startsWith(NOMINATIM_LOOKUP)
+          ? 'lookup'
+          : url.startsWith(PHOTON_REVERSE)
+            ? url.includes('osm_tag=')
+              ? 'photonStadium'
+              : 'photonAny'
+            : url === OPENFREEMAP_TILES
+              ? 'tileList'
+              : url;
+      asked.push(kind);
+      const answer = kind === 'tileList' ? FIXTURES.tileList : spot[kind];
+      if (!answer) throw new Error(`nothing recorded for ${kind}`);
+      return structuredClone(answer);
+    },
+    requestBytes: async (url) => {
+      asked.push('tile');
+      const [z, x, y] = /(\d+)\/(\d+)\/(\d+)\.pbf$/
+        .exec(url)
+        .slice(1)
+        .map(Number);
+      assert.equal(`${z}/${x}/${y}`, spot.tile);
+      return buildingTile(FIXTURES.tiles[spot.tile], { z, x, y });
+    },
+    nominatimTurn: (work) => work(),
+  });
+  const look = (name) => {
+    spot = FIXTURES.spots[name];
+    return facts(...spot.spot);
+  };
+  return { asked, look };
+}
+
+/** The found facts as recorded, and an outline that holds the spot. */
+function assertFound(facts, name) {
+  const { spot, expected } = FIXTURES.spots[name];
+  assert.ok(facts, `${name}: nothing found`);
+  for (const [key, value] of Object.entries(expected))
+    assert.equal(facts[key], value, `${name}: ${key}`);
+  assert.ok(insideOrNear(facts.outline, ...spot), `${name}: spot not inside`);
+}
+
+test('Anfield is found from both clicks, as the whole stadium, through Photon and one lookup', async () => {
+  for (const name of ['anfield-stand', 'anfield-front']) {
+    const { asked, look } = recorded();
+    const facts = await look(name);
+    assertFound(facts, name);
+    assert.equal(facts.name, 'Anfield');
+    assert.deepEqual(asked, ['reverse', 'photonAny', 'photonStadium', 'lookup']);
+  }
+});
+
+test('the Pentagon is found through Photon and one lookup', async () => {
+  const { asked, look } = recorded();
+  const facts = await look('pentagon');
+  assertFound(facts, 'pentagon');
+  assert.equal(facts.name, 'The Pentagon');
+  assert.equal(asked.at(-1), 'lookup');
+});
+
+test('the two Montjuic clicks find two different blocks of flats in the building tile, fetched once', async () => {
+  const { asked, look } = recorded();
+  const a = await look('montjuic-a');
+  const b = await look('montjuic-b');
+  assertFound(a, 'montjuic-a');
+  assertFound(b, 'montjuic-b');
+  assert.notDeepEqual(a.outline, b.outline);
+  assert.ok(!insideOrNear(a.outline, ...FIXTURES.spots['montjuic-b'].spot, 0));
+  // The street comes from the reverse lookup's address point, only when it is
+  // inside the outline; Photon named no building there, so no lookup.
+  assert.equal(a.address, '9 Carrer del Nerbion');
+  assert.equal(b.address, '');
+  assert.deepEqual(asked, [
+    ...['reverse', 'photonAny', 'photonStadium', 'tileList', 'tile'],
+    ...['reverse', 'photonAny', 'photonStadium'],
+  ]);
+});
+
+test('Spotify Camp Nou stays NO MATCH: the click is outside the stadium as mapped', async () => {
+  const { asked, look } = recorded();
+  assert.equal(await look('camp-nou'), null);
+  const stadium = FIXTURES.spots['camp-nou'].photonStadium.features[0];
+  assert.equal(stadium.properties.name, 'Spotify Camp Nou');
+  assert.deepEqual(asked, [
+    ...['reverse', 'photonAny', 'photonStadium', 'tileList', 'tile'],
+  ]);
+});
+
+test('the Texas Capitol is unchanged: the address lookup alone finds it, same outline', async () => {
+  const { asked, look } = recorded();
+  const facts = await look('capitol');
+  assertFound(facts, 'capitol');
+  const { reverse, spot } = FIXTURES.spots.capitol;
+  assert.deepEqual(facts, factsFromNominatim(reverse, ...spot));
+  assert.deepEqual(asked, ['reverse']);
+});
+
+test('only the ways and relations Photon names around the spot are looked up', () => {
+  const at = (osm_type, osm_id, extra = {}) => ({
+    properties: { osm_type, osm_id, osm_key: 'building', ...extra },
+  });
+  const around = { extent: [LON - 0.001, LAT + 0.001, LON + 0.001, LAT - 0.001] };
+  const away = { extent: [LON + 0.01, LAT + 0.011, LON + 0.012, LAT + 0.01] };
+  const ids = photonIds(
+    [
+      {
+        features: [
+          at('W', 1, around),
+          at('N', 2, around),
+          at('W', 3, away),
+          at('R', 4),
+          at('W', 5, { ...around, osm_key: 'highway' }),
+          // A nature reserve round the spot, kilometres wide.
+          at('R', 7, { extent: [LON - 0.03, LAT + 0.03, LON + 0.03, LAT - 0.03] }),
+          at('W', 1, around),
+        ],
+      },
+      null,
+      { features: [at('W', 'six', around)] },
+    ],
+    LAT,
+    LON,
+  );
+  assert.deepEqual(ids, ['W1', 'R4']);
+  const many = { features: Array.from({ length: 80 }, (_, i) => at('W', i)) };
+  assert.equal(photonIds([many], LAT, LON).length, 50);
+});
+
+test('a stadium holding the spot beats its stand, and a building the spot is inside beats one it is near', () => {
+  const ring = (dE, dN, wM, hM) => {
+    const [x, y] = [LON + (dE * dLon) / 20, LAT + (dN * dLat) / 10];
+    const [w, h] = [(wM * dLon) / 20, (hM * dLat) / 10];
+    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]];
+  };
+  const answer = (category, type, outline, extratags = {}) => ({
+    category,
+    type,
+    name: type,
+    extratags,
+    geojson: { type: 'Polygon', coordinates: [outline] },
+  });
+  const ground = answer('leisure', 'stadium', ring(-200, -150, 400, 300));
+  const stand = answer('building', 'stand', ring(-20, -20, 60, 40));
+  const park = answer('leisure', 'park', ring(-10, -10, 30, 30));
+  assert.equal(factsFromLookup([stand, park, ground], LAT, LON).name, 'stadium');
+  assert.equal(factsFromLookup([stand, park], LAT, LON).name, 'stand');
+  // Two metres outside a stadium's edge, inside a shed: the shed.
+  const edge = answer('leisure', 'stadium', ring(2, -50, 100, 100));
+  const shed = answer('building', 'shed', ring(-5, -5, 10, 10));
+  assert.equal(factsFromLookup([edge, shed], LAT, LON).name, 'shed');
+  assert.equal(factsFromLookup([edge], LAT, LON).name, 'stadium');
+  // Next to two buildings and inside neither: the smaller.
+  const small = answer('building', 'small', ring(1, -5, 10, 10));
+  const long = answer('building', 'long', ring(-31, -50, 30, 100));
+  assert.equal(factsFromLookup([long, small], LAT, LON).name, 'small');
+  assert.equal(factsFromLookup(null, LAT, LON), null);
+  assert.equal(factsFromLookup([park], LAT, LON), null);
+});
+
+test('the tile holding a spot, and the whole building in it, not one of its parts', () => {
+  assert.deepEqual(tileFor(...FIXTURES.spots['montjuic-a'].spot), {
+    z: 14,
+    x: 8289,
+    y: 6120,
+  });
+  assert.deepEqual(tileFor(90, 180), { z: 14, x: 16383, y: 0 });
+  assert.deepEqual(tileFor(-90, -180), { z: 14, x: 0, y: 16383 });
+  const tile = tileFor(...inside);
+  const big = [
+    [LON - dLon, LAT - dLat],
+    [LON + 2 * dLon, LAT - dLat],
+    [LON + 2 * dLon, LAT + 2 * dLat],
+    [LON - dLon, LAT + 2 * dLat],
+    [LON - dLon, LAT - dLat],
+  ];
+  const bytes = buildingTile([{ rings: [big] }, { rings: [SQUARE] }], tile);
+  const facts = factsFromTile(bytes, tile, ...inside);
+  assert.ok(Math.abs(facts.areaM2 - 1800) < 40, `${facts.areaM2} m²`);
+  assert.equal(facts.kind, 'Building');
+  assert.match(facts.source, /OpenStreetMap.*OpenFreeMap/);
+  assert.equal(factsFromTile(bytes, tile, LAT + 0.01, LON), null);
+  assert.equal(factsFromTile(new Uint8Array([255, 1, 2]), tile, ...inside), null);
+  assert.equal(factsFromTile(new PbfWriter().finish(), tile, ...inside), null);
+});
+
+test('a failing source is skipped; when nothing is found the failure is passed on and not remembered', async () => {
+  const square = { rings: [SQUARE] };
+  let photonDown = true;
+  let tileList = { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
+  let tiles = 0;
+  const look = createPlaceFacts({
+    requestJson: async (url) => {
+      if (url.startsWith(NOMINATIM_REVERSE)) return { category: 'place' };
+      if (url.startsWith(PHOTON_REVERSE) && photonDown)
+        throw new Error('Photon is down');
+      if (url === OPENFREEMAP_TILES) return tileList;
+      return { features: [] };
+    },
+    requestBytes: async () => {
+      tiles += 1;
+      return buildingTile([square], tileFor(...inside));
+    },
+    nominatimTurn: (work) => work(),
+  });
+  const found = await look(...inside);
+  assert.ok(insideOrNear(found.outline, ...inside, 0));
+
+  // A tile address on another website is refused: nothing found, error.
+  const elsewhere = createPlaceFacts({
+    requestJson: async (url) => {
+      if (url === OPENFREEMAP_TILES)
+        return { tiles: ['https://tiles.openfreemap.org.evil.example/{z}/{x}/{y}.pbf'] };
+      if (url.startsWith(PHOTON_REVERSE)) throw new Error('Photon is down');
+      return { category: 'place' };
+    },
+    requestBytes: async () => {
+      fetched += 1;
+      return buildingTile([square], tileFor(...inside));
+    },
+    nominatimTurn: (work) => work(),
+  });
+  let fetched = 0;
+  await assert.rejects(elsewhere(...inside), /Photon is down/);
+  assert.equal(fetched, 0, 'a tile was fetched from another website');
+
+  // Nothing remembered after a failure: the next ask tries again.
+  let listDown = true;
+  let fetches = 0;
+  const flaky = createPlaceFacts({
+    requestJson: async (url) => {
+      if (url.startsWith(NOMINATIM_REVERSE)) return { category: 'place' };
+      if (url === OPENFREEMAP_TILES) {
+        if (listDown) throw new Error('OpenFreeMap is down');
+        return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
+      }
+      return { features: [] };
+    },
+    requestBytes: async () => {
+      fetches += 1;
+      return buildingTile([], tileFor(...inside));
+    },
+    nominatimTurn: (work) => work(),
+  });
+  await assert.rejects(flaky(...inside), /OpenFreeMap is down/);
+  listDown = false;
+  assert.equal(await flaky(...inside), null);
+  assert.equal(await flaky(...inside), null, 'remembered this time');
+  assert.equal(fetches, 1);
+});
+
+test('inside the Camp Nou bowl, the whole stadium, not one of its tiers', () => {
+  const tile = { z: 14, x: 8288, y: 6119 };
+  const bytes = buildingTile(FIXTURES.tiles['14/8288/6119'], tile);
+  const facts = factsFromTile(bytes, tile, 41.38086, 2.12281);
+  assert.ok(Math.abs(facts.areaM2 - 29_639) < 300, `${facts.areaM2} m²`);
+});
+
+test('an answer found while another source failed is shown, not remembered', async () => {
+  const named = {
+    ...nominatimHouse,
+    name: 'The Grand Stand',
+    category: 'leisure',
+    type: 'stadium',
+    extratags: {},
+  };
+  let lookups = 0;
+  const look = createPlaceFacts({
+    requestJson: async (url) => {
+      if (url.startsWith(NOMINATIM_REVERSE)) return { category: 'place' };
+      if (url.startsWith(PHOTON_REVERSE))
+        return { features: [{ properties: { osm_type: 'W', osm_id: 1 } }] };
+      if (url.startsWith(NOMINATIM_LOOKUP)) {
+        lookups += 1;
+        if (lookups === 1)
+          throw Object.assign(new Error('full'), { code: 'NOMINATIM_QUEUE_FULL' });
+        return [named];
+      }
+      return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
+    },
+    requestBytes: async () => buildingTile([{ rings: [SQUARE] }], tileFor(...inside)),
+    nominatimTurn: (work) => work(),
+  });
+  const first = await look(...inside);
+  assert.equal(first.name, '', 'the tile outline while the lookup was busy');
+  const again = await look(...inside);
+  assert.equal(again.name, 'The Grand Stand');
+  assert.equal(lookups, 2);
+});
+
+test('a lookup everyone left stops before its next source, and a new ask starts afresh', async () => {
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  const asked = [];
+  const look = createPlaceFacts({
+    requestJson: async (url) => {
+      asked.push(new URL(url).host);
+      if (url.startsWith(NOMINATIM_REVERSE)) return { category: 'place' };
+      if (url.startsWith(PHOTON_REVERSE)) {
+        await held;
+        return { features: [] };
+      }
+      return { tiles: [`${OPENFREEMAP_TILES}/v1/{z}/{x}/{y}.pbf`] };
+    },
+    requestBytes: async () => {
+      asked.push('tile');
+      return buildingTile([{ rings: [SQUARE] }], tileFor(...inside));
+    },
+    nominatimTurn: (work, signal) => {
+      signal?.throwIfAborted();
+      return work();
+    },
+  });
+  const leaving = new AbortController();
+  const first = look(...inside, { signal: leaving.signal });
+  await new Promise((resolve) => setImmediate(resolve));
+  leaving.abort(); // the page moved on while Photon was answering
+  const second = look(...inside);
+  release();
+  await assert.rejects(first, { name: 'AbortError' });
+  assert.ok(insideOrNear((await second).outline, ...inside, 0));
+  // Two reverse lookups, and one tile list and tile: the first lookup
+  // stopped before them.
+  assert.equal(asked.filter((host) => host.startsWith('nominatim')).length, 2);
+  assert.equal(asked.filter((host) => host === 'tile').length, 1);
 });

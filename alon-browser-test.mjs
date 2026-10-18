@@ -850,6 +850,84 @@ const checks = [
     },
   ],
   [
+    'a right-click finds the buildings that said NO MATCH (Anfield, the Pentagon, Montjuic flats); the Capitol stays found, Camp Nou stays NO MATCH',
+    async (page, setup) => {
+      // Live lookups at the spots from Alon's screenshots: run on the free
+      // satellite map only, a few seconds a spot.
+      if (setup.map !== 'esri-imagery') throw new Skip('checked on the satellite map only');
+      const spots = [
+        ['Anfield, main stand', 53.43064, -2.96207, /Anfield/],
+        ['Anfield, front', 53.43018, -2.96194, /Anfield/],
+        ['the Pentagon', 38.87122, -77.05543, /The Pentagon/],
+        ['Montjuic, first block', 41.3649, 2.14152, /BUILDING/],
+        ['Montjuic, second block', 41.36496, 2.142, /BUILDING/],
+        ['the Texas Capitol', 30.27437, -97.74029, /Texas State Capitol/],
+        ['Spotify Camp Nou', 41.38078, 2.12154, null],
+      ];
+      const wrong = [];
+      const silent = [];
+      const areas = {};
+      await press(page, 'address-lookup-toggle');
+      try {
+        await page.evaluate(() => {
+          const { camera } = window.__zt.viewer();
+          window.__ztSpot = camera.positionWC.clone();
+          window.__ztLook = { heading: camera.heading, pitch: camera.pitch };
+        });
+        for (const [name, lat, lon, says] of spots) {
+          // Straight down over the spot, so the middle of the window is it.
+          await page.evaluate(([lat, lon]) => {
+            const { camera } = window.__zt.viewer();
+            camera.setView({
+              destination: camera.positionWC.constructor.fromDegrees(lon, lat, 700),
+              orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+            });
+          }, [lat, lon]);
+          await sleep(2500);
+          const [x, y] = spot(page, 0.5, 0.5);
+          await page.mouse.click(x, y, { button: 'right' });
+          await until(page, () => !/ACQUIRING/.test(document.querySelector('#target-box-panel .tb-head')?.textContent ?? 'ACQUIRING'), 30_000, `the target box never finished looking at ${name}`);
+          await sleep(1300);
+          const box = await page.evaluate(() => ({
+            head: document.querySelector('#target-box-panel .tb-head').textContent,
+            text: document.getElementById('target-box-panel').textContent,
+            highlight: window.__zt.entities('zenith-target-box'),
+          }));
+          if (process.env.ZT_SHOTS) {
+            const file = `${setup.narrow ? 'narrow' : 'wide'}-${name.replace(/\W+/g, '-').toLowerCase()}.png`;
+            await page.screenshot({ path: `${process.env.ZT_SHOTS}/${file}`, captureBeyondViewport: false });
+          }
+          if (/NO SIGNAL/.test(box.head)) silent.push(name);
+          else if (!says) {
+            if (!/NO MATCH/.test(box.head)) wrong.push(`${name}: expected NO MATCH, the box says ${box.head}`);
+          } else if (/NO MATCH/.test(box.head)) wrong.push(`${name}: NO MATCH`);
+          else if (!says.test(box.head + box.text)) wrong.push(`${name}: the box does not say ${says}: ${box.text.slice(0, 120)}`);
+          else if (box.highlight !== 2) wrong.push(`${name}: the highlight has ${box.highlight} parts, not a fill and an outline`);
+          areas[name] = /([\d,.]+ (?:m²|ha|km²))/.exec(box.text)?.[1];
+          await page.keyboard.press('Escape');
+          await sleep(300);
+        }
+        // No answer anywhere: the map services are down, not the app. No
+        // answer at some spots: a source the app needs there is broken.
+        if (silent.length === spots.length) throw new Skip('the map facts services did not answer');
+        for (const name of silent) wrong.push(`${name}: NO SIGNAL, a map source failed`);
+        if (areas['Montjuic, first block'] && areas['Montjuic, first block'] === areas['Montjuic, second block'])
+          wrong.push(`both Montjuic clicks gave a building of ${areas['Montjuic, first block']}: the same one?`);
+        expect(wrong.length === 0, wrong.join('; '));
+      } finally {
+        await press(page, 'address-lookup-toggle');
+        await page.evaluate(() => {
+          if (!window.__ztSpot) return;
+          const { camera } = window.__zt.viewer();
+          camera.setView({ destination: window.__ztSpot, orientation: { ...window.__ztLook, roll: 0 } });
+          delete window.__ztSpot;
+          delete window.__ztLook;
+        });
+        await sleep(400);
+      }
+    },
+  ],
+  [
     'a target box shows the satellites overhead: the switch-on line, then the ISS, Tiangong and Hubble, worked out once a minute',
     async (page) => {
       const section = () => page.evaluate(() => document.querySelector('#target-box-panel .zenith-overhead')?.textContent ?? '');
