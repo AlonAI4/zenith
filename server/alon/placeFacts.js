@@ -126,9 +126,12 @@ const words = (value) => {
  * more than "yes"; then the kind of place it is; then just "Building".
  */
 export function describeKind({ building, category, type } = {}) {
-  if (building && building !== 'yes') return KINDS[building] || words(building);
+  // A building's own tag can come only as its type (category "building"),
+  // and "yes" just means "a building".
+  const tag = building || (category === 'building' ? type : undefined);
+  if (tag && tag !== 'yes') return KINDS[tag] || words(tag);
   if (KINDS[type]) return KINDS[type];
-  if (building)
+  if (tag)
     return category === 'building' ? 'Building' : words(type) || 'Building';
   return words(type) || words(category) || 'Place';
 }

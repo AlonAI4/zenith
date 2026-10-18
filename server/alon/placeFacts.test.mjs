@@ -99,6 +99,11 @@ test('a place is described in plain words', () => {
   );
   assert.equal(describeKind({ type: 'park' }), 'Park');
   assert.equal(describeKind({ building: 'boat_house' }), 'Boat house');
+  // Nominatim often gives the building tag only as the type (1108 Lavaca
+  // Street, Austin, said "YES"): "yes" is just "a building".
+  assert.equal(describeKind({ category: 'building', type: 'yes' }), 'Building');
+  assert.equal(describeKind({ category: 'building', type: 'apartments' }), 'Block of flats');
+  assert.equal(describeKind({ category: 'building', type: 'boat_house' }), 'Boat house');
   assert.equal(describeKind({}), 'Place');
 });
 
