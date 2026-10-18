@@ -7,9 +7,10 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.5.0',
+  number: '1.5.1',
   date: '18 October 2026',
   changes: Object.freeze([
+    'The target box now finds stadiums, the Pentagon and blocks of flats that used to say NO MATCH, by asking two more free maps.',
     'The target box lights the building you picked from the ground to its real top, so you can see exactly which one it is.',
     'Every emoji is gone: icons across the app are drawn lines that stay sharp at any size.',
     'Map labels like STARSHIP are bigger and clearer, on a dark plate with a drawn icon and a ringed dot on the spot itself.',
