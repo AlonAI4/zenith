@@ -311,6 +311,14 @@ function trackDisplayText(entry) {
  * @param {object} [out]
  * @returns {{w:number,h:number,padX:number,padY:number,titleH:number,lineH:number,thumbW:number,thumbH:number}}
  */
+/**
+ * Drawn icons for ambient labels, by overlay source id: a function from the
+ * label's accent colour to an image (null while it loads). A label whose
+ * source is here also gets a ringed dot where its leader ends. Filled by
+ * Zenith (src/app/labelIcons.js); while it is empty, labels are unchanged.
+ */
+export const OVERLAY_LABEL_ICONS = new Map();
+
 export function measureOverlayEntry(ctx, entry, out = {}) {
   const variant = entry?.selected
     ? 'selected'
@@ -329,6 +337,10 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
     entry?.title || '',
     variant === 'label' ? WORLD_OVERLAY_STYLE.fontLabel : titleFont,
   );
+  if (variant === 'label' && OVERLAY_LABEL_ICONS.has(entry?.source)) {
+    titleWidth +=
+      WORLD_OVERLAY_STYLE.labelIconSize + WORLD_OVERLAY_STYLE.labelIconGap;
+  }
   if (variant === 'track' && details[0]) {
     titleWidth = measureWorldOverlayText(
       ctx,
@@ -354,16 +366,20 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
     ? 13
     : selected
       ? 12
-      : variant === 'label' || variant === 'track'
-        ? 6
-        : 9;
+      : variant === 'label'
+        ? 8
+        : variant === 'track'
+          ? 6
+          : 9;
   out.padY = tracked
     ? 9
     : selected
       ? 8
-      : variant === 'label' || variant === 'track'
-        ? 4
-        : 6;
+      : variant === 'label'
+        ? 5
+        : variant === 'track'
+          ? 4
+          : 6;
   out.titleH = tactical
     ? selected
       ? 14
@@ -372,9 +388,11 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
       ? 13
       : selected
         ? 15
-        : variant === 'label' || variant === 'track'
-          ? 11
-          : 13;
+        : variant === 'label'
+          ? 14
+          : variant === 'track'
+            ? 11
+            : 13;
   out.lineH = tracked ? 17 : selected ? 15 : 13;
   out.thumbW = 0;
   out.thumbH = 0;
@@ -622,6 +640,7 @@ function drawCardChrome(
   placement,
   selected = false,
   drawLeaderLine = true,
+  background = null,
 ) {
   const { x, y, w, h } = placement.rect;
   const accent = entry.accent || WORLD_OVERLAY_STYLE.accent;
@@ -629,9 +648,11 @@ function drawCardChrome(
     drawLeader(ctx, placement, accent, 1, 1, entry.leaderStyle);
   ctx.beginPath();
   roundedRectPath(ctx, x, y, w, h);
-  ctx.fillStyle = selected
-    ? WORLD_OVERLAY_STYLE.selectedBackground
-    : WORLD_OVERLAY_STYLE.background;
+  ctx.fillStyle =
+    background ??
+    (selected
+      ? WORLD_OVERLAY_STYLE.selectedBackground
+      : WORLD_OVERLAY_STYLE.background);
   ctx.fill();
   ctx.strokeStyle = selected
     ? WORLD_OVERLAY_STYLE.selectedBorder
@@ -850,15 +871,45 @@ export function paintTacticalCard(ctx, entry, placement, alpha = 1) {
 export function paintLabel(ctx, entry, placement, alpha = 1) {
   ctx.save();
   ctx.globalAlpha = alpha;
-  drawCardChrome(ctx, entry, placement, false);
+  const { x, y, h } = placement.rect;
+  const icon = OVERLAY_LABEL_ICONS.get(entry.source);
+  const accent = entry.accent || WORLD_OVERLAY_STYLE.accent;
+  drawCardChrome(
+    ctx,
+    entry,
+    placement,
+    false,
+    true,
+    WORLD_OVERLAY_STYLE.labelBackground,
+  );
+  let textX = x + 8;
+  if (icon) {
+    const size = WORLD_OVERLAY_STYLE.labelIconSize;
+    const image = icon(accent);
+    if (image) ctx.drawImage(image, textX, y + (h - size) / 2, size, size);
+    textX += size + WORLD_OVERLAY_STYLE.labelIconGap;
+    // The leader ends in a ringed dot on the place itself.
+    const scale = placement.paintScale || 1;
+    ctx.beginPath();
+    ctx.arc(
+      placement.anchorX,
+      placement.anchorY,
+      WORLD_OVERLAY_STYLE.anchorRingRadius / scale,
+      0,
+      Math.PI * 2,
+    );
+    ctx.strokeStyle = colorWithAlpha(accent, 0.75);
+    ctx.lineWidth = 1.25 / scale;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(placement.anchorX, placement.anchorY, 2 / scale, 0, Math.PI * 2);
+    ctx.fillStyle = accent;
+    ctx.fill();
+  }
   ctx.fillStyle = WORLD_OVERLAY_STYLE.title;
   ctx.font = WORLD_OVERLAY_STYLE.fontLabel;
-  ctx.textBaseline = 'top';
-  ctx.fillText(
-    String(entry.title || ''),
-    placement.rect.x + 6,
-    placement.rect.y + 4,
-  );
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(entry.title || ''), textX, y + h / 2 + 0.5);
   ctx.restore();
   return placement.rect;
 }

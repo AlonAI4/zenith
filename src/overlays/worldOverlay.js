@@ -611,13 +611,7 @@ export function normalizeOverlayEntry(sourceId, entry) {
     _overlayTrackDisplayText: '',
     _overlayThumbnailTitle:
       variant === 'thumbnail'
-        ? String(entry.title ?? '')
-            .toUpperCase()
-            .slice(
-              0,
-              Math.max(0, Math.floor(Number(entry.thumbnailTitleChars) || 0)) ||
-                undefined,
-            )
+        ? cutCardTitle(entry.title, entry.thumbnailTitleChars)
         : '',
   };
   normalized._overlayKey = entryKey(source, id);
@@ -1094,6 +1088,42 @@ export function hitTestWorldOverlay(x, y, options = {}) {
     };
   }
   return null;
+}
+
+/**
+ * A card's title in capitals, cut to `chars` letters with a closing "…" when
+ * it was longer, so a reader knows to hover for the rest.
+ */
+export function cutCardTitle(title, chars) {
+  const text = String(title ?? '').toUpperCase();
+  const limit = Math.max(0, Math.floor(Number(chars) || 0));
+  return limit > 0 && text.length > limit
+    ? `${text.slice(0, limit - 1)}…`
+    : text;
+}
+
+/**
+ * Where one source's clickable cards go this frame (CSS px), so other labels
+ * can keep clear of them, after any rectangles in `first`. Read from the paint
+ * queue, which is placed before any lane paints; a card faded out to nothing
+ * is left out. Fills and returns `out`; no copies.
+ */
+export function overlayCardRects(sourceId, out = [], first = []) {
+  out.length = 0;
+  for (const rect of first) out.push(rect);
+  if (_destroyed) return out;
+  for (let i = 0; i < _paintCount; i++) {
+    const item = _paintQueue[i];
+    const entry = item.record?.entry;
+    if (
+      entry?.source === sourceId &&
+      entry.interactive &&
+      item.temporalAlpha > 0.001
+    ) {
+      out.push(item.placement.rect);
+    }
+  }
+  return out;
 }
 
 /** @returns {object} Copy of the stable diagnostic facade shape. */

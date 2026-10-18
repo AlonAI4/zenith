@@ -12,6 +12,13 @@ import {
   ACTIVE_COVERAGE_EDGE_DEPTHFAIL,
 } from './policy.js';
 
+/**
+ * Presentation switches another part of the app may set. With
+ * `activeWireframe` false the chosen camera's frustum wireframe is hidden,
+ * for a view drawn in its place (Zenith's src/app/cameraView.js).
+ */
+export const CCTV_PRESENTATION = { activeWireframe: true };
+
 export function createRendering({
   state: layerState,
   services,
@@ -247,10 +254,12 @@ export function createRendering({
         // The frustum wireframe is part of the projection representation —
         // force it on for the active camera and let it read through geometry
         // via depthFailMaterial (polylines have no disableDepthTestDistance).
-        entity.show = !!(
-          layerState._enabled &&
-          ((coverageOn && inVisibleSet) || planeShowing)
-        );
+        entity.show =
+          !!(
+            layerState._enabled &&
+            ((coverageOn && inVisibleSet) || planeShowing)
+          ) &&
+          !(isActive && entity.polyline && !CCTV_PRESENTATION.activeWireframe);
         if (!entity.polyline) continue;
         // Viewshed mode swaps the cyan/green scheme for the camera's own hue so
         // adjacent cones read as distinct coverage claims (design §3b); the

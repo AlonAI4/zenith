@@ -3253,6 +3253,241 @@ const soloChecks = [
       }
     },
   ],
+  [
+    'the chosen camera gets cyan corners and its view lit, its full name in the panel, and no green box',
+    async (page) => {
+      await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      await block3d(true);
+      try {
+        // West of A5 Kilburn High Rd/Willesden Ln, looking east along its view.
+        await open(page, WIDE, 'lat=51.5417&lon=-0.2012&alt=230&heading=90&pitch=-32&l=c&hud=tactical&hv=1&map=esri-imagery');
+        await page.evaluate(() =>
+          window.__godsEyeView.styleManager?.setPanelCollapsed?.('cctv-panel', false, { explicit: true }),
+        );
+        const NAME = 'A5 Kilburn High Rd/Willesden Ln';
+        await until(page, (name) => [...document.querySelectorAll('#cctv-camera-select option')].some((one) => one.textContent.includes(name)), 40_000, 'the A5 Kilburn camera never reached the camera list', NAME);
+        await page.evaluate((name) => {
+          const option = [...document.querySelectorAll('#cctv-camera-select option')].find((one) => one.textContent.includes(name));
+          window.__godsEyeView.styleManager._cctvControls.cctv.selectCamera(option.value, { focus: false });
+        }, NAME);
+        for (const size of [WIDE, NARROW]) {
+          await page.setViewport(size);
+          await sleep(2500);
+          const seen = await page.evaluate(() => {
+            const v = window.__godsEyeView.viewer;
+            const cam = window.__godsEyeView.styleManager._cctvControls.cctv.getUIState().activeCamera;
+            const C = v.camera.positionWC.constructor;
+            const at = v.scene.cartesianToCanvasCoordinates(C.fromDegrees(cam.lon, cam.lat, cam.elevationM));
+            const box = v.scene.canvas.getBoundingClientRect();
+            const corners = document.getElementById('zenith-camera-corners');
+            const r = corners.getBoundingClientRect();
+            const t = v.clock.currentTime;
+            let green = 0;
+            for (let i = 0; i < v.dataSources.length; i++) {
+              const source = v.dataSources.get(i);
+              if (source.name === 'zenith-camera-view') continue;
+              for (const e of source.entities.values) {
+                const c = e.polyline && e.isShowing ? e.polyline.material?.color?.getValue?.(t) : null;
+                if (c && c.green > 0.85 && c.red > 0.5 && c.red < 0.9 && c.blue < 0.6) green++;
+              }
+            }
+            const name = document.getElementById('zenith-cctv-name');
+            return {
+              view: [cam.headingDeg, cam.fovDeg, cam.rangeM],
+              miss: at ? Math.hypot(r.left + r.width / 2 - (box.left + at.x), r.top + r.height / 2 - (box.top + at.y)) : null,
+              shown: getComputedStyle(corners).display !== 'none',
+              wedge: v.dataSources.getByName('zenith-camera-view')[0]?.entities.values.map((e) => (e.polygon ? 'fill' : 'outline')).join(' '),
+              green,
+              name: name?.textContent,
+              nameShown: Boolean(name && !name.hidden && name.getBoundingClientRect().height > 0),
+              nameFirst: name?.nextElementSibling === document.getElementById('cctv-meta'),
+            };
+          });
+          const where = `${size.width} px wide`;
+          expect(seen.view.join() === '90,44,145', `${where}: the camera is not the A5 Kilburn one (HDG/FOV/RANGE ${seen.view.join(', ')})`);
+          expect(seen.shown && seen.miss !== null && seen.miss < 3, `${where}: the cyan corners are not on the camera (${seen.miss} px off)`);
+          expect(seen.wedge === 'fill outline', `${where}: the camera's view is not lit on the ground (${seen.wedge})`);
+          expect(seen.green === 0, `${where}: ${seen.green} lines of the old green box are still shown`);
+          expect(seen.name === NAME && seen.nameShown && seen.nameFirst, `${where}: the panel does not show the camera's full name above its details`);
+        }
+      } finally {
+        await page.evaluate(() => localStorage.removeItem('gev.satelliteByChoice'));
+        await block3d(false);
+      }
+    },
+  ],
+  [
+    'camera names never cover each other, and a cut name shows in full on hover',
+    async (page) => {
+      await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      await block3d(true);
+      try {
+        // Alon's Kilburn view, higher, where callouts and picture cards crowd.
+        await open(page, WIDE, 'lat=51.5417&lon=-0.1977&alt=450&heading=135&pitch=-14&l=c&hud=tactical&hv=1&map=esri-imagery');
+        await sleep(9000);
+        // Hover a picture card whose name was cut, while the cards are still.
+        const card = await page.evaluate(async () => {
+          // The app's own copy of the overlay (same address, query included).
+          const url = performance.getEntriesByType('resource').map((one) => one.name).find((name) => name.includes('/src/overlays/worldOverlay.js'));
+          if (!url) return null;
+          const overlay = await import(url);
+          const box = window.__godsEyeView.viewer.scene.canvas.getBoundingClientRect();
+          for (const r of overlay.overlayCardRects('cctv')) {
+            const hit = overlay.hitTestWorldOverlay(r.x + r.w / 2, r.y + r.h / 2, { sourceId: 'cctv' });
+            if (hit && hit.entry.title.length > 15) return { x: box.left + r.x + r.w / 2, y: box.top + r.y + r.h / 2, title: hit.entry.title };
+          }
+          return null;
+        });
+        let hovered = false;
+        if (card) {
+          await page.mouse.move(card.x - 4, card.y - 4);
+          await sleep(150);
+          await page.mouse.move(card.x, card.y);
+          await sleep(300);
+          const tip = await page.evaluate(async (at) => {
+            const one = document.getElementById('zenith-camera-tip');
+            const url = performance.getEntriesByType('resource').map((entry) => entry.name).find((name) => name.includes('/src/overlays/worldOverlay.js'));
+            const box = window.__godsEyeView.viewer.scene.canvas.getBoundingClientRect();
+            const under = (await import(url)).hitTestWorldOverlay(at.x - box.left, at.y - box.top, { sourceId: 'cctv' });
+            return { shown: !one.hidden, text: one.textContent, under: under?.entry.title ?? 'no card', top: document.elementFromPoint(at.x, at.y)?.id || document.elementFromPoint(at.x, at.y)?.tagName };
+          }, card);
+          // Cards can be re-placed under a still pointer: the tip must name the
+          // cut card under it when read, whichever that is now.
+          hovered = tip.under.length > 15;
+          if (hovered) expect(tip.shown && tip.text === tip.under, `hovering the card for ${tip.under} showed ${tip.shown ? tip.text : 'nothing'} (first aimed at ${card.title}, top element ${tip.top})`);
+          else expect(!tip.shown, `a tip (${tip.text}) showed with no cut card under the pointer (${tip.under})`);
+          await page.mouse.move(5, 450);
+        }
+        await page.evaluate(() => window.__godsEyeView.styleManager.setDetection({ mode: 'dense' }));
+        await sleep(9000);
+        // Every label drawn on the overlay, frame by frame.
+        await page.evaluate(() => {
+          window.__names = [];
+          let now = [];
+          const own = CanvasRenderingContext2D.prototype.fillText;
+          CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
+            if (typeof text === 'string' && text.trim().length > 2 && this.globalAlpha > 0.05 && this.canvas.id === 'world-overlay-canvas') {
+              const m = this.getTransform();
+              const px = parseFloat(/(\d+(\.\d+)?)px/.exec(this.font)?.[1] || '10');
+              const w = this.measureText(text).width * m.a;
+              const h = px * m.d;
+              const X = m.a * x + m.c * y + m.e;
+              const Y = m.b * x + m.d * y + m.f;
+              const top = this.textBaseline === 'top' ? Y : this.textBaseline === 'middle' ? Y - h / 2 : Y - h * 0.8;
+              now.push({ text, x0: X, x1: X + w, y0: top, y1: top + h });
+            }
+            return own.call(this, text, x, y, ...rest);
+          };
+          const tick = () => {
+            if (now.length) window.__names.push(now);
+            now = [];
+            if (window.__names.length < 2000) requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+        // Turn slowly so labels come, go and fade.
+        await page.evaluate(async () => {
+          const { camera, scene } = window.__godsEyeView.viewer;
+          const h0 = camera.heading;
+          const p0 = camera.pitch;
+          const start = performance.now();
+          await new Promise((done) => {
+            const step = (t) => {
+              camera.setView({ orientation: { heading: h0 + ((t - start) / 7500) * 0.75, pitch: p0, roll: 0 } });
+              scene.requestRender();
+              if (t - start < 7500) requestAnimationFrame(step);
+              else done();
+            };
+            requestAnimationFrame(step);
+          });
+        });
+        const counted = await page.evaluate(() => {
+          let bad = 0;
+          let pair = '';
+          for (const list of window.__names) {
+            let hit = false;
+            for (let i = 0; i < list.length; i++)
+              for (let j = i + 1; j < list.length; j++) {
+                const a = list[i];
+                const b = list[j];
+                if (Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 2 && Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) > 2) {
+                  hit = true;
+                  pair = `${a.text} / ${b.text}`;
+                }
+              }
+            if (hit) bad++;
+          }
+          return { frames: window.__names.length, bad, pair };
+        });
+        expect(counted.frames >= 60, `only ${counted.frames} frames were drawn while turning`);
+        expect(counted.bad === 0, `names covered each other in ${counted.bad} of ${counted.frames} frames, e.g. ${counted.pair}`);
+        if (!hovered) throw new Skip('no names covered each other, but no cut camera card was on screen to hover');
+      } finally {
+        await page.evaluate(() => localStorage.removeItem('gev.satelliteByChoice'));
+        await block3d(false);
+      }
+    },
+  ],
+  [
+    'a launch label at Starbase is a dark plate with a drawn rocket, bigger text and a ringed spot',
+    async (page) => {
+      await page.evaluate(() => localStorage.setItem('gev.satelliteByChoice', '1'));
+      await block3d(true);
+      try {
+        // Alon's Starbase view (25°59'52.82"N 97°09'24.01"W, heading 228).
+        await open(page, WIDE, 'lat=25.99801&lon=-97.15667&alt=60&heading=228&pitch=-12&l=x&hud=tactical&hv=1&map=esri-imagery');
+        // Texts, pictures and circles drawn on the overlay, in CSS px.
+        await page.evaluate(() => {
+          window.__launch = { texts: [], pictures: [], rings: [] };
+          const proto = CanvasRenderingContext2D.prototype;
+          const css = (ctx, x, y) => {
+            const m = ctx.getTransform();
+            return { x: (m.a * x + m.c * y + m.e) / devicePixelRatio, y: (m.b * x + m.d * y + m.f) / devicePixelRatio, scale: m.a / devicePixelRatio };
+          };
+          const ours = (ctx) => ctx.canvas.id === 'world-overlay-canvas';
+          const ownText = proto.fillText;
+          proto.fillText = function (text, x, y, ...rest) {
+            if (ours(this)) window.__launch.texts.push({ text, font: this.font, ...css(this, x, y) });
+            return ownText.call(this, text, x, y, ...rest);
+          };
+          const ownImage = proto.drawImage;
+          proto.drawImage = function (image, ...rest) {
+            if (ours(this) && rest.length >= 4 && String(image?.src ?? '').startsWith('data:image/svg+xml')) {
+              const [dx, dy, dw, dh] = rest;
+              const at = css(this, dx, dy);
+              window.__launch.pictures.push({ svg: decodeURIComponent(image.src).slice(0, 400), right: at.x + dw * at.scale, middle: at.y + (dh * at.scale) / 2 });
+            }
+            return ownImage.call(this, image, ...rest);
+          };
+          const ownArc = proto.arc;
+          proto.arc = function (x, y, r, ...rest) {
+            if (ours(this)) window.__launch.rings.push(r * css(this, x, y).scale);
+            return ownArc.call(this, x, y, r, ...rest);
+          };
+        });
+        const painted = () => window.__gevWorldOverlay.getDiagnostics().paintedBySource?.['rocket-missions'] > 0;
+        await until(page, painted, 30_000, 'no launch label was drawn at Starbase');
+        await page.evaluate(() => {
+          window.__launch.texts.length = 0;
+          window.__launch.pictures.length = 0;
+          window.__launch.rings.length = 0;
+          window.__godsEyeView.viewer.scene.requestRender();
+        });
+        await sleep(1500);
+        const seen = await page.evaluate(() => window.__launch);
+        const label = seen.texts.find((one) => /^[A-Z0-9 ./|-]{3,}$/.test(one.text) && /12px/.test(one.font) && /600/.test(one.font));
+        expect(label, `no launch title in bold 12 px text (saw ${seen.texts.slice(0, 4).map((one) => `${one.text} ${one.font}`).join('; ')})`);
+        // The drawn rocket sits just left of that title, level with it.
+        const icon = label && seen.pictures.find((one) => /<path|<circle|<rect/.test(one.svg) && label.x - one.right > 2 && label.x - one.right < 9 && Math.abs(one.middle - label.y) < 4);
+        expect(icon, `no drawn icon just left of ${label?.text} (pictures at ${seen.pictures.slice(0, 3).map((one) => `${Math.round(one.right)},${Math.round(one.middle)}`).join('; ')}; text at ${Math.round(label?.x)},${Math.round(label?.y)})`);
+        // The ring on the spot is 5.5 CSS px across its radius, whatever the zoom.
+        expect(seen.rings.some((r) => Math.abs(r - 5.5) < 0.75), `no 5.5 px ring on the launch spot (circles of ${[...new Set(seen.rings.map((r) => r.toFixed(1)))].slice(0, 6).join(', ')} px)`);
+      } finally {
+        await page.evaluate(() => localStorage.removeItem('gev.satelliteByChoice'));
+        await block3d(false);
+      }
+    },
+  ],
 ];
 
 // ── The run ──────────────────────────────────────────────────────────────────

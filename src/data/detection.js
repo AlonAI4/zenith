@@ -21,7 +21,11 @@ import {
   getKeyholeFadeTuning,
   keyholeLabelAlphaFromGeometry,
 } from '../celestialRing.js';
-import { registerWorldOverlayPaintLane } from '../overlays/worldOverlay.js';
+import {
+  overlayCardRects,
+  registerWorldOverlayPaintLane,
+} from '../overlays/worldOverlay.js';
+import { CCTV_OVERLAY_SOURCE_ID } from './cctvCards.js';
 import {
   DETECTION_STYLE,
   DETECTION_THEME_MAP,
@@ -241,6 +245,10 @@ let _transitBracketAlpha = 1;
  */
 const _calloutPool = [];
 let _calloutCount = 0;
+/** This frame's placed callout rectangles: a later one never covers them. */
+const _calloutTaken = [];
+/** The panels and the cameras' picture cards: a callout's corner avoids both. */
+const _calloutAvoid = [];
 /** Cached per-theme plate fills, resolved on style change (never per label). */
 let _platePaint = DETECTION_THEME_MAP._default.calloutPlate;
 let _platePaintSpace = DETECTION_THEME_MAP._default.calloutPlateSpace;
@@ -1046,6 +1054,8 @@ function _stashCallout(entry, acquireFade, keyhole) {
   const alpha =
     acquireFade * temporalAlpha * radialAlpha * (candidate.sonarFactor ?? 1);
   if (alpha <= 0.001) return;
+  if (rectIntersectsAny(placement.rect, _calloutTaken)) return;
+  _calloutTaken.push(placement.rect);
 
   let row = _calloutPool[_calloutCount];
   if (!row) {
@@ -1236,6 +1246,11 @@ function _drawOverlay(frame) {
   const shouldSolve =
     _labelSolveDirty || now - _lastLabelSolveAt >= LABEL_SOLVE_INTERVAL_MS;
   const calloutOcclusionRects = frame.uiRects;
+  const calloutAvoid = overlayCardRects(
+    CCTV_OVERLAY_SOURCE_ID,
+    _calloutAvoid,
+    calloutOcclusionRects,
+  );
   const selectedIdentities = shouldSolve
     ? _labelArbiter.liveIdentities({ includeFading: false, now })
     : null;
@@ -1489,7 +1504,7 @@ function _drawOverlay(frame) {
         width,
         height,
         keyhole,
-        calloutOcclusionRects,
+        calloutAvoid,
         camPos,
       );
       if (candidate && !candidateMap.has(candidate.key))
@@ -1528,7 +1543,7 @@ function _drawOverlay(frame) {
             width,
             height,
             keyhole,
-            calloutOcclusionRects,
+            calloutAvoid,
             camPos,
           );
           if (candidate) candidateMap.set(candidate.key, candidate);
@@ -1586,7 +1601,14 @@ function _drawOverlay(frame) {
   // becomes visible on a parked scene.
   const animatingCount = countAnimatingRenderEntries(renderEntries);
   _calloutCount = 0;
-  for (const entry of renderEntries) _stashCallout(entry, fade, keyhole);
+  // A camera's picture card already names it: callouts keep clear of it.
+  overlayCardRects(CCTV_OVERLAY_SOURCE_ID, _calloutTaken);
+  // Chosen labels first, then those fading out: one that would cover a
+  // label already placed waits until there is room.
+  for (const entry of renderEntries)
+    if (entry.selected) _stashCallout(entry, fade, keyhole);
+  for (const entry of renderEntries)
+    if (!entry.selected) _stashCallout(entry, fade, keyhole);
   _ctx.font = FONT;
   _ctx.globalAlpha = 1;
 

@@ -12,6 +12,8 @@ import { installGlobeCentring } from './app/globeCentring.js';
 import { installHdDetail } from './app/hdDetail.js';
 import { installDrawnIcons } from './app/drawnIcons.js';
 import { installSelectGuard } from './app/selectGuard.js';
+import { installLabelIcons } from './app/labelIcons.js';
+import { installCameraView } from './app/cameraView.js';
 import { installHelpCard } from './app/helpCard.js';
 import { install3dMapWatchdog } from './app/map3dWatchdog.js';
 import { installMapLabels } from './app/mapLabels.js';
@@ -107,6 +109,7 @@ application
         ['Day and night', () => installDayNight(scene)],
         // Before the Map pin: an open target box takes the first Escape.
         ['Target box', () => installTargetBox(scene)],
+        ['Label icons', () => installLabelIcons(scene.viewer.scene)],
         ['Map pin', () => installAddressLookup(scene)],
         [
           'Address search',
@@ -159,6 +162,7 @@ application
         ['Narrow-window tray', () => installToolbarFit()],
         ['Focus tips', () => installFocusTips()],
         ['CCTV history', () => installCctvHistory(styleManager)],
+        ['Camera view', () => installCameraView(scene, styleManager)],
         [
           'Free voice',
           () =>

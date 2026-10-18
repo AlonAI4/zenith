@@ -21,6 +21,7 @@ import {
   getOverlayPaintRect,
   getWorldOverlayDiagnostics,
   hitTestWorldOverlay,
+  overlayCardRects,
   initWorldOverlay,
   isOverlayPointVisible,
   normalizeOverlayEntry,
@@ -1695,6 +1696,18 @@ test('CCTV stable frame slots gate ambient chrome and wire the exact host hit re
   const hit = hitTestWorldOverlay(rect.x + 1, rect.y + 1, { sourceId: 'cctv' });
   assert.equal(hit?.entryId, 'cam-a');
   assert.equal(hit?.entry.interactive, true);
+  assert.deepEqual(
+    overlayCardRects('cctv').map(({ x, y, w, h }) => ({ x, y, w, h })),
+    [{ x: rect.x, y: rect.y, w: rect.w, h: rect.h }],
+  );
+  assert.deepEqual(overlayCardRects('other'), []);
+  // Rectangles to keep clear of anyway (the panels) come first.
+  const panel = { x: 0, y: 0, w: 10, h: 10 };
+  assert.deepEqual(overlayCardRects('other', [], [panel]), [panel]);
+  assert.deepEqual(
+    overlayCardRects('cctv', [], [panel]).map(({ w, h }) => ({ w, h })),
+    [{ w: 10, h: 10 }, { w: rect.w, h: rect.h }],
+  );
   assert.ok(env.ctx.calls.some((call) => call[0] === 'drawImage' && call[1] === firstFrame));
 
   const secondFrame = { name: 'frame-two' };
@@ -1706,6 +1719,17 @@ test('CCTV stable frame slots gate ambient chrome and wire the exact host hit re
     env.ctx.calls.some((call) => call[0] === 'drawImage' && call[1] === secondFrame),
     'slot mutation reaches paint without republishing the entry',
   );
+  // A card faded out to nothing no longer keeps other labels away.
+  entry.temporalAlpha = 0;
+  setOverlayEntries('cctv', [entry], {
+    cohortLimit: 40,
+    collisionCapacity: 40,
+    moving: true,
+    solveIntervalMs: 125,
+  });
+  env.advanceTime(16);
+  env.postRender.raise();
+  assert.deepEqual(overlayCardRects('cctv'), []);
   env.cleanup();
 });
 
