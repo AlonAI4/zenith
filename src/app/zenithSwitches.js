@@ -57,7 +57,7 @@ export const ZENITH_SWITCHES = Object.freeze([
     id: 'hd-detail-toggle',
     group: 'layers',
     name: 'HD buildings',
-    what: 'Sharper 3D buildings, on from the start. Switch off to save data and graphics.',
+    what: 'Sharper 3D buildings, on from the start: cleaner far-off roofs and roads, and extra detail when the view is still. Switch off to save data, memory and graphics.',
   },
   {
     id: 'space-view-toggle',

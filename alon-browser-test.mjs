@@ -1572,6 +1572,8 @@ const checks = [
             recommended: window.__zt.viewer().useBrowserRecommendedResolution,
             detail: window.__godsEyeView.tileset?.maximumScreenSpaceError ?? null,
             ratio: canvas.width / canvas.clientWidth,
+            idle: window.__zt.viewer().scene.requestRenderMode === true,
+            textures: document.body.dataset.hdTextures,
           };
         });
       // At one device pixel per screen point HD draws the same as normal, so
@@ -1590,7 +1592,10 @@ const checks = [
         for (const state of states) {
           const word = state.on ? 'on' : 'off';
           expect(state.recommended === !state.on, `with HD ${word} the drawing resolution setting disagrees`);
-          expect(Math.abs(state.ratio - (state.on ? 2 : 1)) < 0.15, `with HD ${word} the map draws ${state.ratio.toFixed(2)} pixels per screen point`);
+          // Still with nothing moving, HD draws one and a half times the screen's pixels.
+          const want = state.on ? (state.idle ? 3 : 2) : 1;
+          expect(Math.abs(state.ratio - want) < 0.15, `with HD ${word} the map draws ${state.ratio.toFixed(2)} pixels per screen point, not ${want}`);
+          expect(state.textures === (state.on ? 'sharp' : 'plain'), `with HD ${word} the tile pictures are ${state.textures}`);
           if (setup.map === 'photoreal') {
             expect(state.detail === (state.on ? 8 : 16), `with HD ${word} the 3D buildings use detail ${state.detail}`);
           }
