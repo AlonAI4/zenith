@@ -7,30 +7,43 @@
  * of its own: the tray closes when one is pressed, so the two do not stack.
  * `closesTray: true` marks a switch whose next step is a click on the map
  * (Map pin, Measure): the tray closes for it too, so it is not in the way.
+ * `group: 'layers'` marks a map overlay: it sits in the LAYERS menu
+ * (toolbarLayout.js) instead of the bar.
  */
 export const ZENITH_SWITCHES = Object.freeze([
   {
+    id: 'zenith-layers-toggle',
+    panel: true,
+    name: 'Layers',
+    what: 'Opens the menu of map overlays: place names, train stations, earthquakes, time zones, day and night, and HD buildings. The number on it is how many are on.',
+  },
+  {
     id: 'map-labels-toggle',
+    group: 'layers',
     name: 'Place names',
     what: 'Place and road names over the map.',
   },
   {
     id: 'train-stations-toggle',
+    group: 'layers',
     name: 'Train stations',
     what: 'Train, metro and tram stops. Click one for its name.',
   },
   {
     id: 'earthquakes-toggle',
+    group: 'layers',
     name: 'Earthquakes',
     what: 'Magnitude 2.5 and up from the last day, sized and coloured by strength (yellow, orange, red). Click one for details. Not the same as Earthquakes (24h) in Data layers.',
   },
   {
     id: 'time-zones-toggle',
+    group: 'layers',
     name: 'Time zones',
     what: 'Time zone borders with their offsets from UTC.',
   },
   {
     id: 'day-night-toggle',
+    group: 'layers',
     name: 'Day and night',
     what: 'Shades the night side of the Earth, with city lights and the line where night begins. Drag its slider to see another time of day.',
   },
@@ -42,6 +55,7 @@ export const ZENITH_SWITCHES = Object.freeze([
   },
   {
     id: 'hd-detail-toggle',
+    group: 'layers',
     name: 'HD buildings',
     what: 'Sharper 3D buildings, on from the start. Switch off to save data and graphics.',
   },

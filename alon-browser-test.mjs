@@ -33,6 +33,7 @@ const NARROW = { width: 900, height: 800 };
 
 /** The switches this build adds. Keep in step with src/app/zenithSwitches.js. */
 const SWITCHES = [
+  'zenith-layers-toggle',
   'map-labels-toggle',
   'train-stations-toggle',
   'earthquakes-toggle',
@@ -46,6 +47,9 @@ const SWITCHES = [
   'video-mode-toggle',
   'zenith-help-toggle',
 ];
+/** The map overlays, which sit in the LAYERS menu; the rest sit in the bar (or its tray). */
+const LAYERS = ['map-labels-toggle', 'train-stations-toggle', 'earthquakes-toggle', 'time-zones-toggle', 'day-night-toggle', 'hd-detail-toggle'];
+const BAR_SWITCHES = SWITCHES.filter((id) => !LAYERS.includes(id));
 const PARTS = [...SWITCHES, 'compass-dial', 'scale-bar', 'tracking-marker', 'zenith-more-toggle'];
 /** Switches a check may leave on by accident; calm() turns them off again. */
 const RESETTABLE = [
@@ -310,9 +314,21 @@ async function press(page, id, { leaveTray = false } = {}) {
   const where = await page.evaluate((button) => {
     const element = document.getElementById(button);
     if (!element) return 'missing';
+    if (element.closest('#zenith-layers-menu')) return 'layers';
     return element.closest('#zenith-tray') ? 'tray' : 'bar';
   }, id);
   expect(where !== 'missing', `there is no #${id}`);
+  if (where === 'layers') {
+    // A map overlay: open the LAYERS menu, press it, close the menu again.
+    // Closed by its own button directly: on a narrow window, opening the
+    // tray to reach that button would count as a click outside the menu.
+    await press(page, 'zenith-layers-toggle');
+    await page.click(`#${id}`);
+    await page.evaluate(() => document.getElementById('zenith-layers-toggle').click());
+    await until(page, () => document.getElementById('zenith-layers-menu').dataset.open !== 'true', 2000, 'the LAYERS menu did not close');
+    await sleep(250);
+    return;
+  }
   const opened = where === 'tray' && !(await trayOpen(page));
   if (opened) await page.click('#zenith-more-toggle');
   await page.click(`#${id}`);
@@ -437,30 +453,30 @@ const checks = [
           inTray: switches.filter((id) => document.getElementById(id)?.closest('#zenith-tray')).length,
           more: window.__zt.shown(document.getElementById('zenith-more-toggle')),
         };
-      }, SWITCHES);
+      }, BAR_SWITCHES);
       expect(state.overlaps.length === 0, `overlapping: ${state.overlaps.join(', ')}`);
       expect(state.dialInside, 'the compass is partly off the window');
       if (setup.narrow) {
-        expect(state.inTray === SWITCHES.length && state.more, 'the switches did not fold into the tray');
+        expect(state.inTray === BAR_SWITCHES.length && state.more, 'the switches did not fold into the tray');
         await page.click('#zenith-more-toggle');
         expect(await trayOpen(page), 'the tray did not open');
         await page.keyboard.press('Escape');
         expect(!(await trayOpen(page)), 'Escape did not close the tray');
-        // The more button counts the switches that are on.
-        await press(page, 'time-zones-toggle');
+        // The more button counts the switches in the tray that are on.
+        await press(page, 'address-lookup-toggle');
         const badge = await page.evaluate(
           (switches) => ({
             says: document.getElementById('zenith-more-toggle').dataset.on,
             on: String(switches.filter((id) => document.getElementById(id)?.getAttribute('aria-pressed') === 'true').length),
           }),
-          SWITCHES,
+          BAR_SWITCHES,
         );
         expect(badge.says === badge.on, `with ${badge.on} switches on the more button says "${badge.says}"`);
         // Clicking a switch's name in the tray works like clicking the switch.
         await page.click('#zenith-more-toggle');
-        await page.evaluate(() => document.getElementById('time-zones-toggle').closest('.zt-row').querySelector('.zt-name').click());
+        await page.evaluate(() => document.getElementById('address-lookup-toggle').closest('.zt-row').querySelector('.zt-name').click());
         await sleep(300);
-        expect(!(await pressed(page, 'time-zones-toggle')), 'clicking the name Time zones in the tray did not switch it off');
+        expect(!(await pressed(page, 'address-lookup-toggle')), 'clicking the name Map pin in the tray did not switch it off');
         if (!(await trayOpen(page))) await page.click('#zenith-more-toggle');
         await clickMap(page, 0.5, 0.8);
         expect(!(await trayOpen(page)), 'a click on the map did not close the tray');
@@ -469,11 +485,11 @@ const checks = [
         // Narrowing the window live folds the switches away and keeps what is on.
         await press(page, 'time-zones-toggle');
         const inTray = () =>
-          page.evaluate((switches) => switches.filter((id) => document.getElementById(id)?.closest('#zenith-tray')).length, SWITCHES);
+          page.evaluate((switches) => switches.filter((id) => document.getElementById(id)?.closest('#zenith-tray')).length, BAR_SWITCHES);
         try {
           await page.setViewport(NARROW);
           await sleep(800);
-          expect((await inTray()) === SWITCHES.length, 'narrowing the window did not fold the switches into the tray');
+          expect((await inTray()) === BAR_SWITCHES.length, 'narrowing the window did not fold the switches into the tray');
           expect(await pressed(page, 'time-zones-toggle'), 'folding the switches away switched Time zones off');
           await page.setViewport(WIDE);
           await sleep(800);
@@ -483,6 +499,51 @@ const checks = [
           if (await pressed(page, 'time-zones-toggle')) await press(page, 'time-zones-toggle');
         }
       }
+    },
+  ],
+  [
+    'the LAYERS menu: the map overlays in one menu that works from the keyboard, and the compass does tilt and north',
+    async (page) => {
+      const state = await page.evaluate((layers) => ({
+        inMenu: layers.filter((id) => document.getElementById(id)?.closest('#zenith-layers-menu')).length,
+        hidden: ['tilt-map-view', 'north-up-view'].every((id) => getComputedStyle(document.getElementById(id)).display === 'none'),
+      }), LAYERS);
+      expect(state.inMenu === LAYERS.length, `only ${state.inMenu} of the ${LAYERS.length} overlays are in the LAYERS menu`);
+      expect(state.hidden, 'the tilt and north buttons still show (the compass does both)');
+      const menuOpen = () => page.evaluate(() => document.getElementById('zenith-layers-menu').dataset.open === 'true');
+      // From the keyboard: Enter opens it on the first row, arrows move, Space switches, Escape closes.
+      const where = await page.evaluate(() => (document.getElementById('zenith-layers-toggle').closest('#zenith-tray') ? 'tray' : 'bar'));
+      if (where === 'tray') await page.click('#zenith-more-toggle');
+      await page.focus('#zenith-layers-toggle');
+      await page.keyboard.press('Enter');
+      await sleep(200);
+      expect(await menuOpen(), 'Enter did not open the LAYERS menu');
+      expect((await page.evaluate(() => document.activeElement?.id)) === LAYERS[0], 'the menu did not start on its first row');
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      expect((await page.evaluate(() => document.activeElement?.id)) === LAYERS[2], 'the arrow keys did not move down the menu');
+      const before = await pressed(page, LAYERS[2]);
+      await page.keyboard.press('Space');
+      await sleep(400);
+      expect((await pressed(page, LAYERS[2])) !== before, 'Space did not switch the overlay');
+      const badge = await page.evaluate((layers) => ({
+        says: document.getElementById('zenith-layers-toggle').dataset.on ?? '0',
+        on: String(layers.filter((id) => document.getElementById(id)?.getAttribute('aria-pressed') === 'true').length),
+      }), LAYERS);
+      expect(badge.says === badge.on, `with ${badge.on} overlays on the LAYERS button says "${badge.says}"`);
+      await page.keyboard.press('Space');
+      await sleep(300);
+      await page.keyboard.press('Escape');
+      expect(!(await menuOpen()), 'Escape did not close the LAYERS menu');
+      // Back to the LAYERS button, or on a narrow window to the closed tray's button.
+      const back = where === 'tray' ? 'zenith-more-toggle' : 'zenith-layers-toggle';
+      expect((await page.evaluate(() => document.activeElement?.id)) === back, `Escape did not give the focus back to #${back}`);
+      // A click on the map closes it too.
+      await press(page, 'zenith-layers-toggle');
+      expect(await menuOpen(), 'a click did not open the LAYERS menu');
+      await clickMap(page, 0.5, 0.8);
+      expect(!(await menuOpen()), 'a click on the map did not close the LAYERS menu');
+      if (await trayOpen(page)) await page.click('#zenith-more-toggle');
     },
   ],
   [

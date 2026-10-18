@@ -195,10 +195,11 @@ export function installToolbarFit(doc = document, win = window) {
       (entry) => entry.id,
     ),
   );
+  // The map overlays live in the LAYERS menu (toolbarLayout.js), not the bar.
   const switches = () =>
-    ZENITH_SWITCHES.map((entry) => doc.getElementById(entry.id)).filter(
-      Boolean,
-    );
+    ZENITH_SWITCHES.filter((entry) => !entry.group)
+      .map((entry) => doc.getElementById(entry.id))
+      .filter(Boolean);
 
   const setOpen = (open) => {
     tray.dataset.open = String(open);

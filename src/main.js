@@ -21,6 +21,7 @@ import { installTargetBox } from './app/targetBox.js';
 import { installScaleBar } from './app/scaleBar.js';
 import { installTimeZones } from './app/timeZones.js';
 import { installToolbarFit } from './app/toolbarFit.js';
+import { installToolbarLayout } from './app/toolbarLayout.js';
 import { installTrackingMarker } from './app/trackingMarker.js';
 import { installTrainStations } from './app/trainStations.js';
 import { installVideoMode } from './app/videoMode.js';
@@ -127,6 +128,7 @@ application
         ['HD buildings', () => installHdDetail(scene)],
         ['Classified look', () => installClassified(scene, { styleManager })],
         ['Help card', () => installHelpCard()],
+        ['Layers menu', () => installToolbarLayout()],
         ['Narrow-window tray', () => installToolbarFit()],
         ['Focus tips', () => installFocusTips()],
         ['CCTV history', () => installCctvHistory(styleManager)],

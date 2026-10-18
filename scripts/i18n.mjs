@@ -425,7 +425,7 @@ export function findUnmarked() {
 const NOT_UI = [
   /^src\/tools\//,
   // Zenith's own add-ons, written in English only for this build.
-  /^src\/app\/(addOns|addressLookup|addressSearch|cctvHistory|classified|dayNight|earthquakes|freeVoice|hdDetail|helpCard|mapLabels|measureTool|myPhotos|notice|savedPlaces|scaleBar|settingsFile|targetBox|timeZones|toolbarFit|trackingMarker|trainStations|videoMode)\.js$/,
+  /^src\/app\/(addOns|addressLookup|addressSearch|cctvHistory|classified|dayNight|earthquakes|freeVoice|hdDetail|helpCard|mapLabels|measureTool|myPhotos|notice|savedPlaces|scaleBar|settingsFile|targetBox|timeZones|toolbarFit|toolbarLayout|trackingMarker|trainStations|videoMode)\.js$/,
   /^src\/ui\/(branding|buttonTooltips|customSelect|panelFullscreen|shortcutGuard|toggleLook)\.js$/,
 ];
 
