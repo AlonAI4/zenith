@@ -49,6 +49,23 @@ test('classified on and off', () => {
   });
 });
 
+test('watch zones on and off', () => {
+  assert.deepEqual(said('watch zones on'), { do: 'watching', on: true });
+  assert.deepEqual(said('turn off watch zones'), { do: 'watching', on: false });
+});
+
+test('space view, go to the Moon and back to Earth', () => {
+  assert.deepEqual(said('space view'), {
+    do: 'switch',
+    id: 'space-view-toggle',
+    on: true,
+  });
+  // The Moon is a search, which space view catches.
+  assert.deepEqual(said('go to the Moon'), { do: 'go', place: 'the moon' });
+  assert.deepEqual(said('back to Earth'), { do: 'earth' });
+  assert.deepEqual(said('go back to the Earth'), { do: 'earth' });
+});
+
 test("Zenith's switches and the map's layers, by name", () => {
   assert.deepEqual(said('earthquakes on'), {
     do: 'switch',

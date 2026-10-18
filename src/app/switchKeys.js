@@ -22,6 +22,7 @@ export const SWITCH_KEYS = Object.freeze({
   'day-night-toggle': 'n',
   'address-lookup-toggle': 'p',
   'hd-detail-toggle': 'b',
+  'space-view-toggle': 'y',
   'classified-toggle': 'x',
   'measure-toggle': 'm',
   'saved-places-toggle': 's',

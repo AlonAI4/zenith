@@ -4,7 +4,7 @@ import test from 'node:test';
 import { LAYER_IDS, nextRow } from './toolbarLayout.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 
-test('the LAYERS menu holds the six map overlays, in order', () => {
+test('the LAYERS menu holds the map overlays and space view, in order', () => {
   assert.deepEqual(LAYER_IDS, [
     'map-labels-toggle',
     'train-stations-toggle',
@@ -12,6 +12,7 @@ test('the LAYERS menu holds the six map overlays, in order', () => {
     'time-zones-toggle',
     'day-night-toggle',
     'hd-detail-toggle',
+    'space-view-toggle',
   ]);
 });
 

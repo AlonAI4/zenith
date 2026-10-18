@@ -15,7 +15,7 @@ export const ZENITH_SWITCHES = Object.freeze([
     id: 'zenith-layers-toggle',
     panel: true,
     name: 'Layers',
-    what: 'Opens the menu of map overlays: place names, train stations, earthquakes, time zones, day and night, and HD buildings. The number on it is how many are on.',
+    what: 'Opens the menu of map overlays: place names, train stations, earthquakes, time zones, day and night, HD buildings, and space view. The number on it is how many are on.',
   },
   {
     id: 'map-labels-toggle',
@@ -58,6 +58,12 @@ export const ZENITH_SWITCHES = Object.freeze([
     group: 'layers',
     name: 'HD buildings',
     what: 'Sharper 3D buildings, on from the start. Switch off to save data and graphics.',
+  },
+  {
+    id: 'space-view-toggle',
+    group: 'layers',
+    name: 'Space view',
+    what: 'Flies out to see the Earth, the satellites round it and the Moon, with the Satellites layer and the Celestial ring on. Fly to the Moon (or click it) to turn round it and zoom in to its surface, with the six Apollo landing sites marked. Press again, or Back to Earth, to come back as you were.',
   },
   {
     id: 'classified-toggle',

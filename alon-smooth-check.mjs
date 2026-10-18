@@ -19,6 +19,8 @@
  *
  * --zones N starts with N watch zones (up to 10) on round the view, watching
  * planes, ships and satellites.
+ * --moon flies to the Moon (a search for "Moon") before standing still and
+ * moving, so those numbers are for the view over the Moon.
  *
  * Zenith must be running at ZENITH_URL (default http://localhost:4173).
  */
@@ -39,6 +41,21 @@ const LABEL = option('label', 'now');
 const RUNS = Number(option('runs', '2'));
 const JSON_OUT = option('json', null);
 const ZONES = Math.min(10, Number(option('zones', '0')));
+const MOON = args.includes('--moon');
+
+/** Over the Moon, with its map loaded, before measuring. */
+async function toMoon(page) {
+  await page.evaluate(() => {
+    const input = document.getElementById('location-search');
+    input.value = 'Moon';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  });
+  for (let i = 0; i < 240; i++) {
+    if (await page.evaluate(() => Boolean(document.body.dataset.moonHeight && document.body.dataset.moonSurface))) break;
+    await sleep(500);
+  }
+  await sleep(3000);
+}
 
 /** The page settings a person who chose the satellite map has. */
 async function prepare(page) {
@@ -200,6 +217,7 @@ async function oneRun(browser) {
   await client.send('Performance.enable');
   await prepare(page);
   const fresh = await timedOpen(page, client);
+  if (MOON) await toMoon(page);
   const still = await standingStill(page, client);
   const turn = await moving(page, 'turn');
   const zoom = await moving(page, 'zoom');

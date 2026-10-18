@@ -7,13 +7,13 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.3.4',
+  number: '1.4.0',
   date: '18 October 2026',
   changes: Object.freeze([
-    "Fixed: with the HUD on, the Cesium ion logo no longer sits on the HUD's coordinates.",
-    'A shorter top bar: the map overlays live in one LAYERS menu, with a number for how many are on.',
-    'Every switch has a key, shown in its tooltip and the help card: P map pin, M measure, A layers and more.',
-    'The tilt and north buttons are gone from the bar: the compass does both (drag its arc, click its N).',
+    'Space view (Y, in LAYERS): the Earth, its satellites and the Moon at their real sizes. Fly to the Moon and zoom in to it.',
+    'The six Apollo landing sites are marked on the Moon: click one to see where and when it landed.',
+    'Watch zones (J): draw circles on the map and get an alert when a plane, ship or satellite comes in.',
+    'Target boxes and the map pin card say when the ISS, Tiangong and Hubble next pass overhead.',
   ]),
 });
 

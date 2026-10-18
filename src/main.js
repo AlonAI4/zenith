@@ -20,6 +20,7 @@ import { installRotateGestures } from './app/rotateGestures.js';
 import { installSavedPlaces } from './app/savedPlaces.js';
 import { installTargetBox } from './app/targetBox.js';
 import { installScaleBar } from './app/scaleBar.js';
+import { installSpaceView } from './app/spaceView.js';
 import { installTimeZones } from './app/timeZones.js';
 import { installToolbarFit } from './app/toolbarFit.js';
 import { installToolbarLayout } from './app/toolbarLayout.js';
@@ -138,6 +139,16 @@ application
         ],
         ['HD buildings', () => installHdDetail(scene)],
         ['Classified look', () => installClassified(scene, { styleManager })],
+        [
+          'Space view',
+          () =>
+            installSpaceView(scene, {
+              dataManager: data?.dataManager,
+              styleManager,
+              // The app's own Cesium ion token, for Cesium Moon Terrain.
+              cesiumToken: import.meta.env.CESIUM_ION_TOKEN,
+            }),
+        ],
         ['Help card', () => installHelpCard()],
         ['Layers menu', () => installToolbarLayout()],
         ['Switch keys', () => installSwitchKeys()],

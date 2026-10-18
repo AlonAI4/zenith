@@ -41,6 +41,7 @@ const SWITCHES = [
   'day-night-toggle',
   'address-lookup-toggle',
   'hd-detail-toggle',
+  'space-view-toggle',
   'classified-toggle',
   'measure-toggle',
   'saved-places-toggle',
@@ -49,7 +50,7 @@ const SWITCHES = [
   'zenith-help-toggle',
 ];
 /** The map overlays, which sit in the LAYERS menu; the rest sit in the bar (or its tray). */
-const LAYERS = ['map-labels-toggle', 'train-stations-toggle', 'earthquakes-toggle', 'time-zones-toggle', 'day-night-toggle', 'hd-detail-toggle'];
+const LAYERS = ['map-labels-toggle', 'train-stations-toggle', 'earthquakes-toggle', 'time-zones-toggle', 'day-night-toggle', 'hd-detail-toggle', 'space-view-toggle'];
 const BAR_SWITCHES = SWITCHES.filter((id) => !LAYERS.includes(id));
 const PARTS = [...SWITCHES, 'compass-dial', 'scale-bar', 'tracking-marker', 'zenith-more-toggle'];
 /** Switches a check may leave on by accident; calm() turns them off again. */
@@ -834,6 +835,150 @@ const checks = [
       } finally {
         if (!wasOn) await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('satellites', false));
         await sleep(300);
+      }
+    },
+  ],
+  [
+    'space view shows the Earth and the Moon; Fly to the Moon ends close to it, scrolling zooms in, an Apollo site opens its box, and Back to Earth puts everything back',
+    async (page) => {
+      const before = await page.evaluate(() => {
+        const { viewer, dataManager, styleManager } = window.__godsEyeView;
+        const p = viewer.camera.positionWC;
+        const visual = styleManager?._visualSettings ?? styleManager;
+        return { at: [p.x, p.y, p.z], satellites: dataManager.isEnabled('satellites'), celestial: Boolean(visual?.celestialRingEnabled) };
+      });
+      const where = () => page.evaluate(() => document.body.dataset.space || 'earth');
+      try {
+        await press(page, 'space-view-toggle');
+        await until(page, () => document.body.dataset.space === 'space', 3000, 'space view did not start');
+        await sleep(5000);
+        const out = await page.evaluate(() => {
+          const { viewer, dataManager, styleManager } = window.__godsEyeView;
+          const p = viewer.camera.positionWC;
+          const visual = styleManager?._visualSettings ?? styleManager;
+          return { km: Math.hypot(p.x, p.y, p.z) / 1000, satellites: dataManager.isEnabled('satellites'), celestial: Boolean(visual?.celestialRingEnabled), moon: window.__zt.painted('alon-moon') };
+        });
+        expect(out.km > 100_000 && out.km < 200_000, `space view is ${Math.round(out.km)} km from the Earth's centre`);
+        expect(out.satellites, 'space view did not switch the Satellites layer on');
+        expect(out.celestial, 'space view did not switch the Celestial ring on');
+        expect(out.moon === 1, 'the Moon is not on screen in space view');
+        await page.click('#space-view-moon');
+        await until(page, () => document.body.dataset.space === 'moon' && document.body.dataset.moonHeight, 8000, 'Fly to the Moon did not arrive');
+        const arrived = Number(await page.evaluate(() => document.body.dataset.moonHeight));
+        expect(arrived <= 5_000_000, `Fly to the Moon ended ${Math.round(arrived / 1000)} km above it`);
+        const fromEarth = await page.evaluate(() => {
+          const p = window.__godsEyeView.viewer.camera.positionWC;
+          return Math.hypot(p.x, p.y, p.z) / 1000;
+        });
+        expect(fromEarth > 350_000 && fromEarth < 420_000, `over the Moon, the camera is ${Math.round(fromEarth)} km from the Earth`);
+        await until(page, () => window.__zt.painted('alon-apollo') >= 3, 5000, 'the Apollo landing sites are not marked');
+        // The sharp map: Cesium Moon Terrain is blocked in tests, so NASA's.
+        await until(page, () => Boolean(document.body.dataset.moonSurface), 120_000, 'the Moon map never finished loading');
+        const surface = await page.evaluate(() => ({ kind: document.body.dataset.moonSurface, said: document.querySelector('#space-view-bar .sv-surface')?.textContent }));
+        expect(/^nasa-(8k|2k)$/.test(surface.kind), `the surface is ${surface.kind}: ${surface.said}`);
+        expect(/NASA CGI Moon Kit map, \d+ pixels wide \(Cesium Moon Terrain: /.test(surface.said), `the bar says: ${surface.said}`);
+        // An Apollo site's box.
+        const site = await page.evaluate(() => {
+          const { viewer } = window.__godsEyeView;
+          const primitives = viewer.scene.primitives;
+          for (let i = 0; i < primitives.length; i += 1) {
+            const collection = primitives.get(i);
+            if (!collection?.get || !collection.length) continue;
+            for (let j = 0; j < collection.length; j += 1) {
+              const point = collection.get(j);
+              if (point?.id?.apolloSite === undefined || !point.show) continue;
+              const at = point.computeScreenSpacePosition(viewer.scene);
+              const rect = viewer.canvas.getBoundingClientRect();
+              if (at && at.x > 40 && at.y > 220 && at.x < rect.width - 300 && at.y < rect.height - 160) return { x: rect.left + at.x, y: rect.top + at.y, index: point.id.apolloSite };
+            }
+          }
+          return null;
+        });
+        expect(site, 'no Apollo site is in a clickable part of the window');
+        await page.mouse.click(site.x, site.y);
+        await until(page, () => document.getElementById('apollo-box')?.classList.contains('open'), 3000, 'clicking an Apollo site did not open its box');
+        const boxText = await page.evaluate(() => document.getElementById('apollo-box-panel').textContent);
+        expect(/APOLLO 1\d \/\/ LANDING SITE/.test(boxText) && /Landed \d+ [A-Z][a-z]+ 19\d\d/.test(boxText), `the box says: ${boxText}`);
+        await page.keyboard.press('Escape');
+        await until(page, () => !document.getElementById('apollo-box').classList.contains('open'), 2000, 'Escape did not close the Apollo box');
+        expect((await where()) === 'moon', 'Escape also left the Moon');
+        // Scrolling zooms in to the surface.
+        const [cx, cy] = spot(page, 0.5, 0.6);
+        await page.mouse.move(cx, cy);
+        for (let i = 0; i < 10; i += 1) {
+          await page.mouse.wheel({ deltaY: -300 });
+          await sleep(80);
+        }
+        await sleep(500);
+        const zoomed = Number(await page.evaluate(() => document.body.dataset.moonHeight));
+        expect(zoomed < arrived / 20, `scrolling went from ${Math.round(arrived / 1000)} km to ${Math.round(zoomed / 1000)} km above the Moon`);
+        // Dragging turns round it.
+        await page.mouse.move(cx, cy);
+        await page.mouse.down();
+        await page.mouse.move(cx - 150, cy - 80, { steps: 6 });
+        await page.mouse.up();
+        await sleep(300);
+        expect((await where()) === 'moon', 'dragging over the Moon left it');
+        await page.click('#space-view-earth');
+        await until(page, () => !document.body.dataset.space, 3000, 'Back to Earth did not start');
+        await sleep(5000);
+        const after = await page.evaluate(() => {
+          const { viewer, dataManager, styleManager } = window.__godsEyeView;
+          const p = viewer.camera.positionWC;
+          const visual = styleManager?._visualSettings ?? styleManager;
+          return { at: [p.x, p.y, p.z], satellites: dataManager.isEnabled('satellites'), celestial: Boolean(visual?.celestialRingEnabled), controls: viewer.scene.screenSpaceCameraController.enableInputs };
+        });
+        const off = Math.hypot(after.at[0] - before.at[0], after.at[1] - before.at[1], after.at[2] - before.at[2]);
+        expect(off < 20, `Back to Earth ended ${Math.round(off)} m from where the view was`);
+        expect(after.satellites === before.satellites && after.celestial === before.celestial, `the switches were not put back: ${JSON.stringify({ before, after })}`);
+        expect(after.controls, "the Earth's own controls were left off");
+      } finally {
+        if ((await where()) !== 'earth') {
+          await page.evaluate(() => window.dispatchEvent(new CustomEvent('zenith:space', { detail: { to: 'earth' } })));
+          await sleep(5000);
+        }
+      }
+    },
+  ],
+  [
+    'a search for "Moon" flies to the Moon and one for "Earth" flies back; in space view, a click on the Moon flies there',
+    async (page) => {
+      const search = (text) =>
+        page.evaluate((words) => {
+          const input = document.getElementById('location-search');
+          input.value = words;
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        }, text);
+      try {
+        await search('Moon');
+        await until(page, () => document.body.dataset.space === 'moon' && document.body.dataset.moonHeight, 8000, 'a search for Moon did not fly there');
+        await search('Earth');
+        await until(page, () => !document.body.dataset.space, 3000, 'a search for Earth did not fly back');
+        await sleep(5000);
+        await press(page, 'space-view-toggle');
+        await until(page, () => document.body.dataset.space === 'space', 3000, 'space view did not start');
+        await sleep(5000);
+        // Where Cesium draws the Moon (its own Moon object, read for the test).
+        const moon = await page.evaluate(() => {
+          const { viewer } = window.__godsEyeView;
+          const matrix = viewer.scene.moon?._ellipsoidPrimitive?.modelMatrix;
+          if (!matrix) return null;
+          const centre = viewer.camera.positionWC.constructor.fromElements(matrix[12], matrix[13], matrix[14]);
+          const at = viewer.scene.cartesianToCanvasCoordinates(centre);
+          const rect = viewer.canvas.getBoundingClientRect();
+          return at ? { x: rect.left + at.x, y: rect.top + at.y } : null;
+        });
+        expect(moon, 'the Moon is not in the window in space view');
+        await page.mouse.click(moon.x + 4, moon.y + 3);
+        await until(page, () => document.body.dataset.space === 'moon' && document.body.dataset.moonHeight, 8000, 'a click on the Moon did not fly there');
+        await page.click('#space-view-earth');
+        await until(page, () => !document.body.dataset.space, 3000, 'Back to Earth did not start');
+        await sleep(5000);
+      } finally {
+        if (await page.evaluate(() => Boolean(document.body.dataset.space))) {
+          await page.evaluate(() => window.dispatchEvent(new CustomEvent('zenith:space', { detail: { to: 'earth' } })));
+          await sleep(5000);
+        }
       }
     },
   ],

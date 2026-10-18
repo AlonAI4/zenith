@@ -12,8 +12,8 @@ import { ZENITH_SWITCHES } from './zenithSwitches.js';
  *
  * The words are matched against a short list of commands in code, with no
  * AI: go to <place>, zoom in, zoom out, CCTV on or off, take photo, FLIR on
- * or off, classified on or off, watch zones on or off, and a layer's name
- * with on or off. What was
+ * or off, classified on or off, watch zones on or off, space view, go to
+ * the Moon, back to Earth, and a layer's name with on or off. What was
  * heard is shown on screen; anything else is "Not understood".
  */
 
@@ -75,6 +75,9 @@ export function matchCommand(
   if (/^zoom out( more)?$/.test(words)) return { do: 'zoom', in: false };
   if (/^(take|save) (a )?(photo|picture|snapshot)$/.test(words))
     return { do: 'photo' };
+  if (/^(go )?back to (the )?earth$/.test(words)) return { do: 'earth' };
+  if (/^space view$/.test(words))
+    return { do: 'switch', id: 'space-view-toggle', on: true };
   const toggle = onOff(words);
   if (!toggle) return null;
   const name = toggle.name;
@@ -199,6 +202,10 @@ export function installFreeVoice(
         new CustomEvent('zenith:set-classified', {
           detail: { set: command.on },
         }),
+      );
+    } else if (command.do === 'earth') {
+      win.dispatchEvent(
+        new CustomEvent('zenith:space', { detail: { to: 'earth' } }),
       );
     } else if (command.do === 'watching') {
       win.dispatchEvent(

@@ -3,8 +3,8 @@ import { SWITCH_KEYS, keyLabel } from './switchKeys.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
 
 /**
- * A shorter top bar. The six map overlays (place names, train stations,
- * earthquakes, time zones, day and night, HD buildings) move into one LAYERS
+ * A shorter top bar. The map overlays (place names, train stations,
+ * earthquakes, time zones, day and night, HD buildings, space view) move into one LAYERS
  * menu, whose button shows how many of them are on. The original's tilt and
  * north-up buttons are hidden, because the compass dial does both (its N
  * still presses the hidden north-up button, which eases the turn).
@@ -94,7 +94,7 @@ export function installToolbarLayout(doc = document, win = window) {
   toggle.type = 'button';
   toggle.innerHTML = ICON;
   toggle.title =
-    'Layers: place names, stations, earthquakes, time zones, day and night, HD';
+    'Layers: place names, stations, earthquakes, time zones, day and night, HD, space';
   toggle.setAttribute('aria-label', 'Layers');
   toggle.setAttribute('aria-controls', 'zenith-layers-menu');
   toggle.setAttribute('aria-expanded', 'false');
