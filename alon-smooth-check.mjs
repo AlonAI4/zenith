@@ -15,7 +15,10 @@
  * - memory: the page's JavaScript memory;
  * - which files take the most time while the view moves (a profile).
  *
- *   node alon-smooth-check.mjs [--label "before"] [--runs 2] [--json out.json]
+ *   node alon-smooth-check.mjs [--label "before"] [--runs 2] [--json out.json] [--zones 2]
+ *
+ * --zones N starts with N watch zones (up to 10) on round the view, watching
+ * planes, ships and satellites.
  *
  * Zenith must be running at ZENITH_URL (default http://localhost:4173).
  */
@@ -35,6 +38,7 @@ const option = (name, fallback) => {
 const LABEL = option('label', 'now');
 const RUNS = Number(option('runs', '2'));
 const JSON_OUT = option('json', null);
+const ZONES = Math.min(10, Number(option('zones', '0')));
 
 /** The page settings a person who chose the satellite map has. */
 async function prepare(page) {
@@ -44,6 +48,19 @@ async function prepare(page) {
     localStorage.setItem('gev:first-run-mission:v1', 'suppressed');
     localStorage.setItem('gev.helpCard', 'closed');
   });
+  await page.evaluate((count) => {
+    const zones = Array.from({ length: count }, (_, i) => ({
+      id: `smooth${i}`,
+      name: `Zone ${i + 1}`,
+      lat: 51.5055 + 0.02 * i,
+      lon: -0.0754,
+      radiusM: i % 2 ? 10_000 : 2000,
+      watch: ['planes', 'ships', 'satellites'],
+      on: true,
+    }));
+    if (count) localStorage.setItem('gev.watchZones', JSON.stringify(zones));
+    else localStorage.removeItem('gev.watchZones');
+  }, ZONES);
 }
 
 /** Open the app and time it: ready to use, and first map fully drawn. */

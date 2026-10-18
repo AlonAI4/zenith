@@ -44,6 +44,7 @@ const SWITCHES = [
   'classified-toggle',
   'measure-toggle',
   'saved-places-toggle',
+  'watch-zones-toggle',
   'video-mode-toggle',
   'zenith-help-toggle',
 ];
@@ -833,6 +834,137 @@ const checks = [
       } finally {
         if (!wasOn) await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('satellites', false));
         await sleep(300);
+      }
+    },
+  ],
+  [
+    'a watch zone is added with a click on the map, drawn as a ring with its name, kept across a reload and deleted',
+    async (page, setup) => {
+      const state = () =>
+        page.evaluate(() => ({
+          rows: document.querySelectorAll('#watch-zones-list li').length,
+          names: [...document.querySelectorAll('#watch-zones-list .wz-name')].map((name) => name.textContent),
+          rings: window.__zt.entities('zenith-watch-zones'),
+          labels: window.__zt.labels('alon-watch-zones'),
+          stored: JSON.parse(localStorage.getItem('gev.watchZones') || '[]').length,
+        }));
+      await press(page, 'watch-zones-toggle');
+      try {
+        expect(await page.evaluate(() => window.__zt.shown(document.getElementById('watch-zones'))), 'the Watch zones panel did not open');
+        await page.click('#watch-zones-add');
+        await clickMap(page, 0.5, 0.62);
+        await until(page, () => window.__zt.shown(document.querySelector('#watch-zones form')), 3000, 'clicking the map did not ask for the zone details');
+        expect(!(await page.evaluate(() => window.__zt.shown(document.getElementById('address-card')))), 'the click that placed the zone also opened the map pin card');
+        await page.keyboard.type('TESTZONE');
+        await page.click('#watch-zones form button[type=submit]');
+        await until(page, () => document.querySelectorAll('#watch-zones-list li').length === 1, 3000, 'the zone was not added to the list');
+        const added = await state();
+        expect(added.names[0] === 'TESTZONE', `the zone is called ${added.names[0]}`);
+        expect(added.rings === 1, `${added.rings} rings on the map, not 1`);
+        await until(page, () => window.__zt.labels('alon-watch-zones') === 1, 3000, 'the ring has no name on the map');
+        expect(added.stored === 1, 'the zone was not saved');
+        // Across a reload, from this computer's storage.
+        await open(page, setup.narrow ? NARROW : WIDE, setup.map === 'esri-imagery' ? `${LONDON}&map=esri-imagery` : LONDON);
+        await until(page, () => window.__zt.entities('zenith-watch-zones') === 1, 10_000, 'the zone was not drawn again after a reload');
+        await press(page, 'watch-zones-toggle');
+        const back = await state();
+        expect(back.names.join() === 'TESTZONE', `after a reload the list has ${back.names.join() || 'nothing'}`);
+        await page.click('#watch-zones-list .wz-delete');
+        await sleep(300);
+        const gone = await state();
+        expect(gone.rows === 0 && gone.rings === 0 && gone.stored === 0, `after deleting: ${JSON.stringify(gone)}`);
+        await until(page, () => window.__zt.labels('alon-watch-zones') === 0, 3000, 'the name stayed on the map after the zone was deleted');
+      } finally {
+        await page.evaluate(() => {
+          for (const remove of document.querySelectorAll('#watch-zones-list .wz-delete')) remove.click();
+          localStorage.removeItem('gev.watchZones');
+          if (window.__zt.shown(document.getElementById('watch-zones'))) document.getElementById('watch-zones-toggle').click();
+        });
+        await sleep(300);
+      }
+    },
+  ],
+  [
+    'watch zones: a made-up plane flying into a zone gives exactly one alert, in a notice and the log',
+    async (page) => {
+      // The centre of the view, and a made-up flights feed: one plane, first
+      // 8 km north of the zone, then inside it.
+      const centre = await page.evaluate(() => {
+        const viewer = window.__zt.viewer();
+        const spot = viewer.camera.pickEllipsoid({ x: viewer.canvas.clientWidth / 2, y: viewer.canvas.clientHeight * 0.62 });
+        const where = viewer.scene.globe.ellipsoid.cartesianToCartographic(spot);
+        return [(where.longitude * 180) / Math.PI, (where.latitude * 180) / Math.PI];
+      });
+      let plane = [centre[0], centre[1] + 8000 / 111_320];
+      const answer = (request) => {
+        const url = new URL(request.url());
+        if (url.pathname === '/api/flights') {
+          const now = Math.floor(Date.now() / 1000);
+          request.respond({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              time: now,
+              states: [['7c0001', 'ZTEST01 ', 'Testland', now, now, plane[0], plane[1], 3000, false, 180, 180, 0, null, 3050, '1200', false, 0]],
+            }),
+          });
+        } else {
+          request.continue();
+        }
+      };
+      await page.setRequestInterception(true);
+      page.on('request', answer);
+      const flightsWereOn = await page.evaluate(() => window.__godsEyeView.dataManager.isEnabled('flights'));
+      const alertLines = () => page.evaluate(() => [...document.querySelectorAll('#watch-zones-alerts button')].map((line) => line.textContent));
+      try {
+        await press(page, 'watch-zones-toggle');
+        await page.click('#watch-zones-add');
+        await clickMap(page, 0.5, 0.62);
+        await until(page, () => window.__zt.shown(document.querySelector('#watch-zones form')), 3000, 'clicking the map did not ask for the zone details');
+        await page.keyboard.type('HOMEZONE');
+        await page.click('#watch-zones form button[type=submit]');
+        await until(page, () => document.querySelectorAll('#watch-zones-list li').length === 1, 3000, 'the zone was not added');
+        // The flights layer is off: the panel says so, with a button.
+        if (!flightsWereOn) {
+          await until(page, () => /Planes layer off/.test(document.getElementById('watch-zones-warnings').textContent), 3000, 'the panel did not say the planes layer is off');
+          await page.click('#watch-zones-warnings button');
+        }
+        const seen = () =>
+          page.evaluate(() => {
+            const record = (window.__godsEyeView.dataManager.layers.get('flights').module.getAnalystRecords(1e6) || []).find((one) => one.icao24 === '7c0001');
+            return record ? [record.lon, record.lat] : null;
+          });
+        try {
+          await until(page, () => (window.__godsEyeView.dataManager.layers.get('flights')?.module?.getAnalystRecords?.(1e6) || []).some((one) => one.icao24 === '7c0001'), 60_000, 'the made-up plane never showed');
+        } catch {
+          throw new Skip('the flights layer did not take the made-up feed');
+        }
+        await sleep(4500); // two checks with the plane outside: the starting point
+        expect((await alertLines()).length === 0, `an alert came while the plane was outside: ${(await alertLines()).join(' | ')}`);
+        plane = [centre[0], centre[1] + 300 / 111_320];
+        await until(page, (lat) => {
+          const record = (window.__godsEyeView.dataManager.layers.get('flights').module.getAnalystRecords(1e6) || []).find((one) => one.icao24 === '7c0001');
+          return record && Math.abs(record.lat - lat) < 1e-4;
+        }, 60_000, 'the plane never moved into the zone', plane[1]);
+        await until(page, () => document.querySelectorAll('#watch-zones-alerts button').length > 0, 6000, 'no alert when the plane entered the zone');
+        await sleep(6500); // three more checks with the plane still inside
+        const lines = await alertLines();
+        expect(lines.length === 1, `${lines.length} alerts, not exactly one: ${lines.join(' | ')}`);
+        expect(/^\d\d:\d\dZ · ZTEST01 entered HOMEZONE$/.test(lines[0]), `the alert reads: ${lines[0]}`);
+        const notice = await page.evaluate(() => document.getElementById('zenith-zone-alert')?.textContent ?? '');
+        expect(/^ALERT · ZTEST01 entered HOMEZONE · \d\d:\d\dZ$/.test(notice), `the notice reads: ${notice || 'nothing'}`);
+        expect(await seen(), 'the plane went missing');
+      } finally {
+        page.off('request', answer);
+        await page.setRequestInterception(false);
+        await page.evaluate((on) => {
+          for (const remove of document.querySelectorAll('#watch-zones-list .wz-delete')) remove.click();
+          localStorage.removeItem('gev.watchZones');
+          if (!on) window.__godsEyeView.dataManager.setEnabled('flights', false);
+          if (window.__zt.shown(document.getElementById('watch-zones'))) document.getElementById('watch-zones-toggle').click();
+          document.getElementById('zenith-zone-alert')?.remove();
+        }, flightsWereOn);
+        await sleep(500);
       }
     },
   ],

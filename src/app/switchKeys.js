@@ -25,6 +25,7 @@ export const SWITCH_KEYS = Object.freeze({
   'classified-toggle': 'x',
   'measure-toggle': 'm',
   'saved-places-toggle': 's',
+  'watch-zones-toggle': 'j',
   'video-mode-toggle': 'g',
   'zenith-help-toggle': '?',
 });

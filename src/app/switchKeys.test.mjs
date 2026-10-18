@@ -35,7 +35,8 @@ test('a key finds its switch, in either case', () => {
     switchForKey(press('?', { shiftKey: true })),
     'zenith-help-toggle',
   );
-  assert.equal(switchForKey(press('j')), null);
+  assert.equal(switchForKey(press('j')), 'watch-zones-toggle');
+  assert.equal(switchForKey(press('i')), null);
   assert.equal(switchForKey(press('1')), null);
 });
 

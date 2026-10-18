@@ -12,7 +12,8 @@ import { ZENITH_SWITCHES } from './zenithSwitches.js';
  *
  * The words are matched against a short list of commands in code, with no
  * AI: go to <place>, zoom in, zoom out, CCTV on or off, take photo, FLIR on
- * or off, classified on or off, and a layer's name with on or off. What was
+ * or off, classified on or off, watch zones on or off, and a layer's name
+ * with on or off. What was
  * heard is shown on screen; anything else is "Not understood".
  */
 
@@ -83,6 +84,8 @@ export function matchCommand(
     return { do: 'flir', on: toggle.on };
   if (/^(classified|classified look|spy look)$/.test(name))
     return { do: 'classified', on: toggle.on };
+  if (/^(watch zones?|zones?|watching)$/.test(name))
+    return { do: 'watching', on: toggle.on };
   if (switches.has(name))
     return { do: 'switch', id: switches.get(name), on: toggle.on };
   if (layers.has(name))
@@ -194,6 +197,12 @@ export function installFreeVoice(
     } else if (command.do === 'classified') {
       win.dispatchEvent(
         new CustomEvent('zenith:set-classified', {
+          detail: { set: command.on },
+        }),
+      );
+    } else if (command.do === 'watching') {
+      win.dispatchEvent(
+        new CustomEvent('zenith:set-watching', {
           detail: { set: command.on },
         }),
       );

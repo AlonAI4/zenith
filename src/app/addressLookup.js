@@ -3,6 +3,7 @@ import { sunLine } from './dayNight.js';
 import { closeOnEscape } from './escapeKey.js';
 import { isMeasuring } from './measureTool.js';
 import { announceSpot } from './overhead.js';
+import { isPickingZone } from './watchZones.js';
 import {
   isTimeZonePick,
   loadTimeZones,
@@ -494,7 +495,8 @@ export function installAddressLookup({ viewer }, doc = document) {
 
   const onClick = async (click) => {
     // While the measure tool is on, a click on the map is a measuring point.
-    if (!on || isMeasuring()) return;
+    // So is a click that places a new watch zone's middle.
+    if (!on || isMeasuring() || isPickingZone()) return;
     // A click on a plane, camera or station belongs to that thing. A click
     // on the pin already standing there is a click on the map under it.
     const picked = scene.pick(click.position);

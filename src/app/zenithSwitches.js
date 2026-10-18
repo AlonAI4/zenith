@@ -77,6 +77,12 @@ export const ZENITH_SWITCHES = Object.freeze([
     what: 'Star the view on screen, name it, and fly back later, with its map, look and layers. Tick two or more places to fly through them for a recording.',
   },
   {
+    id: 'watch-zones-toggle',
+    panel: true,
+    name: 'Watch zones',
+    what: "Circles on the map that raise an alert when a plane, ship or satellite comes in. Press Add zone, click the map for the middle, then pick the size, a name and what it watches. Each alert is a notice and a line in the panel's log; click a line to fly there. Only public plane, ship and satellite data.",
+  },
+  {
     id: 'video-mode-toggle',
     panel: true,
     name: 'Video mode',

@@ -27,6 +27,7 @@ import { installSwitchKeys } from './app/switchKeys.js';
 import { installTrackingMarker } from './app/trackingMarker.js';
 import { installTrainStations } from './app/trainStations.js';
 import { installVideoMode } from './app/videoMode.js';
+import { installWatchZones } from './app/watchZones.js';
 import { createStandaloneApplication } from './standalone/application.js';
 import { describeError } from './standalone/errors.js';
 import { initBranding } from './ui/branding.js';
@@ -123,6 +124,10 @@ application
               },
               setCleanView,
             }),
+        ],
+        [
+          'Watch zones',
+          () => installWatchZones(scene, { dataManager: data?.dataManager }),
         ],
         [
           'Video mode',
