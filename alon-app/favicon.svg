@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Zenith">
+  <!-- The browser tab icon: zenith-logo.svg made simple enough to read at
+       16 px. Bigger star, no thin lines, a darker edge for light tab bars.
+       Render: node alon-app/icon.mjs public/alon/zenith-favicon.png 64 alon-app/favicon.svg -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e1e5ea"/>
+    </linearGradient>
+    <linearGradient id="planet" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c2c9d1"/>
+      <stop offset=".14" stop-color="#8a95a1"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#00f6ff" stop-opacity=".9"/>
+      <stop offset=".55" stop-color="#00f6ff" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#00f6ff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="frame"><rect x="1" y="1" width="62" height="62" rx="14"/></clipPath>
+  </defs>
+
+  <rect x="1" y="1" width="62" height="62" rx="14" fill="url(#tile)"/>
+  <g clip-path="url(#frame)">
+    <!-- the planet below -->
+    <circle cx="32" cy="88" r="38" fill="url(#planet)"/>
+    <!-- the orbit overhead -->
+    <path d="M7 43 A 25 9 0 0 1 57 43" fill="none" stroke="#7f8995" stroke-width="3" stroke-linecap="round"/>
+    <!-- the zenith: the faceted star and its cyan light -->
+    <circle cx="32" cy="24" r="17" fill="url(#glow)"/>
+    <path d="M32 24 L32 6 L28.2 20.2 Z" fill="#fdfeff"/>
+    <path d="M32 24 L32 6 L35.8 20.2 Z" fill="#bcc4cc"/>
+    <path d="M32 24 L50 24 L35.8 20.2 Z" fill="#dfe4e9"/>
+    <path d="M32 24 L50 24 L35.8 27.8 Z" fill="#76818d"/>
+    <path d="M32 24 L32 42 L35.8 27.8 Z" fill="#5c6774"/>
+    <path d="M32 24 L32 42 L28.2 27.8 Z" fill="#949ea9"/>
+    <path d="M32 24 L14 24 L28.2 27.8 Z" fill="#a7b0b9"/>
+    <path d="M32 24 L14 24 L28.2 20.2 Z" fill="#ffffff"/>
+  </g>
+  <!-- a darker edge, so the tile shows on a light tab bar -->
+  <rect x="1.5" y="1.5" width="61" height="61" rx="13.5" fill="none" stroke="#97a1ac" stroke-width="1"/>
+</svg>
