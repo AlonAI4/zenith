@@ -1,35 +1,76 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Zenith">
   <defs>
-    <radialGradient id="bg" cx="50%" cy="34%" r="80%">
-      <stop offset="0" stop-color="#11324a"/>
-      <stop offset="1" stop-color="#03080d"/>
-    </radialGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e6e9ed"/>
+    </linearGradient>
+    <linearGradient id="planet" gradientUnits="userSpaceOnUse" x1="420" y1="690" x2="600" y2="924">
+      <stop offset="0" stop-color="#f3f5f8"/>
+      <stop offset=".45" stop-color="#cdd3da"/>
+      <stop offset="1" stop-color="#99a2ad"/>
+    </linearGradient>
+    <clipPath id="world"><circle cx="512" cy="1290" r="600"/></clipPath>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#8d97a2"/>
+      <stop offset=".5" stop-color="#eef1f4"/>
+      <stop offset="1" stop-color="#76808c"/>
+    </linearGradient>
     <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#b8fdff" stop-opacity=".95"/>
-      <stop offset=".45" stop-color="#00f6ff" stop-opacity=".35"/>
+      <stop offset="0" stop-color="#00f6ff" stop-opacity=".6"/>
+      <stop offset=".6" stop-color="#00f6ff" stop-opacity=".1"/>
       <stop offset="1" stop-color="#00f6ff" stop-opacity="0"/>
     </radialGradient>
-    <linearGradient id="planet" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0b3247"/>
-      <stop offset="1" stop-color="#041018"/>
-    </linearGradient>
-    <clipPath id="frame"><rect x="64" y="64" width="896" height="896" rx="200"/></clipPath>
+    <filter id="tileShadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000000" flood-opacity=".3"/>
+    </filter>
+    <filter id="lift" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#2a323c" flood-opacity=".28"/>
+    </filter>
+    <clipPath id="frame"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
   </defs>
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
-  <g clip-path="url(#frame)" fill="none" stroke-linecap="round">
-    <!-- the planet below -->
-    <circle cx="512" cy="1290" r="640" fill="url(#planet)" stroke="#00f6ff" stroke-width="16"/>
-    <ellipse cx="512" cy="1290" rx="200" ry="640" stroke="#1c7d9c" stroke-width="7"/>
-    <ellipse cx="512" cy="1290" rx="430" ry="640" stroke="#1c7d9c" stroke-width="7"/>
-    <path d="M70 800 Q512 690 954 800" stroke="#1c7d9c" stroke-width="7"/>
-    <!-- an orbit crossing overhead -->
-    <path d="M96 560 A 430 170 0 0 1 928 560" stroke="#49b6dd" stroke-width="9" opacity=".75"/>
-    <circle cx="806" cy="431" r="17" fill="#eaffff" stroke="none"/>
+
+  <!-- the tile -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#tile)" filter="url(#tileShadow)"/>
+
+  <g clip-path="url(#frame)">
+    <!-- faint construction lines, like a drawing on a drafting table -->
+    <g fill="none" stroke="#c8cdd4" stroke-width="3">
+      <line x1="100" y1="100" x2="924" y2="924"/>
+      <line x1="924" y1="100" x2="100" y2="924"/>
+      <line x1="512" y1="100" x2="512" y2="924"/>
+      <circle cx="512" cy="380" r="250"/>
+    </g>
+
+    <!-- the planet below, and its horizon -->
+    <circle cx="512" cy="1290" r="600" fill="url(#planet)" filter="url(#lift)"/>
+    <g clip-path="url(#world)" fill="none" stroke="#a7afb9" stroke-width="6">
+      <ellipse cx="512" cy="1290" rx="210" ry="600"/>
+      <ellipse cx="512" cy="1290" rx="430" ry="600"/>
+      <path d="M100 800 Q512 735 924 800"/>
+    </g>
+    <circle cx="512" cy="1290" r="598" fill="none" stroke="#ffffff" stroke-opacity=".85" stroke-width="5"/>
+
+    <!-- an orbit crossing overhead, with a satellite on it -->
+    <path d="M168 560 A 360 120 0 0 1 856 560" fill="none" stroke="url(#ring)" stroke-width="22" stroke-linecap="round" filter="url(#lift)"/>
+    <circle cx="772" cy="482" r="22" fill="#f7f8fa" stroke="#7f8995" stroke-width="6"/>
+
     <!-- straight up from the ground to the zenith -->
-    <line x1="512" y1="636" x2="512" y2="372" stroke="#00f6ff" stroke-width="11" stroke-dasharray="2 30"/>
-    <!-- the zenith itself -->
-    <circle cx="512" cy="256" r="150" fill="url(#glow)" stroke="none"/>
-    <path d="M512 132 L540 228 L636 256 L540 284 L512 380 L484 284 L388 256 L484 228 Z" fill="#f2ffff" stroke="none"/>
+    <line x1="512" y1="690" x2="512" y2="560" stroke="#8d97a2" stroke-width="12" stroke-linecap="round" stroke-dasharray="1 26"/>
+
+    <!-- the zenith: a faceted star with a faint cyan light behind it -->
+    <circle cx="512" cy="380" r="190" fill="url(#glow)"/>
+    <g filter="url(#lift)">
+      <path d="M512 380 L512 190 L476 344 Z" fill="#fdfeff"/>
+      <path d="M512 380 L512 190 L548 344 Z" fill="#d2d8de"/>
+      <path d="M512 380 L702 380 L548 344 Z" fill="#eceff3"/>
+      <path d="M512 380 L702 380 L548 416 Z" fill="#8e98a3"/>
+      <path d="M512 380 L512 570 L548 416 Z" fill="#76808c"/>
+      <path d="M512 380 L512 570 L476 416 Z" fill="#a9b1ba"/>
+      <path d="M512 380 L322 380 L476 416 Z" fill="#bcc3cb"/>
+      <path d="M512 380 L322 380 L476 344 Z" fill="#ffffff"/>
+    </g>
   </g>
-  <rect x="64" y="64" width="896" height="896" rx="200" fill="none" stroke="#1f6f8f" stroke-width="10"/>
+
+  <!-- a thin light edge round the tile -->
+  <rect x="101.5" y="101.5" width="821" height="821" rx="183.5" fill="none" stroke="#ffffff" stroke-opacity=".9" stroke-width="3"/>
 </svg>
