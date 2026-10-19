@@ -1166,7 +1166,7 @@ const checks = [
     },
   ],
   [
-    'a search for "Moon" flies to the Moon and one for "Earth" flies back; in space view, a click on the Moon flies there; moving the camera another way leaves the Moon',
+    'the Moon button in the LAYERS menu flies from the Earth straight to the Moon; a search for "Moon" flies there and one for "Earth" flies back; in space view, a click on the Moon flies there; moving the camera another way leaves the Moon',
     async (page) => {
       const search = (text) =>
         page.evaluate((words) => {
@@ -1175,6 +1175,12 @@ const checks = [
           input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
         }, text);
       try {
+        // One button from the Earth, with no space view first.
+        await press(page, 'space-view-row-moon');
+        await until(page, () => document.body.dataset.space === 'moon' && document.body.dataset.moonHeight, 8000, 'the Moon button did not fly there from the Earth');
+        await search('Earth');
+        await until(page, () => !document.body.dataset.space, 3000, 'a search for Earth did not fly back from the Moon');
+        await sleep(5000);
         await search('Moon');
         await until(page, () => document.body.dataset.space === 'moon' && document.body.dataset.moonHeight, 8000, 'a search for Moon did not fly there');
         await search('Earth');

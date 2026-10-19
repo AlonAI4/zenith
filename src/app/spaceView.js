@@ -17,8 +17,9 @@ import { closeOnEscape } from './escapeKey.js';
  * Sun at its real phase. Pressing it again flies back to where the view was
  * and puts both switches back as they were.
  *
- * THE MOON: a click on the Moon in space view, the Fly to the Moon button,
- * a search for "Moon" or the voice command "go to the Moon" flies there.
+ * THE MOON: the Moon button beside SPACE VIEW (from anywhere on Earth too),
+ * a click on the Moon in space view, the Fly to the Moon button, a search
+ * for "Moon" or the voice command "go to the Moon" flies there.
  * Then dragging turns round the Moon (right-drag, or Ctrl or Shift with a
  * drag, tilts and turns the view) and scrolling zooms in to its surface with
  * no zoom limit. Back to Earth (or "back to Earth", or a search for "Earth")
@@ -812,7 +813,7 @@ export function installSpaceView(
     bar.classList.toggle('open', away);
     whereText.textContent = where === 'moon' ? 'THE MOON' : 'SPACE VIEW';
     toMoonButton.hidden = where === 'moon';
-    rowMoon.hidden = where !== 'space';
+    rowMoon.hidden = where === 'moon';
     // In the LAYERS menu once the menu has taken the switch into its row.
     const row = toggle.closest('.zl-row');
     if (row && rowMoon.parentElement !== row)
