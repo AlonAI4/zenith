@@ -932,7 +932,7 @@ const checks = [
     },
   ],
   [
-    'the highlight colour can be changed in the controls card: amber turns the target box and the building light amber, and stays after a reload',
+    'the highlight colour can be changed in the controls card: amber turns the target box, its OVERHEAD part and the building light amber, and stays after a reload',
     async (page, setup) => {
       if (setup.map !== 'esri-imagery') throw new Skip('checked on the satellite map only');
       const amber = 'rgb(255, 176, 0)';
@@ -969,6 +969,8 @@ const checks = [
               head: document.querySelector('#target-box-panel .tb-head').textContent,
               corners: getComputedStyle(document.querySelector('#target-box-corners path')).stroke,
               light: light && [light.red, light.green, light.blue].map((part) => Math.round(part * 255)).join(', '),
+              // OVERHEAD's heading, and its "Switch on satellites" button when the layer is off.
+              overhead: [...document.querySelectorAll('#target-box-panel .zenith-overhead :is(.zo-head, button)')].map((node) => getComputedStyle(node).color),
             };
           });
           await page.keyboard.press('Escape');
@@ -1012,6 +1014,7 @@ const checks = [
       expect(/NO MATCH|NO SIGNAL/.test(seen.head) === false, `the Capitol was not found (${seen.head})`);
       expect(seen.corners === amber, `the target box corners are ${seen.corners}, not amber`);
       expect(seen.light === '255, 176, 0', `the building light is rgb(${seen.light}), not amber`);
+      expect(seen.overhead.length > 0 && seen.overhead.every((colour) => colour === amber), `the OVERHEAD part is ${seen.overhead.join(' and ') || 'missing'}, not amber`);
       expect(kept.colour === '#ffb000' && kept.pressed === 'Amber', `after a reload the colour is ${kept.colour || 'unset'} and ${kept.pressed ?? 'no'} swatch is marked`);
     },
   ],

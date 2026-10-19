@@ -85,14 +85,15 @@ export function needsRecount(state, nowMs) {
 }
 
 const STYLE = `
-.zenith-overhead { font: 11px/1.5 var(--font-mono, ui-monospace, monospace); color: #dff8ff; }
-#target-box-panel .zenith-overhead { padding: 6px 10px 0; }
+.zenith-overhead { --zo-rgb: 0, 246, 255; font: 11px/1.5 var(--font-mono, ui-monospace, monospace); color: #dff8ff; }
+/* In the target box it takes the highlight colour; the map pin card stays cyan. */
+#target-box-panel .zenith-overhead { --zo-rgb: var(--zenith-accent-rgb); padding: 6px 10px 0; }
 #address-card .zenith-overhead { margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(120,220,255,.25); }
-.zenith-overhead .zo-head { color: #00f6ff; font-weight: 700; font-size: 10px; letter-spacing: .14em; }
-.zenith-overhead .zo-now { color: #00f6ff; font-weight: 700; }
+.zenith-overhead .zo-head { color: rgb(var(--zo-rgb)); font-weight: 700; font-size: 10px; letter-spacing: .14em; }
+.zenith-overhead .zo-now { color: rgb(var(--zo-rgb)); font-weight: 700; }
 .zenith-overhead button {
-  margin-top: 4px; padding: 2px 8px; border: 1px solid rgba(0,246,255,.5); border-radius: 3px;
-  background: rgba(0,246,255,.08); color: #00f6ff; font: 700 10px/1.4 var(--font-mono, monospace); cursor: pointer;
+  margin-top: 4px; padding: 2px 8px; border: 1px solid rgba(var(--zo-rgb), .5); border-radius: 3px;
+  background: rgba(var(--zo-rgb), .08); color: rgb(var(--zo-rgb)); font: 700 10px/1.4 var(--font-mono, monospace); cursor: pointer;
 }
 `;
 
