@@ -7,9 +7,10 @@
  * people who use the app, not for programmers.
  */
 export const ZENITH_VERSION = Object.freeze({
-  number: '1.5.3',
-  date: '18 October 2026',
+  number: '1.5.4',
+  date: '19 October 2026',
   changes: Object.freeze([
+    'Pick your own highlight colour in the controls card, fly to the Moon with one button from anywhere on Earth, and Zenith has a new app icon.',
     'The target box finds stadiums, the Pentagon and many houses that said NO MATCH, and names each kind of building in plain words.',
     'The target box lights the building you picked from the ground to its real top, so you can see exactly which one it is.',
     'Every emoji is gone: icons across the app are drawn lines that stay sharp at any size.',
@@ -19,7 +20,6 @@ export const ZENITH_VERSION = Object.freeze({
     "The chosen camera's full name now shows in the camera panel, above its details.",
     'Selecting the whole page no longer turns it blue, and the voice mic no longer shows an error when there is no key.',
     'HD buildings is sharper: far-off roofs and roads on the 3D map are clean instead of grainy, and a still view draws extra detail.',
-    "The Moon's night side glows faintly with earthshine (sunlight bounced off the Earth), so zooming in there is no longer pitch black.",
   ]),
 });
 
