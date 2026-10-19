@@ -36,6 +36,7 @@ test('a saved file loads back to the same settings', () => {
     'gev.helpCard': 'closed',
     'gev.savedPlaces': JSON.stringify([place]),
     'gev.videoMode': '{"speed":"slow","clockwise":true}',
+    'gev.accent': '#ffb000',
   };
   const result = readSettingsFile(JSON.stringify(buildSettingsFile(store(entries))));
   assert.equal(result.ok, true);

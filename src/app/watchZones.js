@@ -3,6 +3,7 @@ import {
   clearOverlaySource,
   setOverlayEntries,
 } from '../overlays/worldOverlay.js';
+import { accent, onAccent } from './accentColour.js';
 import { blip } from './classified.js';
 import { closeOnEscape } from './escapeKey.js';
 import { claimPointer, releasePointer } from '../data/inputOwnership.js';
@@ -48,7 +49,6 @@ export const CHECK_MS = 2000;
 export const REPEAT_MS = 10 * 60_000;
 export const MAX_ALERTS = 50;
 export const MAX_ZONE_NAME = 24;
-const CYAN = '#00f6ff';
 const OVERLAY = 'alon-watch-zones';
 const EARTH_M = 6_371_000;
 /** A step longer than this between two checks is a jump in the data, not a journey... */
@@ -272,28 +272,28 @@ const STYLE = `
 #watch-zones {
   position: fixed; top: var(--zenith-panel-top, 92px); left: 50%; z-index: 181;
   width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - var(--zenith-panel-top, 92px) - 38px);
-  overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(0,246,255,.35) transparent;
+  overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(var(--zenith-accent-rgb), .35) transparent;
   transform: translateX(-50%); padding: 14px 16px 12px;
-  border: 1px solid rgba(0,246,255,.35); border-radius: 12px; background: rgba(4,12,20,.95);
+  border: 1px solid rgba(var(--zenith-accent-rgb), .35); border-radius: 12px; background: rgba(4,12,20,.95);
   box-shadow: 0 14px 40px rgba(0,0,0,.6); color: rgba(222,246,255,.92);
   font: 12px/1.4 var(--font-mono, ui-monospace, monospace); color-scheme: dark;
 }
 #watch-zones[hidden], body.ui-clean-view #watch-zones { display: none; }
 #watch-zones .wz-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-#watch-zones h2, #watch-zones h3 { margin: 0; font-size: 12px; letter-spacing: .22em; color: ${CYAN}; }
+#watch-zones h2, #watch-zones h3 { margin: 0; font-size: 12px; letter-spacing: .22em; color: var(--zenith-accent); }
 #watch-zones h3 { margin-top: 12px; font-size: 11px; letter-spacing: .16em; }
-#watch-zones button { border: 1px solid rgba(0,246,255,.35); background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 8px; }
+#watch-zones button { border: 1px solid rgba(var(--zenith-accent-rgb), .35); background: transparent; color: inherit; font: inherit; cursor: pointer; border-radius: 8px; }
 #watch-zones button:hover { background: rgba(0,212,255,.16); }
 #watch-zones button:disabled { opacity: .4; cursor: default; }
 #watch-zones .wz-close, #watch-zones .wz-delete { flex: none; width: 24px; height: 24px; border-radius: 50%; font-size: 14px; line-height: 1; }
 #watch-zones .wz-note { margin: 6px 0 0; color: rgba(222,246,255,.6); }
 #watch-zones .wz-add { width: 100%; margin-top: 8px; padding: 6px 10px; letter-spacing: .08em; }
-#watch-zones form { margin-top: 8px; padding: 8px; border: 1px dashed rgba(0,246,255,.35); border-radius: 8px; }
+#watch-zones form { margin-top: 8px; padding: 8px; border: 1px dashed rgba(var(--zenith-accent-rgb), .35); border-radius: 8px; }
 #watch-zones form[hidden] { display: none; }
 #watch-zones fieldset { margin: 6px 0 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 4px 10px; }
 #watch-zones legend { padding: 0; margin-bottom: 2px; color: rgba(222,246,255,.6); font-size: 11px; }
 #watch-zones input[type=text] {
-  width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid rgba(0,246,255,.35); border-radius: 8px;
+  width: 100%; box-sizing: border-box; padding: 6px 9px; border: 1px solid rgba(var(--zenith-accent-rgb), .35); border-radius: 8px;
   background: rgba(0,0,0,.35); color: #fff; font: inherit;
 }
 #watch-zones input[type=checkbox], #watch-zones input[type=radio] { accent-color: #00d4ff; }
@@ -365,16 +365,14 @@ export function installWatchZones(
   // The rings on the map, and their names through the app's own overlay.
   const rings = new Cesium.CustomDataSource('zenith-watch-zones');
   viewer.dataSources.add(rings);
-  const lineColor = Cesium.Color.fromCssColorString(CYAN);
-  const dashes = new Cesium.PolylineDashMaterialProperty({
-    color: lineColor,
-    dashLength: 18,
-  });
+  const dashed = (alpha) =>
+    new Cesium.PolylineDashMaterialProperty({
+      color: Cesium.Color.fromCssColorString(accent()).withAlpha(alpha),
+      dashLength: 18,
+    });
+  let dashes = dashed(1);
   // Behind a hill or a building, the ring still shows, fainter.
-  const hiddenDashes = new Cesium.PolylineDashMaterialProperty({
-    color: lineColor.withAlpha(0.45),
-    dashLength: 18,
-  });
+  let hiddenDashes = dashed(0.45);
   /**
    * The ground's height at the zone's middle, on whichever map shows, or
    * undefined while that part of the map has not loaded.
@@ -429,7 +427,7 @@ export function installWatchZones(
         position: positions[0],
         variant: 'label',
         title: zone.name,
-        accent: CYAN,
+        accent: accent(),
         priority: 3,
       });
     }
@@ -439,6 +437,12 @@ export function installWatchZones(
     });
     scene.requestRender();
   };
+  // A new highlight colour draws the rings and their names in it at once.
+  const offAccent = onAccent(() => {
+    dashes = dashed(1);
+    hiddenDashes = dashed(0.45);
+    draw();
+  });
 
   // The panel.
   const panel = element('section');
@@ -919,6 +923,7 @@ export function installWatchZones(
   schedule();
 
   return () => {
+    offAccent();
     offEscape();
     stopPicking();
     win.removeEventListener('zenith:set-watching', onSet);

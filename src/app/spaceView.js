@@ -3,6 +3,7 @@ import {
   clearOverlaySource,
   setOverlayEntries,
 } from '../overlays/worldOverlay.js';
+import { accent, onAccent } from './accentColour.js';
 import { guard } from './addOns.js';
 import { closeOnEscape } from './escapeKey.js';
 
@@ -73,7 +74,6 @@ export const ARRIVE = Object.freeze({
 /** The lowest the camera goes: the ground, not a zoom limit. */
 const GROUND_M = 2;
 const FLY_MS = 4000;
-const CYAN = '#00f6ff';
 const OVERLAY = 'alon-apollo';
 /** In space view the Moon is a few pixels across: its name shows where it is. */
 const MOON_LABEL = 'alon-moon';
@@ -393,34 +393,34 @@ const STYLE = `
 #space-view-bar {
   position: fixed; top: var(--zenith-panel-top, 92px); left: 50%; transform: translateX(-50%); z-index: 120;
   display: none; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center;
-  max-width: calc(100vw - 32px); padding: 6px 12px; border: 1px solid rgba(0,246,255,.4); border-radius: 10px;
+  max-width: calc(100vw - 32px); padding: 6px 12px; border: 1px solid rgba(var(--zenith-accent-rgb), .4); border-radius: 10px;
   background: rgba(2,10,16,.88); color: #dff8ff; font: 11px/1.4 var(--font-mono, ui-monospace, monospace);
 }
 #space-view-bar.open { display: flex; }
 body.ui-clean-view #space-view-bar { display: none; }
-#space-view-bar .sv-where { color: ${CYAN}; font-weight: 700; letter-spacing: .16em; }
+#space-view-bar .sv-where { color: var(--zenith-accent); font-weight: 700; letter-spacing: .16em; }
 #space-view-bar .sv-surface { opacity: .7; font-size: 10px; }
 #space-view-bar button, #zenith-layers-menu .sv-moon {
-  padding: 3px 10px; border: 1px solid rgba(0,246,255,.5); border-radius: 6px; background: rgba(0,246,255,.08);
-  color: ${CYAN}; font: 700 10px/1.4 var(--font-mono, monospace); letter-spacing: .08em; cursor: pointer;
+  padding: 3px 10px; border: 1px solid rgba(var(--zenith-accent-rgb), .5); border-radius: 6px; background: rgba(var(--zenith-accent-rgb), .08);
+  color: var(--zenith-accent); font: 700 10px/1.4 var(--font-mono, monospace); letter-spacing: .08em; cursor: pointer;
 }
 #space-view-bar button[hidden], #zenith-layers-menu .sv-moon[hidden] { display: none; }
 #apollo-box { position: fixed; inset: 0; pointer-events: none; z-index: 150; display: none; }
 #apollo-box.open { display: block; }
 #apollo-box svg { position: absolute; overflow: visible; }
-#apollo-box path { fill: none; stroke: ${CYAN}; stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(0,246,255,.8)); }
+#apollo-box path { fill: none; stroke: var(--zenith-accent); stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(var(--zenith-accent-rgb), .8)); }
 #apollo-box-panel {
   position: absolute; pointer-events: auto; width: 250px; max-width: calc(100vw - 32px); padding: 0 0 8px;
-  border: 1px solid rgba(0,246,255,.55); border-radius: 4px; background: rgba(2,10,16,.92); color: #dff8ff;
-  box-shadow: 0 0 18px rgba(0,246,255,.25); font: 12px/1.45 var(--font-mono, ui-monospace, monospace);
+  border: 1px solid rgba(var(--zenith-accent-rgb), .55); border-radius: 4px; background: rgba(2,10,16,.92); color: #dff8ff;
+  box-shadow: 0 0 18px rgba(var(--zenith-accent-rgb), .25); font: 12px/1.45 var(--font-mono, ui-monospace, monospace);
 }
 #apollo-box-panel .ab-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px 5px 10px;
-  border-bottom: 1px solid rgba(0,246,255,.4); background: rgba(0,246,255,.12); color: ${CYAN};
+  border-bottom: 1px solid rgba(var(--zenith-accent-rgb), .4); background: rgba(var(--zenith-accent-rgb), .12); color: var(--zenith-accent);
   font-weight: 700; letter-spacing: .08em; font-size: 11px;
 }
 #apollo-box-panel .ab-head button {
-  width: 22px; height: 22px; padding: 0; border: 1px solid rgba(0,246,255,.45); border-radius: 3px;
+  width: 22px; height: 22px; padding: 0; border: 1px solid rgba(var(--zenith-accent-rgb), .45); border-radius: 3px;
   background: transparent; color: inherit; font: 13px/1 var(--font-mono, monospace); cursor: pointer;
 }
 #apollo-box-panel .ab-rows { padding: 6px 10px 0; }
@@ -641,7 +641,7 @@ export function installSpaceView(
   let moonView = { ...ARRIVE };
   const sites = scene.primitives.add(new Cesium.PointPrimitiveCollection());
   sites.show = false;
-  const siteColor = Cesium.Color.fromCssColorString(CYAN);
+  const siteColor = Cesium.Color.fromCssColorString(accent());
   APOLLO_SITES.forEach((site, index) =>
     sites.add({
       id: { apolloSite: index },
@@ -684,7 +684,7 @@ export function installSpaceView(
           position: at,
           variant: 'label',
           title: site.mission,
-          accent: CYAN,
+          accent: accent(),
           priority: 6,
         });
     });
@@ -836,7 +836,7 @@ export function installSpaceView(
           position: moonCentre(),
           variant: 'label',
           title: 'Moon',
-          accent: CYAN,
+          accent: accent(),
           priority: 8,
         },
       ],
@@ -916,6 +916,15 @@ export function installSpaceView(
     else if (to === 'space' && trip.where === 'earth') toSpace();
   };
   win.addEventListener('zenith:space', onAsk);
+
+  // A new highlight colour shows on the Apollo sites and the names at once.
+  const offAccent = onAccent((hex) => {
+    const color = Cesium.Color.fromCssColorString(hex);
+    for (let i = 0; i < sites.length; i += 1) sites.get(i).color = color;
+    if (sites.show) showSites(true);
+    if (trip.where === 'space') nameMoon(true);
+    scene.requestRender();
+  });
 
   // A search for the Moon or the Earth (typed, or said as "go to the Moon").
   const onSearch = (event) => {
@@ -1191,6 +1200,7 @@ export function installSpaceView(
 
   return () => {
     removed = true;
+    offAccent();
     if (flight) win.cancelAnimationFrame(flight.frame);
     flight = null;
     if (trip.where !== 'earth') trip.earth();

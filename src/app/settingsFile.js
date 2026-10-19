@@ -1,3 +1,4 @@
+import { tidyAccent } from './accentColour.js';
 import { parsePlaces } from './savedPlaces.js';
 import { readChoice } from './videoMode.js';
 
@@ -46,6 +47,7 @@ export const SETTINGS = Object.freeze({
   'gev.helpCard': (value) => (value === 'closed' ? value : null),
   'gev.videoMode': (value) => JSON.stringify(readChoice(value)),
   'gev.savedPlaces': tidyPlaces,
+  'gev.accent': tidyAccent,
 });
 
 export const FILE_NAME = 'zenith-settings.json';

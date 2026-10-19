@@ -6,6 +6,7 @@
  * words, including whether the pin is on right now. It opens by itself the
  * first time; once closed it stays closed until its own "?" switch is pressed.
  */
+import { accentPicker } from './accentColour.js';
 import { closeOnEscape } from './escapeKey.js';
 import { settingsFileControls } from './settingsFile.js';
 import { ZENITH_SWITCHES } from './zenithSwitches.js';
@@ -202,6 +203,7 @@ export function installHelpCard(
 
   // Built once and kept, so its message survives the card being redrawn.
   const settingsFile = settingsFileControls(doc, { storage, win });
+  const highlight = accentPicker(doc);
 
   // Also built once, so it stays open while the card is redrawn.
   const whatsNew = element('details', 'zh-new');
@@ -231,6 +233,7 @@ export function installHelpCard(
     element('h3', '', 'MOVING AROUND'),
     list(MOVING),
     element('h3', '', 'YOUR SETTINGS'),
+    highlight,
     settingsFile,
     whatsNew,
   );

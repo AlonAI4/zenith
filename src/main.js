@@ -1,3 +1,4 @@
+import { installAccent } from './app/accentColour.js';
 import { startAddOns } from './app/addOns.js';
 import { installAddressLookup } from './app/addressLookup.js';
 import { installAddressSearch } from './app/addressSearch.js';
@@ -68,6 +69,7 @@ const addOnsOff =
 // rest still start (see app/addOns.js).
 const startMine = (list) => (addOnsOff ? [] : startAddOns(list));
 startMine([
+  ['Highlight colour', () => installAccent()],
   ['Branding', () => initBranding()],
   ['Button tooltips', () => initButtonTooltips()],
   ['Menus', () => initCustomSelects()],

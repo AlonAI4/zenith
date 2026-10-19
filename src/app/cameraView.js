@@ -3,6 +3,7 @@ import * as Cesium from 'cesium';
 import { CCTV_PRESENTATION } from '../layers/cctv/rendering.js';
 import { hitTestWorldOverlay } from '../overlays/worldOverlay.js';
 import { CCTV_THUMBNAIL_STYLE } from '../overlays/worldOverlayTokens.js';
+import { accent, onAccent } from './accentColour.js';
 import { guard } from './addOns.js';
 
 /**
@@ -13,7 +14,6 @@ import { guard } from './addOns.js';
  * goes in the camera panel, and on hover over a card whose name was cut.
  */
 
-const CYAN = '#00f6ff';
 export const CONE_ALPHA = 0.28;
 const ARC_STEPS = 16;
 const M_PER_DEG_LAT = 111_320;
@@ -66,11 +66,11 @@ export const nameWasCut = (name) =>
 
 const STYLE = `
 #zenith-camera-corners { position: fixed; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 40; }
-#zenith-camera-corners path { fill: none; stroke: ${CYAN}; stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(0,246,255,.8)); }
+#zenith-camera-corners path { fill: none; stroke: var(--zenith-accent); stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(var(--zenith-accent-rgb), .8)); }
 #zenith-cctv-name { color: #e8f4f8; font: 600 12px "JetBrains Mono", monospace; letter-spacing: .02em; margin: 2px 0 4px; overflow-wrap: anywhere; }
 #zenith-camera-tip {
   position: fixed; z-index: 60; pointer-events: none; max-width: 320px;
-  padding: 4px 8px; border: 1px solid rgba(0,246,255,.55); border-radius: 4px;
+  padding: 4px 8px; border: 1px solid rgba(var(--zenith-accent-rgb), .55); border-radius: 4px;
   background: rgba(3,9,12,.94); color: #e8f4f8; font: 600 12px "JetBrains Mono", monospace;
 }
 `;
@@ -92,7 +92,7 @@ export function installCameraView(
   if (!cctv?.subscribe) return () => {};
   const win = doc.defaultView ?? window;
   const { scene } = viewer;
-  const color = Cesium.Color.fromCssColorString(CYAN);
+  let color = Cesium.Color.fromCssColorString(accent());
   const on3d = () =>
     Boolean(tileset && tileset.show !== false && !scene.globe.show);
 
@@ -209,6 +209,11 @@ export function installCameraView(
     if (!camera) corners.style.display = 'none';
   };
   const unsubscribe = cctv.subscribe(follow);
+  // A new highlight colour redraws the chosen camera's view at once.
+  const offAccent = onAccent((hex) => {
+    color = Cesium.Color.fromCssColorString(hex);
+    if (chosen) paint();
+  });
 
   // Reused on every frame.
   const where = new Cesium.Cartesian3();
@@ -303,6 +308,7 @@ export function installCameraView(
 
   return () => {
     unsubscribe?.();
+    offAccent();
     offFrame();
     offPainted();
     win.removeEventListener('pointermove', onMove, { capture: true });

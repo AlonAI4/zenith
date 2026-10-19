@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { accent } from './accentColour.js';
 import { guard } from './addOns.js';
 import { blip, classifiedOn, decrypt } from './classified.js';
 import { closeOnEscape } from './escapeKey.js';
@@ -25,7 +26,6 @@ export const ROUTE = '/api/alon/place';
 export const CASE_ROUTE = '/api/alon/cctv/case-files';
 /** Above this camera height a right-click asks to zoom in instead. */
 export const TARGET_MAX_HEIGHT_M = 6000;
-const CYAN = '#00f6ff';
 const TIMEOUT_MS = 20_000;
 /** Corners are worked out from at most this many outline points. */
 const CORNER_POINTS = 64;
@@ -123,28 +123,28 @@ const STYLE = `
 #target-box { position: fixed; inset: 0; pointer-events: none; z-index: 150; display: none; }
 #target-box.open { display: block; }
 #target-box-corners { position: absolute; overflow: visible; }
-#target-box-corners path { fill: none; stroke: ${CYAN}; stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(0,246,255,.8)); }
+#target-box-corners path { fill: none; stroke: var(--zenith-accent); stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(var(--zenith-accent-rgb), .8)); }
 #target-box-panel {
   position: absolute; pointer-events: auto; width: 250px; max-width: calc(100vw - 32px);
-  padding: 0 0 8px; border: 1px solid rgba(0,246,255,.55); border-radius: 4px;
-  background: rgba(2,10,16,.92); color: #dff8ff; box-shadow: 0 0 18px rgba(0,246,255,.25);
+  padding: 0 0 8px; border: 1px solid rgba(var(--zenith-accent-rgb), .55); border-radius: 4px;
+  background: rgba(2,10,16,.92); color: #dff8ff; box-shadow: 0 0 18px rgba(var(--zenith-accent-rgb), .25);
   font: 12px/1.45 var(--font-mono, ui-monospace, monospace);
 }
 #target-box-panel .tb-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 5px 8px 5px 10px; border-bottom: 1px solid rgba(0,246,255,.4);
-  background: rgba(0,246,255,.12); color: ${CYAN}; font-weight: 700; letter-spacing: .08em; font-size: 11px;
+  padding: 5px 8px 5px 10px; border-bottom: 1px solid rgba(var(--zenith-accent-rgb), .4);
+  background: rgba(var(--zenith-accent-rgb), .12); color: var(--zenith-accent); font-weight: 700; letter-spacing: .08em; font-size: 11px;
 }
 #target-box-panel .tb-head button {
-  width: 22px; height: 22px; padding: 0; border: 1px solid rgba(0,246,255,.45); border-radius: 3px;
+  width: 22px; height: 22px; padding: 0; border: 1px solid rgba(var(--zenith-accent-rgb), .45); border-radius: 3px;
   background: transparent; color: inherit; font: 13px/1 var(--font-mono, monospace); cursor: pointer;
 }
 #target-box-panel .tb-rows { padding: 6px 10px 0; }
 #target-box-panel .tb-title { color: #fff; font-weight: 700; font-size: 13px; }
 #target-box-panel .tb-faint { opacity: .65; font-size: 11px; }
 #target-box-panel .tb-case {
-  margin: 8px 10px 0; padding: 3px 8px; border: 1px solid rgba(0,246,255,.5); border-radius: 3px;
-  background: rgba(0,246,255,.08); color: ${CYAN}; font: 700 10px/1.4 var(--font-mono, monospace);
+  margin: 8px 10px 0; padding: 3px 8px; border: 1px solid rgba(var(--zenith-accent-rgb), .5); border-radius: 3px;
+  background: rgba(var(--zenith-accent-rgb), .08); color: var(--zenith-accent); font: 700 10px/1.4 var(--font-mono, monospace);
   letter-spacing: .12em; cursor: pointer;
 }
 #target-box-panel .tb-case[hidden] { display: none; }
@@ -352,7 +352,7 @@ export function installTargetBox({ viewer, tileset }, doc = document) {
     const ctx = shot.getContext('2d');
     ctx.drawImage(source, 0, 0, shot.width, shot.height);
     ctx.scale(scale, scale);
-    ctx.strokeStyle = CYAN;
+    ctx.strokeStyle = accent();
     ctx.lineWidth = 2.5;
     const boxOpen = layer.classList.contains('open');
     if (boxOpen && corners.style.display !== 'none') {
@@ -370,7 +370,7 @@ export function installTargetBox({ viewer, tileset }, doc = document) {
       ctx.fillRect(at.left, at.top, 260, tall);
       ctx.lineWidth = 1;
       ctx.strokeRect(at.left, at.top, 260, tall);
-      ctx.fillStyle = CYAN;
+      ctx.fillStyle = accent();
       ctx.font = '700 11px ui-monospace, monospace';
       ctx.fillText(shown?.header ?? '', at.left + 10, at.top + 18);
     }
@@ -561,8 +561,8 @@ export function installTargetBox({ viewer, tileset }, doc = document) {
   fromCard.textContent = 'Target box';
   fromCard.title = 'Show the target box for the pinned spot';
   fromCard.style.cssText =
-    'margin-top:8px;padding:3px 10px;border:1px solid rgba(0,246,255,.45);border-radius:6px;' +
-    'background:transparent;color:#00f6ff;font:600 11px/1.4 var(--font-mono,monospace);cursor:pointer';
+    'margin-top:8px;padding:3px 10px;border:1px solid rgba(var(--zenith-accent-rgb), .45);border-radius:6px;' +
+    'background:transparent;color:var(--zenith-accent);font:600 11px/1.4 var(--font-mono,monospace);cursor:pointer';
   fromCard.addEventListener('click', () => {
     const lat = Number(fromCard.parentElement?.dataset.lat);
     const lon = Number(fromCard.parentElement?.dataset.lon);

@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 
+import { accent, onAccent } from './accentColour.js';
 import { reportFailure } from './addOns.js';
 
 /**
@@ -20,7 +21,6 @@ import { reportFailure } from './addOns.js';
  * outline and a fill are drawn on the ground, and nothing dims.
  */
 
-const CYAN = '#00f6ff';
 export const FILL_ALPHA = 0.35;
 /** The fill pulses up by this much and back. */
 const PULSE_LIFT = 0.1;
@@ -258,7 +258,7 @@ export function sweepHeight(ms, base, roof) {
  */
 export function createSpotlight({ viewer, tileset }, lines, win = globalThis) {
   const { scene } = viewer;
-  const color = Cesium.Color.fromCssColorString(CYAN);
+  let color = Cesium.Color.fromCssColorString(accent());
   const motion = win.matchMedia?.('(prefers-reduced-motion: reduce)');
   const still = () => motion?.matches === true;
   // Reused on every frame of the pulse.
@@ -512,6 +512,12 @@ export function createSpotlight({ viewer, tileset }, lines, win = globalThis) {
       scratchValue,
     );
   };
+
+  // A new highlight colour lights the place shown in it at once.
+  onAccent((hex) => {
+    color = Cesium.Color.fromCssColorString(hex);
+    if (shown) paint();
+  });
 
   return {
     /**
