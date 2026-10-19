@@ -95,16 +95,17 @@ const apply = (hex) => {
   }
 };
 
-/** Starts with the colour saved in this browser, or cyan. */
-export function installAccent(
-  doc = document,
-  storage = globalThis.localStorage,
-) {
+/**
+ * Starts with the colour saved in this browser, or cyan. It never fails:
+ * every highlight style needs the CSS variables it sets.
+ */
+export function installAccent(doc = document, storage) {
   root = doc.documentElement;
-  store = storage;
   let saved = null;
   try {
-    saved = storage?.getItem(ACCENT_KEY);
+    // Reading localStorage itself throws where site data is blocked.
+    store = storage ?? globalThis.localStorage;
+    saved = store?.getItem(ACCENT_KEY);
   } catch {
     // Storage is blocked: cyan.
   }

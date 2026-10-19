@@ -176,7 +176,7 @@ export function settingsFileControls(
   saveButton.type = 'button';
   saveButton.id = 'zenith-settings-save';
   saveButton.title =
-    'Your switches and saved places, to move to another browser or Mac. No keys.';
+    'Your switches, saved places and highlight colour, to move to another browser or Mac. No keys.';
   const loadButton = make('button', 'Load settings from a file');
   loadButton.type = 'button';
   loadButton.id = 'zenith-settings-load';

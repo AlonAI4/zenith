@@ -936,60 +936,79 @@ const checks = [
     async (page, setup) => {
       if (setup.map !== 'esri-imagery') throw new Skip('checked on the satellite map only');
       const amber = 'rgb(255, 176, 0)';
-      await press(page, 'zenith-help-toggle');
-      await page.click('#zenith-accent button[aria-label="Amber"]');
-      await page.keyboard.press('Escape');
-      await press(page, 'address-lookup-toggle');
       let seen;
+      let kept;
       try {
+        await press(page, 'zenith-help-toggle');
+        await page.click('#zenith-accent button[aria-label="Amber"]');
+        await page.keyboard.press('Escape');
         await page.evaluate(() => {
           const { camera } = window.__zt.viewer();
-          camera.setView({
-            destination: camera.positionWC.constructor.fromDegrees(-97.74029, 30.27437, 700),
-            orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
-          });
+          window.__ztSpot = camera.positionWC.clone();
+          window.__ztLook = { heading: camera.heading, pitch: camera.pitch };
         });
-        await sleep(2500);
-        const [x, y] = spot(page, 0.5, 0.5);
-        await page.mouse.click(x, y, { button: 'right' });
-        await until(page, () => !/ACQUIRING/.test(document.querySelector('#target-box-panel .tb-head')?.textContent ?? 'ACQUIRING'), 30_000, 'the target box never finished looking at the Texas Capitol');
-        await sleep(1300);
-        seen = await page.evaluate(() => {
-          const viewer = window.__zt.viewer();
-          const fill = viewer.dataSources.getByName('zenith-target-box')[0]?.entities.values.find((entity) => entity.polygon);
-          const light = fill?.polygon.material.color.getValue(viewer.clock.currentTime);
-          return {
-            head: document.querySelector('#target-box-panel .tb-head').textContent,
-            corners: getComputedStyle(document.querySelector('#target-box-corners path')).stroke,
-            light: light && [light.red, light.green, light.blue].map((part) => Math.round(part * 255)).join(', '),
-          };
-        });
-        await page.keyboard.press('Escape');
-      } finally {
         await press(page, 'address-lookup-toggle');
+        try {
+          await page.evaluate(() => {
+            const { camera } = window.__zt.viewer();
+            camera.setView({
+              destination: camera.positionWC.constructor.fromDegrees(-97.74029, 30.27437, 700),
+              orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+            });
+          });
+          await sleep(2500);
+          const [x, y] = spot(page, 0.5, 0.5);
+          await page.mouse.click(x, y, { button: 'right' });
+          await until(page, () => !/ACQUIRING/.test(document.querySelector('#target-box-panel .tb-head')?.textContent ?? 'ACQUIRING'), 30_000, 'the target box never finished looking at the Texas Capitol');
+          await sleep(1300);
+          seen = await page.evaluate(() => {
+            const viewer = window.__zt.viewer();
+            const fill = viewer.dataSources.getByName('zenith-target-box')[0]?.entities.values.find((entity) => entity.polygon);
+            const light = fill?.polygon.material.color.getValue(viewer.clock.currentTime);
+            return {
+              head: document.querySelector('#target-box-panel .tb-head').textContent,
+              corners: getComputedStyle(document.querySelector('#target-box-corners path')).stroke,
+              light: light && [light.red, light.green, light.blue].map((part) => Math.round(part * 255)).join(', '),
+            };
+          });
+          await page.keyboard.press('Escape');
+        } finally {
+          await press(page, 'address-lookup-toggle');
+          // The view goes back before the reload: the app keeps it in the
+          // address, and the next checks start from the setup's own view.
+          await page.evaluate(() => {
+            if (!window.__ztSpot) return;
+            const { camera } = window.__zt.viewer();
+            camera.setView({ destination: window.__ztSpot, orientation: { ...window.__ztLook, roll: 0 } });
+            delete window.__ztSpot;
+            delete window.__ztLook;
+          });
+          await sleep(1500);
+        }
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await until(page, () => Boolean(document.getElementById('zenith-more-toggle') && window.__godsEyeView?.viewer), 90_000, 'the app did not start again after the reload');
+        kept = await page.evaluate(() => ({
+          colour: getComputedStyle(document.documentElement).getPropertyValue('--zenith-accent').trim(),
+          pressed: document.querySelector('#zenith-accent button[aria-pressed="true"]')?.getAttribute('aria-label') ?? null,
+        }));
+        await until(
+          page,
+          () => {
+            const top = document.elementFromPoint(innerWidth / 2, 50);
+            return Boolean(top) && !top.closest('#loading-screen');
+          },
+          60_000,
+          'the loading screen never went away after the reload',
+        );
+        await sleep(2500);
+        await pickMap(page, setup.map);
+      } finally {
+        // Back to cyan, and nothing left in this browser's storage, whatever happened.
+        await page.evaluate(() => {
+          document.querySelector('#zenith-accent button[aria-label="Cyan"]')?.click();
+          localStorage.removeItem('gev.accent');
+        });
       }
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await until(page, () => Boolean(document.getElementById('zenith-more-toggle') && window.__godsEyeView?.viewer), 90_000, 'the app did not start again after the reload');
-      const kept = await page.evaluate(() => ({
-        colour: getComputedStyle(document.documentElement).getPropertyValue('--zenith-accent').trim(),
-        pressed: document.querySelector('#zenith-accent button[aria-pressed="true"]')?.getAttribute('aria-label') ?? null,
-      }));
-      // Back to cyan, and nothing left in this browser's storage.
-      await page.evaluate(() => {
-        document.querySelector('#zenith-accent button[aria-label="Cyan"]')?.click();
-        localStorage.removeItem('gev.accent');
-      });
-      await until(
-        page,
-        () => {
-          const top = document.elementFromPoint(innerWidth / 2, 50);
-          return Boolean(top) && !top.closest('#loading-screen');
-        },
-        60_000,
-        'the loading screen never went away after the reload',
-      );
-      await sleep(2500);
-      await pickMap(page, setup.map);
       expect(/NO MATCH|NO SIGNAL/.test(seen.head) === false, `the Capitol was not found (${seen.head})`);
       expect(seen.corners === amber, `the target box corners are ${seen.corners}, not amber`);
       expect(seen.light === '255, 176, 0', `the building light is rgb(${seen.light}), not amber`);

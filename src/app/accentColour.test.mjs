@@ -137,3 +137,24 @@ test('the picker marks the chosen colour, changes it, and refuses a dark one', (
   assert.doesNotMatch(box.textContent, /too dark/);
   setAccent(DEFAULT_ACCENT);
 });
+
+test('a browser that throws on reading localStorage still starts cyan', () => {
+  const had = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() {
+      throw new Error('SecurityError: site data is blocked');
+    },
+  });
+  try {
+    const { doc, vars } = page();
+    installAccent(doc);
+    assert.equal(accent(), DEFAULT_ACCENT);
+    assert.equal(vars['--zenith-accent'], DEFAULT_ACCENT);
+    assert.equal(setAccent('#ffb000'), true, 'still changes, just not kept');
+    setAccent(DEFAULT_ACCENT);
+  } finally {
+    if (had) Object.defineProperty(globalThis, 'localStorage', had);
+    else delete globalThis.localStorage;
+  }
+});
